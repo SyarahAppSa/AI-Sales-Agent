@@ -378,6 +378,7 @@ class MailAccount(Base):
     reply_mailbox: Mapped[str] = mapped_column(String(200), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # أول إرسال ناجح فعلًا
     sync_cursor: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

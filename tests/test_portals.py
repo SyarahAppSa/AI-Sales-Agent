@@ -222,3 +222,23 @@ def test_7_email_is_username_clear_messages():
             s.query(LoginCode).delete()  # الاختبار السابق استنفد حد الطلبات عمدًا
         r = c.post("/portal/login/request", data={"email": E1.upper()})  # البريد لا يتأثر بحالة الأحرف
         assert "أُرسل كود الدخول" in r.text and 'name="code"' in r.text and "password" not in r.text
+
+
+def test_8_unconfigured_m365_keeps_bootstrap_until_verified():
+    from mandoob.auth import mail_ready
+    from mandoob.models import MailAccount
+    with session_scope() as s:
+        for a in s.scalars(select(MailAccount)):
+            a.active = False
+        s.add(MailAccount(provider="microsoft365", sender_address="dheya@syarahapp.test", active=True))
+    with session_scope() as s:
+        assert mail_ready(s) is False  # مفاتيح Microsoft 365 غير مضبوطة ← لا يُغلق الدخول بكلمة المرور
+    with TestClient(app) as c:
+        assert "دخول تأسيسي" in c.get("/admin/login").text
+        r = c.post("/admin/login/password", data={"email": ADMIN, "password": "admin-pass-123"}, follow_redirects=False)
+        assert r.headers["location"] == "/"
+        r = c.post("/mail/test", data={"to": "", "message": "السلام عليكم"})
+        assert "لم تُضف مفاتيح Microsoft 365" in r.text
+    with session_scope() as s:  # إعادة صندوق التجربة لبقية الاختبارات
+        for a in s.scalars(select(MailAccount)):
+            a.active = a.provider == "sandbox"

@@ -70,8 +70,21 @@ def portal_of(user: User) -> str:
     return "admin" if is_admin(user) else "staff"
 
 
+def provider_configured(acct) -> bool:
+    if acct.provider == "microsoft365":
+        return bool(settings.ms_tenant_id and settings.ms_client_id and settings.ms_client_secret)
+    if acct.provider == "google":
+        return bool(settings.google_client_id and settings.google_client_secret and settings.google_refresh_token)
+    return True
+
+
 def mail_ready(s) -> bool:
-    return s.scalar(select(MailAccount.id).where(MailAccount.active.is_(True)).limit(1)) is not None
+    """البريد جاهز لإرسال أكواد الدخول فقط إذا كان مزوده مُعدًّا على الخادم ونجح إرسال فعلي منه.
+    قبل ذلك يبقى الدخول التأسيسي بكلمة المرور متاحًا حتى لا تُغلق المنصة على الإدارة."""
+    acct = s.scalar(select(MailAccount).where(MailAccount.active.is_(True)).order_by(MailAccount.id).limit(1))
+    if acct is None or not provider_configured(acct):
+        return False
+    return acct.provider == "sandbox" or acct.verified_at is not None
 
 
 def audit(s, actor, action: str, target=None, **details) -> None:

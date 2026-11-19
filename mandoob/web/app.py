@@ -779,20 +779,35 @@ def mail_save(request: Request, provider: str = Form(...), sender_address: str =
 
 
 @app.post("/mail/test")
-def mail_test(request: Request, to: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
+def mail_test(request: Request, to: str = Form(""), message: str = Form(""), user: User = Depends(require_manager),
+              s=Depends(get_db)):
+    from ..auth import provider_configured
     from ..mail import get_provider
     from ..mail.base import OutgoingEmail
     from ..outreach import active_account, render_html, render_text
     acct = active_account(s) or _404()
-    body = "هذه رسالة تجربة من منصة «مندوب سيارة آب الذكي» للتأكد من ربط البريد والتوقيع."
+    to = (normalize_email(to) or user.email or "").strip()
+    if not normalize_email(to):
+        flash(request, "اكتب بريدًا صحيحًا في خانة «إلى»", "err")
+        return back("/mail")
+    if not provider_configured(acct):
+        flash(request, "لم تُضف مفاتيح Microsoft 365 في Render بعد (MS_TENANT_ID و MS_CLIENT_ID و MS_CLIENT_SECRET). "
+                       "أضفها في مجموعة mandoob-secrets ثم أعد المحاولة.", "err")
+        return back("/mail")
+    body = message.strip() or "هذه رسالة تجربة من منصة «مندوب سيارة آب الذكي» للتأكد من ربط البريد والتوقيع."
     try:
         res = get_provider(acct).send(OutgoingEmail(acct.sender_address, acct.sender_name, to,
                                                     "رسالة تجربة — مندوب سيارة آب الذكي",
                                                     render_text(body, acct.signature_html),
                                                     render_html(body, acct.signature_html),
                                                     reply_to=acct.reply_mailbox or None))
-        flash(request, ("نجح الإرسال: " + res.detail) if res.accepted else ("فشل الإرسال: " + res.detail),
-              "ok" if res.accepted else "err")
+        if res.accepted:
+            first = acct.verified_at is None
+            acct.verified_at = acct.verified_at or now_utc()
+            flash(request, f"نجح الإرسال إلى {to}. " + ("البريد جاهز الآن: صار الدخول للجميع بكود البريد، "
+                                                      "وأُوقف الدخول بكلمة المرور." if first else ""))
+        else:
+            flash(request, "فشل الإرسال: " + res.detail, "err")
     except Exception as e:
         flash(request, f"فشل الإرسال: {e}", "err")
     return back("/mail")

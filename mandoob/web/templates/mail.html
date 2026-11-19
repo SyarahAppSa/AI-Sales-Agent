@@ -6,7 +6,12 @@
 <b>{{ {'microsoft365':'Microsoft 365','google':'Google Workspace','sandbox':'صندوق تجربة محلي'}[a.provider] }}</b> {% if a.active %}<span class="pill ok">نشط</span>{% else %}<span class="pill">غير نشط</span>{% endif %}
 <div class="small">المرسل: {{ a.sender_name }} &lt;<span class="ltr">{{ a.sender_address }}</span>&gt; — الردود: <span class="ltr">{{ a.reply_mailbox or a.sender_address }}</span></div>
 <div class="small muted">آخر مزامنة: {{ fmt(a.last_sync_at) if a.last_sync_at else 'لم تتم' }}</div></div>{% else %}<p class="muted">لم يُربط بريد بعد.</p>{% endfor %}
-{% if accounts %}<form method="post" action="/mail/test" class="row" style="margin-top:10px"><div><label>أرسل رسالة تجربة إلى</label><input name="to" type="email" required class="ltr"></div><div style="flex:0 0 auto"><button class="btn">إرسال تجربة</button></div></form>
+{% if accounts %}<form method="post" action="/mail/test" style="margin-top:12px">
+<h2 style="margin-bottom:8px">رسالة تجربة</h2>
+<div class="field"><label>إلى (البريد الذي ستصله الرسالة)</label><input name="to" value="{{ user.email }}" class="ltr" style="text-align:left"></div>
+<div class="field"><label>نص الرسالة (اكتب ما تشاء — اختياري)</label><textarea name="message" rows="3" placeholder="السلام عليكم، هذه رسالة تجربة."></textarea></div>
+<button class="btn p">إرسال تجربة</button></form>
+{% for a in accounts if a.active %}<p class="small" style="margin-top:8px">{% if a.verified_at %}<span class="pill ok">تم التحقق من الإرسال {{ fmt(a.verified_at, False) }}</span> الدخول للجميع بكود البريد.{% else %}<span class="pill warn">لم يُتحقق بعد</span> يبقى دخول الإدارة بكلمة المرور متاحًا حتى تنجح أول رسالة تجربة.{% endif %}</p>{% endfor %}
 <div class="row" style="margin-top:8px"><form method="post" action="/mail/sync" style="flex:0 0 auto"><button class="btn">مزامنة الصندوق الآن</button></form>
 <form method="post" action="/outreach/run" style="flex:0 0 auto"><input type="hidden" name="ignore_window" value=""><button class="btn">جهّز وأرسل العروض المستحقة الآن</button></form></div>{% endif %}
 <h2 style="margin-top:16px">حالة الإعداد على الخادم</h2>
@@ -17,9 +22,9 @@
 <div class="card"><h2>ربط / تغيير البريد</h2>
 <form method="post" action="/mail">
 <div class="field"><label>المزود</label><select name="provider"><option value="microsoft365">Microsoft 365</option><option value="google">Google Workspace</option><option value="sandbox">صندوق تجربة محلي (بدون إرسال حقيقي)</option></select></div>
-<div class="row"><div><label>عنوان المرسل</label><input name="sender_address" type="email" required class="ltr" placeholder="sales@sayaraup.com"></div><div><label>اسم المرسل</label><input name="sender_name" value="سيارة آب"></div></div>
+<div class="row"><div><label>عنوان المرسل</label><input name="sender_address" type="email" required class="ltr" placeholder="sales@syarahapp.sa"></div><div><label>اسم المرسل</label><input name="sender_name" value="سيارة آب"></div></div>
 <div class="field"><label>صندوق استقبال الردود (اختياري)</label><input name="reply_mailbox" type="email" class="ltr"></div>
-<div class="field"><label>توقيع الشركة (HTML)</label><textarea name="signature_html" rows="5">مع التحية،<br><b>فريق المبيعات — سيارة آب</b><br>sayaraup.com</textarea></div>
+<div class="field"><label>توقيع الشركة (HTML)</label><textarea name="signature_html" rows="5">مع التحية،<br><b>فريق المبيعات — سيارة آب</b><br>syarahapp.sa</textarea></div>
 <button class="btn p">حفظ وربط</button></form></div>
 </div>
 {% endblock %}
