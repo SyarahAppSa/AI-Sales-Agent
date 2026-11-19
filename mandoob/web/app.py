@@ -44,7 +44,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="مندوب سيارة اب الذكي", docs_url=None, redoc_url=None, lifespan=_lifespan)
+app = FastAPI(title="مندوب سيارة آب الذكي", docs_url=None, redoc_url=None, lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 12, same_site="lax",
                    https_only=settings.public_base_url.startswith("https"))
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -173,7 +173,19 @@ def home(request: Request, user: User = Depends(current_user), s=Depends(get_db)
     d = dashboard(s, user)
     follow = needs_followup_today(s, user)[:8]
     camps = list(s.scalars(select(Campaign).order_by(Campaign.id.desc())))
-    return render(request, "dashboard.html", user, s, d=d, follow=follow, camps=camps)
+    today = riyadh_today()
+    cats = []
+    for camp in camps:
+        if camp.status != "active":
+            continue
+        for cat in camp.categories:
+            if cat.active and cat.quota:
+                done = s.scalar(select(func.count(Company.id)).where(
+                    Company.category_id == cat.id, Company.counted_on == today,
+                    Company.data_status == "complete")) or 0
+                cats.append({"label": cat.label + (f" — {cat.cities[0]}" if len(cat.cities) == 1 else ""),
+                             "done": done, "quota": cat.quota})
+    return render(request, "dashboard.html", user, s, d=d, follow=follow, camps=camps, cats=cats[:8])
 
 
 # ---------------------------------------------------------------- الفئات المستهدفة
@@ -426,7 +438,7 @@ def company_action(cid: int, request: Request, action: str = Form(...), note: st
         from ..voice import start_call
         offer = c.category.offer if c.category and c.category.offer else None
         try:
-            start_call(s, c, service_name=offer.service_name if offer else "خدمات سيارة اب",
+            start_call(s, c, service_name=offer.service_name if offer else "خدمات سيارة آب",
                        offer_points=offer.value_points if offer else "", rep_name=c.owner.name if c.owner else "")
             flash(request, "بدأت المكالمة. ستظهر النتيجة في السجل عند انتهائها.")
         except (PermissionError, RuntimeError) as e:
@@ -571,7 +583,7 @@ def offer_preview(oid: int, request: Request, company_id: Optional[int] = None, 
     if c is None:
         c = Company(name="شركة المثال للنقل", activity="نقل وخدمات لوجستية", city="الرياض", name_norm="", fit_reason="")
     acct = active_account(s)
-    subject, body = compose(c, o, acct.sender_name if acct else "سيارة اب")
+    subject, body = compose(c, o, acct.sender_name if acct else "سيارة آب")
     html = render_html(body, acct.signature_html if acct else "")
     return render(request, "offer_preview.html", user, s, o=o, c=c, subject=subject, html=html)
 
@@ -588,7 +600,7 @@ def mail_page(request: Request, user: User = Depends(require_manager), s=Depends
 
 @app.post("/mail")
 def mail_save(request: Request, provider: str = Form(...), sender_address: str = Form(...),
-              sender_name: str = Form("سيارة اب"), signature_html: str = Form(""), reply_mailbox: str = Form(""),
+              sender_name: str = Form("سيارة آب"), signature_html: str = Form(""), reply_mailbox: str = Form(""),
               user: User = Depends(require_manager), s=Depends(get_db)):
     for a in s.scalars(select(MailAccount)):
         a.active = False
@@ -604,10 +616,10 @@ def mail_test(request: Request, to: str = Form(...), user: User = Depends(requir
     from ..mail.base import OutgoingEmail
     from ..outreach import active_account, render_html, render_text
     acct = active_account(s) or _404()
-    body = "هذه رسالة تجربة من منصة «مندوب سيارة اب الذكي» للتأكد من ربط البريد والتوقيع."
+    body = "هذه رسالة تجربة من منصة «مندوب سيارة آب الذكي» للتأكد من ربط البريد والتوقيع."
     try:
         res = get_provider(acct).send(OutgoingEmail(acct.sender_address, acct.sender_name, to,
-                                                    "رسالة تجربة — مندوب سيارة اب الذكي",
+                                                    "رسالة تجربة — مندوب سيارة آب الذكي",
                                                     render_text(body, acct.signature_html),
                                                     render_html(body, acct.signature_html),
                                                     reply_to=acct.reply_mailbox or None))

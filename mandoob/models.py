@@ -201,7 +201,7 @@ class CompanySource(Base):
 
 
 class ExistingCustomer(Base):
-    """عملاء سيارة اب الحاليون (للاستبعاد)."""
+    """عملاء سيارة آب الحاليون (للاستبعاد)."""
     __tablename__ = "existing_customers"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(300))
@@ -271,7 +271,7 @@ class MailAccount(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(String(20))  # microsoft365 / google / sandbox
     sender_address: Mapped[str] = mapped_column(String(200))
-    sender_name: Mapped[str] = mapped_column(String(120), default="سيارة اب")
+    sender_name: Mapped[str] = mapped_column(String(120), default="سيارة آب")
     signature_html: Mapped[str] = mapped_column(Text, default="")
     reply_mailbox: Mapped[str] = mapped_column(String(200), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)

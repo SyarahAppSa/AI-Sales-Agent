@@ -225,7 +225,7 @@ def notify(s: Session, user: User, company: Company | None, title: str, body: st
         try:
             import html as _h
             get_provider(acct).send(OutgoingEmail(
-                from_addr=acct.sender_address, from_name="مندوب سيارة اب الذكي", to=user.email,
+                from_addr=acct.sender_address, from_name="مندوب سيارة آب الذكي", to=user.email,
                 subject=title, text=body,
                 html=f"<div dir='rtl' style='font-family:Tahoma'>{_h.escape(body).replace(chr(10), '<br>')}</div>"))
             n.emailed = True

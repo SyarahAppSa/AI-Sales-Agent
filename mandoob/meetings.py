@@ -54,9 +54,9 @@ def book_meeting(s: Session, company: Company, owner: User, start_utc: datetime,
     if _overlaps(start_utc, end, busy):
         raise SlotUnavailable(suggest_slots(provider, cal, start_utc, duration))
     attendee = attendee_email or (company.primary("email").value if company.primary("email") else None)
-    subject = f"اجتماع تعريفي: سيارة اب × {company.name}"
+    subject = f"اجتماع تعريفي: سيارة آب × {company.name}"
     event_id = provider.create_event(cal, attendee, start_utc, end, subject,
-                                     f"<p>اجتماع تعريفي مع {owner.name} من سيارة اب.</p>")
+                                     f"<p>اجتماع تعريفي مع {owner.name} من سيارة آب.</p>")
     mtg = Meeting(company_id=company.id, owner_id=owner.id, starts_at=start_utc, ends_at=end,
                   attendee_email=attendee, calendar_event_id=event_id)
     s.add(mtg)

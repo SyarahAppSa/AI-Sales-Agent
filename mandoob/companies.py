@@ -245,7 +245,7 @@ def upsert_candidate(s: Session, cand: Candidate, site: SiteResult | None, categ
     if not fit.fits:
         return UpsertResult("rejected", None, fit.rejected_reason)
     if is_existing_customer(s, cand, contacts):
-        return UpsertResult("rejected", None, "عميل حالي لسيارة اب")
+        return UpsertResult("rejected", None, "عميل حالي لسيارة آب")
     if _suppressed(s, cand, contacts):
         return UpsertResult("rejected", None, "ضمن قائمة إيقاف التواصل")
 

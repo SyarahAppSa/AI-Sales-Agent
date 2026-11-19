@@ -1,45 +1,62 @@
-<!doctype html>
+{% from "_icons.html" import icon %}<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}مندوب سيارة اب الذكي{% endblock %}</title>
+<title>{% block title %}مندوب سيارة آب الذكي{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<script>try{if(localStorage.getItem('mini')==='1')document.body.classList.add('mini')}catch(e){}</script>
 {% if user %}
+{% set nav = [
+  ('/', 'grid', 'لوحة التحكم', False, 'all'),
+  ('/followups', 'clock', 'تحتاج متابعة اليوم', False, 'all'),
+  ('/offers-report', 'send', 'الشركات التي أُرسلت إليها عروض', False, 'all'),
+  ('/companies', 'building', 'الشركات', False, 'all'),
+  ('/notifications', 'bell', 'التنبيهات', True, 'all'),
+  ('sep', '', '', False, 'mgr'),
+  ('/targets', 'target', 'الفئات المستهدفة', False, 'mgr'),
+  ('/offers', 'file', 'العروض والمرفقات', False, 'mgr'),
+  ('/daily-report', 'chart', 'التقرير اليومي', False, 'mgr'),
+  ('/runs', 'list', 'سجل التشغيل', False, 'mgr'),
+  ('/team', 'users', 'الفريق والتوزيع', False, 'mgr'),
+  ('/mail', 'mail', 'ربط بريد الشركة', False, 'mgr'),
+  ('/settings', 'settings', 'الإعدادات والمكالمات', False, 'mgr'),
+  ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr'),
+] %}
 <div class="layout">
 <aside class="side">
-  <div class="brand"><span class="dot">س</span>مندوب سيارة اب الذكي</div>
+  <div class="brand">
+    <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div><span class="tag">المندوب الذكي</span></div>
+    <button class="collapse" type="button" title="طي القائمة" onclick="document.body.classList.toggle('mini');try{localStorage.setItem('mini',document.body.classList.contains('mini')?'1':'0')}catch(e){}">{{ icon('panel') }}</button>
+  </div>
   <nav class="nav">
-    <a href="/" class="{{ 'on' if path == '/' }}">الرئيسية</a>
-    <a href="/followups" class="key {{ 'on' if path.startswith('/followups') }}">تحتاج متابعة اليوم</a>
-    <a href="/offers-report" class="key {{ 'on' if path.startswith('/offers-report') }}">الشركات التي أُرسلت إليها عروض</a>
-    <a href="/companies" class="{{ 'on' if path.startswith('/companies') }}">الشركات</a>
-    <a href="/notifications" class="{{ 'on' if path.startswith('/notifications') }}">التنبيهات {% if unread %}<span class="pill err">{{ unread }}</span>{% endif %}</a>
-    {% if user.role in ('admin','manager') %}
-    <div class="sep"></div>
-    <a href="/targets" class="{{ 'on' if path.startswith('/targets') }}">الفئات المستهدفة</a>
-    <a href="/offers" class="{{ 'on' if path.startswith('/offers') and not path.startswith('/offers-report') }}">العروض والمرفقات</a>
-    <a href="/daily-report" class="{{ 'on' if path.startswith('/daily-report') }}">التقرير اليومي</a>
-    <a href="/runs" class="{{ 'on' if path.startswith('/runs') }}">سجل التشغيل</a>
-    <a href="/team" class="{{ 'on' if path.startswith('/team') }}">الفريق والتوزيع</a>
-    <a href="/mail" class="{{ 'on' if path.startswith('/mail') }}">ربط بريد الشركة</a>
-    <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">الإعدادات والمكالمات</a>
-    <a href="/sandbox" class="{{ 'on' if path.startswith('/sandbox') }}">صندوق التجربة</a>
+  {% for href, ic, label, cnt, who in nav %}
+    {% if who == 'all' or user.role in ('admin','manager') %}
+      {% if href == 'sep' %}<div class="sep"></div>{% else %}
+      {% set on = (path == '/' if href == '/' else (path.startswith(href) and not (href == '/offers' and path.startswith('/offers-report')))) %}
+      <a href="{{ href }}" class="{{ 'on' if on }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if cnt and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>
+      {% endif %}
     {% endif %}
+  {% endfor %}
     <div class="sep"></div>
-    <a href="/logout">خروج ({{ user.name }} — {{ ROLE_LABELS[user.role] }})</a>
+    <a href="/logout" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>
   </nav>
 </aside>
 <main class="main">
-{% if flash %}<div class="flash {{ flash.kind }}">{{ flash.msg }}</div>{% endif %}
+  <div class="topbar">
+    <a class="chip" href="/notifications" title="{{ user.name }} — {{ ROLE_LABELS[user.role] }}" style="color:inherit;text-decoration:none"><span>{{ user.email }}</span>{{ icon('user', 30) }}</a>
+    <a class="round" href="/notifications" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
+    <span class="flag" title="المملكة العربية السعودية"><i></i></span>
+  </div>
+{% if flash %}<div class="flash {{ flash.kind }}" style="margin-top:70px">{{ flash.msg }}</div>{% endif %}
 {% block content %}{% endblock %}
 </main>
 </div>
 {% else %}
-{% if flash %}<div class="flash {{ flash.kind }}" style="max-width:380px;margin:20px auto 0">{{ flash.msg }}</div>{% endif %}
+{% if flash %}<div class="flash {{ flash.kind }}" style="max-width:420px;margin:20px auto 0">{{ flash.msg }}</div>{% endif %}
 {% block public %}{% endblock %}
 {% endif %}
 </body></html>

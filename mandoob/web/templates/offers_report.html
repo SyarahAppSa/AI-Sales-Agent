@@ -23,12 +23,12 @@
 <tr><th>الشركة</th><th>تفاصيل الإرسال</th><th>العرض المرسل</th><th>حالة البريد</th><th>رد العميل</th><th>المتابعة</th></tr>
 {% for r in rep.rows %}{% set m = r.msg %}{% set c = r.company %}
 <tr>
-<td style="min-width:170px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div><div class="small ltr">{{ r.phone }}</div></td>
-<td class="small" style="min-width:190px"><div>من: <span class="ltr">{{ m.from_address }}</span></div><div>إلى: <span class="ltr">{{ m.to_address }}</span></div><div>{{ fmt(m.sent_at) }}</div></td>
-<td class="small" style="min-width:200px"><b>{{ r.offer_name }}</b><div class="muted">{{ r.campaign_name }}</div><div>{{ m.subject }}</div><a href="/messages/{{ m.id }}">نسخة النص</a>{% if m.attachment_id %} · <a href="/messages/{{ m.id }}/attachment" target="_blank">{{ m.attachment_name }}</a>{% endif %}</td>
+<td style="min-width:140px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div><div class="small ltr">{{ r.phone }}</div></td>
+<td class="small" style="min-width:160px"><div>من: <span class="ltr">{{ m.from_address }}</span></div><div>إلى: <span class="ltr">{{ m.to_address }}</span></div><div>{{ fmt(m.sent_at) }}</div></td>
+<td class="small" style="min-width:160px"><b>{{ r.offer_name }}</b><div class="muted">{{ r.campaign_name }}</div><div>{{ m.subject }}</div><a href="/messages/{{ m.id }}">نسخة النص</a>{% if m.attachment_id %} · <a href="/messages/{{ m.id }}/attachment" target="_blank">{{ m.attachment_name }}</a>{% endif %}</td>
 <td><span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>{% if m.bounce_reason %}<div class="small" style="color:var(--err)">{{ m.bounce_reason[:120] }}</div>{% endif %}</td>
-<td class="small" style="min-width:200px">{% if r.last_reply %}<span class="pill info">{{ r.last_reply.intent_label }}</span><div class="muted">{{ fmt(r.last_reply.received_at) }}</div><div>«{{ r.last_reply.body_text[:140] }}»</div>{% else %}<span class="muted">لا يوجد رد</span>{% endif %}</td>
-<td class="small" style="min-width:190px"><b>{{ r.owner_name }}</b><div>آخر إجراء: {{ c.last_action or '—' }}</div><div>القادم: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></td>
+<td class="small" style="min-width:160px">{% if r.last_reply %}<span class="pill info">{{ r.last_reply.intent_label }}</span><div class="muted">{{ fmt(r.last_reply.received_at) }}</div><div>«{{ r.last_reply.body_text[:140] }}»</div>{% else %}<span class="muted">لا يوجد رد</span>{% endif %}</td>
+<td class="small" style="min-width:160px"><b>{{ r.owner_name }}</b><div>آخر إجراء: {{ c.last_action or '—' }}</div><div>القادم: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></td>
 </tr>{% else %}<tr><td colspan="6" class="muted">لا توجد عروض مطابقة.</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

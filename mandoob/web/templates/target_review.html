@@ -14,7 +14,7 @@
   <div style="flex:2 1 300px"><label>الأنشطة المستبعدة (افصل بفواصل)</label><input name="exclusions" value="{{ parsed.exclusions|join('، ') }}"></div>
 </div>
 <div class="chips" style="margin-top:6px">
-  <label><input type="checkbox" name="exclude_existing_customers" {{ 'checked' if parsed.exclude_existing_customers }}> استبعاد عملاء سيارة اب الحاليين</label>
+  <label><input type="checkbox" name="exclude_existing_customers" {{ 'checked' if parsed.exclude_existing_customers }}> استبعاد عملاء سيارة آب الحاليين</label>
   <label><input type="checkbox" name="allow_backfill" {{ 'checked' if camp and camp.allow_backfill }}> السماح بتعويض النقص من فئة أخرى</label>
 </div></div>
 
