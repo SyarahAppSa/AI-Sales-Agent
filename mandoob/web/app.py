@@ -316,14 +316,10 @@ def home(request: Request, user: User = Depends(current_user), s=Depends(get_db)
                     Company.data_status == "complete")) or 0
                 cats.append({"label": cat.label + (f" — {cat.cities[0]}" if len(cat.cities) == 1 else ""),
                              "done": done, "quota": cat.quota})
-    test_groups = {}
-    for reason, n in s.execute(select(Company.fit_reason, func.count()).where(Company.is_test.is_(True))
-                               .group_by(Company.fit_reason)):
-        g = reason.split(" — ")[1] if reason and " — " in reason else "أخرى"
-        test_groups[g] = test_groups.get(g, 0) + n
+    test_total = s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0
     test_unassigned = s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True), Company.owner_id.is_(None))) or 0
     return render(request, "dashboard.html", user, s, d=d, follow=follow, camps=camps, cats=cats[:8],
-                  test_groups=test_groups, test_total=sum(test_groups.values()), test_unassigned=test_unassigned)
+                  test_total=test_total, test_unassigned=test_unassigned)
 
 
 # ---------------------------------------------------------------- الفئات المستهدفة

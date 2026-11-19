@@ -2,10 +2,9 @@
 <div class="top"><div><h1>لوحة التحكم</h1><p class="sub" style="margin:0">{{ fmt_date(d.day) }} — صباح الخير، {{ user.name }}</p></div></div>
 
 {% if test_total %}<div class="card" style="border-color:var(--warn)">
-  <div class="top" style="padding:0;min-height:0;margin-bottom:10px"><div><h2 style="margin:0">بيانات تجريبية: {{ test_total }} عميل</h2>
+  <div class="top" style="padding:0;min-height:0;margin-bottom:10px"><div><h2 style="margin:0">بيانات تجريبية: <span style="font-size:28px">{{ test_total }}</span> عميل</h2>
   <p class="small muted" style="margin:4px 0 0">لاختبار البحث والتصفية والتوزيع. مستبعدة من الإحصائيات أدناه ومن الإرسال والاتصال وهدف الـ٤٠٠. بانتظار التوزيع: {{ test_unassigned }}.</p></div>
   <div class="row"><a class="btn p" href="/companies?kind=test">عرض العملاء التجريبيين</a><a class="btn" href="/companies?kind=test&owner=none">بانتظار التوزيع</a></div></div>
-  <div class="grid g4">{% for g, n in test_groups.items() %}<div class="stat"><div class="s">{{ g }}</div><div class="v">{{ n }}</div></div>{% endfor %}</div>
 </div>{% endif %}
 <div class="card">
   <div class="top" style="padding:0;min-height:0;margin-bottom:14px"><h2 style="margin:0">الإحصائيات المباشرة</h2>
