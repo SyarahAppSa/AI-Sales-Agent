@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block content %}
 <div class="top"><div><h1>التقرير الأسبوعي للشرائح</h1><p class="sub" style="margin:0">الأسبوع {{ fmt_date(w.start) }} — {{ fmt_date(w.end) }}</p></div>
-<div class="row"><a class="btn sm" href="?day={{ prev }}">الأسبوع السابق</a><a class="btn sm" href="?day={{ next }}">الأسبوع التالي</a></div></div>
+<div class="row"><a class="btn sm" href="?day={{ prev }}">الأسبوع السابق</a><a class="btn sm" href="?day={{ next }}">الأسبوع التالي</a><a class="btn sm p" href="/weekly-report.xlsx?day={{ w.start }}">تنزيل Excel</a></div></div>
 <div class="grid g4" style="margin-bottom:14px">
   <div class="stat"><div class="l">تواصلنا معها هذا الأسبوع</div><div class="v">{{ w.totals.contacted }}</div></div>
   <div class="stat"><div class="l">ردود مهتمة</div><div class="v">{{ w.totals.interested }}</div></div>

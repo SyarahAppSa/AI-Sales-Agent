@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block content %}
 <div class="top"><div><h1>الشركات التي أُرسلت إليها عروض</h1><p class="sub">من تابع كل منشأة ومتى: ما سجّله الموظفون بعد تواصلهم بأنفسهم{% if outreach_on %}، والعروض المرسلة من بريد المنصة{% endif %}. الأوقات بتوقيت الرياض.</p></div>
-<div class="row" style="flex:0 0 auto"><a class="btn p" href="/followups">تحتاج متابعة اليوم</a><a class="btn" href="/offers-report.xlsx?{{ qs }}">تصدير إلى Excel</a></div></div>
+<div class="row" style="flex:0 0 auto"><a class="btn p" href="/followups">تحتاج متابعة اليوم</a><a class="btn" href="/offers-report.xlsx?{{ qs }}">تنزيل Excel</a></div></div>
 <div class="grid g2" style="margin-bottom:14px">
   <div class="stat"><div class="v">{{ rep.unique_companies }}</div><div class="l">عدد الشركات الفريدة التي أُرسلت إليها عروض</div></div>
   <div class="stat"><div class="v">{{ rep.total_offers }}</div><div class="l">إجمالي العروض المرسلة</div></div>
