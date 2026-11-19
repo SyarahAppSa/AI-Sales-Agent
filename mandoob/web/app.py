@@ -224,9 +224,12 @@ def _ip(request: Request) -> str:
 
 
 def _login_page(request: Request, portal: str, s):
-    from ..auth import mail_ready
+    import time as _t
+    from ..auth import RESEND_AFTER_SECONDS, mail_ready
+    sent = int(request.session.get(f"otp_{portal}_at") or 0)
+    wait = max(0, RESEND_AFTER_SECONDS - (int(_t.time()) - sent)) if sent else 0
     return render(request, "otp_login.html", None, portal=portal, step=request.session.get(f"otp_{portal}"),
-                  bootstrap=(portal == "admin" and not mail_ready(s)))
+                  wait=wait, bootstrap=(portal == "admin" and not mail_ready(s)))
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -247,7 +250,9 @@ def _request_code(request: Request, portal: str, email: str, s):
     """الاستجابة نفسها لبريد مسجّل أو غير مسجّل أو موقوف أو لبوابة أخرى — لا يُكشف وجود الحساب."""
     from ..auth import OTPError, account_problem, audit, request_code, send_code_email
     problem = account_problem(s, email, portal)
+    import time as _t
     request.session[f"otp_{portal}"] = email.strip().lower()
+    request.session[f"otp_{portal}_at"] = int(_t.time())  # مهلة «إعادة إرسال الكود» دقيقة (لأي بريد، دون كشف وجوده)
     if problem:
         audit(s, None, "login_code_request", None, portal=portal, result="ignored")
         flash(request, GENERIC_SENT)
@@ -1096,8 +1101,11 @@ def mail_test(request: Request, to: str = Form(""), message: str = Form(""), use
         flash(request, "اكتب بريدًا صحيحًا في خانة «إلى»", "err")
         return back("/mail")
     if not provider_configured(acct):
-        flash(request, "لم تُضف مفاتيح Microsoft 365 في Render بعد (MS_TENANT_ID و MS_CLIENT_ID و MS_CLIENT_SECRET). "
-                       "أضفها في مجموعة mandoob-secrets ثم أعد المحاولة.", "err")
+        need = {"microsoft365": "MS_TENANT_ID و MS_CLIENT_ID و MS_CLIENT_SECRET",
+                "smtp": "SMTP_HOST و SMTP_USER و SMTP_PASSWORD",
+                "google": "GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET و GOOGLE_REFRESH_TOKEN"}.get(acct.provider, "")
+        flash(request, f"مفاتيح المزود غير مضبوطة على الخادم بعد ({need}). أضفها في مجموعة mandoob-secrets "
+                       "ثم أعد المحاولة.", "err")
         return back("/mail")
     body = message.strip() or "هذه رسالة تجربة من منصة «مندوب سيارة آب الذكي» للتأكد من ربط البريد والتوقيع."
     try:

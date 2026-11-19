@@ -126,6 +126,10 @@ def request_code(s, email: str, portal: str, ip_hash: str | None = None) -> tupl
     if user is None or not user.active or portal_of(user) != portal:
         return None, None
     # الرموز التي استُخدمت للدخول بنجاح لا تُحسب ضمن حد إعادة الإرسال
+    last = s.scalar(select(LoginCode.created_at).where(LoginCode.user_id == user.id, LoginCode.used.is_(False))
+                    .order_by(LoginCode.id.desc()).limit(1))
+    if last is not None and (now_utc() - last).total_seconds() < RESEND_AFTER_SECONDS:
+        raise OTPError("أُرسل كود قبل أقل من دقيقة. انتظر قليلًا ثم اضغط «إعادة إرسال الكود».")
     recent = s.scalar(select(func.count(LoginCode.id)).where(LoginCode.user_id == user.id, LoginCode.used.is_(False),
                                                              LoginCode.created_at >= since)) or 0
     if recent >= MAX_CODES_PER_15MIN:
@@ -174,21 +178,41 @@ def verify_code(s, email: str, code: str, portal: str) -> User:
     return user
 
 
+LOGIN_SUBJECT = "رمز دخولك إلى منصة مندوب سيارة آب الذكي"
+RESEND_AFTER_SECONDS = 60
+
+
+def login_email(user: User, code: str, portal: str) -> tuple[str, str, str]:
+    """(العنوان، النص، HTML) لرسالة كود الدخول — الكود بخط كبير مع مدة صلاحيته."""
+    from html import escape
+    link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
+    where = "بوابة الإدارة" if portal == "admin" else "بوابة الموظفين"
+    text = (f"مرحبًا {user.name}،\n\nرمز دخولك إلى {where} في منصة مندوب سيارة آب الذكي:\n\n    {code}\n\n"
+            f"صالح لمدة ٥ دقائق ولمرة واحدة فقط. أي رمز سابق لم يعد صالحًا.\n"
+            f"إن لم تطلب هذا الرمز فتجاهل الرسالة ولا تشاركه مع أحد.\n\n{link}")
+    html = (f"<div dir='rtl' style='font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;color:#1f2937'>"
+            f"<p style='font-size:16px'>مرحبًا {escape(user.name)}،</p>"
+            f"<p style='font-size:15px'>رمز دخولك إلى {where} في منصة <b>مندوب سيارة آب الذكي</b>:</p>"
+            f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
+            f"background:#f3f0ff;border-radius:12px;padding:18px 8px;margin:16px 0;color:#4c1d95'>{code}</div>"
+            f"<p style='font-size:15px;text-align:center'><b>صالح لمدة ٥ دقائق ولمرة واحدة فقط</b></p>"
+            f"<p style='font-size:13px;color:#6b7280'>أي رمز سابق لم يعد صالحًا. إن لم تطلب هذا الرمز فتجاهل الرسالة "
+            f"ولا تشاركه مع أحد.</p></div>")
+    return LOGIN_SUBJECT, text, html
+
+
 def send_code_email(s, user: User, code: str, portal: str) -> bool:
+    """يرسل الكود من بريد الشركة المربوط بالمنصة إلى بريد الموظف — مسار أكواد الدخول منفصل عن العروض التسويقية
+    (المعطّلة) ولا يمر بطابور الإرسال."""
     from .mail import get_provider
     from .mail.base import OutgoingEmail
     from .outreach import active_account
     acct = active_account(s)
     if acct is None:
         return False
-    link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
-    text = (f"مرحبًا {user.name}،\n\nكود الدخول إلى {'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين'} "
-            f"في مندوب سيارة آب الذكي:\n\n{code}\n\nصالح لمدة ٥ دقائق ولمرة واحدة. إن لم تطلبه فتجاهل هذه الرسالة.\n{link}")
-    html = (f"<div dir='rtl' style='font-family:Tahoma'><p>مرحبًا {user.name}،</p><p>كود الدخول:</p>"
-            f"<p style='font-size:28px;font-weight:bold;letter-spacing:6px'>{code}</p>"
-            "<p>صالح لمدة ٥ دقائق ولمرة واحدة. إن لم تطلبه فتجاهل هذه الرسالة.</p></div>")
+    subject, text, html = login_email(user, code, portal)
     res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "مندوب سيارة آب الذكي", user.email,
-                                                f"كود الدخول: {code}", text, html))
+                                                subject, text, html))
     return bool(res and res.accepted)
 
 

@@ -33,6 +33,8 @@ S = {}
 
 @pytest.fixture(autouse=True)
 def _phase(monkeypatch):
+    import mandoob.auth as _auth
+    monkeypatch.setattr(_auth, "RESEND_AFTER_SECONDS", 0)  # مهلة إعادة الإرسال لها اختبار مستقل
     monkeypatch.setattr(settings, "voice_calls_enabled", False)
     monkeypatch.setattr(settings, "auto_outreach_enabled", False)
 
