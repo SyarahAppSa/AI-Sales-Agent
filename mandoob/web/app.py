@@ -47,8 +47,11 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="مندوب سيارة آب الذكي", docs_url=None, redoc_url=None, lifespan=_lifespan)
+from ..security import SameOriginGuard, SecurityHeaders  # noqa: E402
+app.add_middleware(SameOriginGuard)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 12, same_site="lax",
                    https_only=settings.public_base_url.startswith("https"))
+app.add_middleware(SecurityHeaders, https=settings.public_base_url.startswith("https"))
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.globals.update(fmt=fmt, fmt_date=fmt_date, STATUS_LABELS=STATUS_LABELS, STAGE_LABELS=STAGE_LABELS,
@@ -59,6 +62,9 @@ templates.env.globals.update(ENTITY_TYPES=ENTITY_TYPES, VEHICLE_INDICATOR=VEHICL
 
 
 def _startup() -> None:
+    if settings.database_url.startswith(("postgres", "postgresql")) and settings.secret_key in ("", "dev-only-change-me"):
+        # بلا مفتاح سري حقيقي يمكن تزوير ملف الجلسة: لا يعمل الإنتاج بالمفتاح الافتراضي
+        raise RuntimeError("SECRET_KEY غير مضبوط على الخادم")
     init_db()
     ensure_admin(settings.admin_email, settings.admin_password)
     from ..permissions import backfill_default_perms
@@ -79,6 +85,17 @@ class LoginRequired(Exception):
 @app.exception_handler(LoginRequired)
 async def _login_redirect(request, exc):
     return RedirectResponse(exc.to, status_code=303)
+
+
+STEP_UP_SECONDS = 10 * 60  # التحقق الحديث لإجراءات الإدارة الحساسة
+IDLE_SECONDS = {"admin": 30 * 60, "staff": 2 * 3600}  # ASVS V3.3.2: ٣٠ دقيقة خمول للإدارة
+
+
+def _mark_auth(request: Request) -> None:
+    import time as _t
+    request.session["auth_at"] = int(_t.time())
+    request.session["seen"] = int(_t.time())
+
 
 
 def get_db():
@@ -102,6 +119,12 @@ def _session_user(request: Request, s, portal: str) -> User | None:
     if not user or not user.active or user.session_version != sv:
         request.session.clear()
         return None
+    import time as _t
+    now = int(_t.time())
+    if now - int(request.session.get("seen") or now) > IDLE_SECONDS.get(portal, 7200):
+        request.session.clear()  # انتهت الجلسة بعد عدم النشاط
+        return None
+    request.session["seen"] = now
     from ..auth import portal_of
     if portal_of(user) != portal:
         request.session.clear()
@@ -128,6 +151,18 @@ def staff_user(request: Request, s=Depends(get_db)) -> User:
 def require_manager(user: User = Depends(current_user)) -> User:
     if user.role not in ("admin", "manager"):
         raise HTTPException(403, "هذه الصفحة لمدير المبيعات فقط")
+    return user
+
+
+def require_recent_manager(request: Request, user: User = Depends(require_manager)) -> User:
+    """تغيير الأدوار والصلاحيات وتعطيل الحسابات والتصدير الشامل: يتطلب تحققًا حديثًا (خلال ١٠ دقائق)."""
+    import time as _t
+    if _t.time() - int(request.session.get("auth_at") or 0) > STEP_UP_SECONDS:
+        from urllib.parse import urlparse as _up
+        nxt = str(request.url.path) + (("?" + request.url.query) if request.url.query else "") \
+            if request.method == "GET" else (_up(request.headers.get("referer") or "/").path or "/")
+        request.session["reauth_next"] = nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+        raise LoginRequired("/admin/reauth")
     return user
 
 
@@ -204,24 +239,35 @@ def staff_login_page(request: Request, s=Depends(get_db)):
     return _login_page(request, "staff", s)
 
 
+GENERIC_SENT = ("إن كان هذا البريد مسجّلًا ومفعّلًا لهذه البوابة فسيصله كود الدخول خلال دقيقة. "
+                "الكود صالح ٥ دقائق ولمرة واحدة.")
+
+
 def _request_code(request: Request, portal: str, email: str, s):
-    from ..auth import OTPError, account_problem, request_code, send_code_email
+    """الاستجابة نفسها لبريد مسجّل أو غير مسجّل أو موقوف أو لبوابة أخرى — لا يُكشف وجود الحساب."""
+    from ..auth import OTPError, account_problem, audit, request_code, send_code_email
     problem = account_problem(s, email, portal)
+    request.session[f"otp_{portal}"] = email.strip().lower()
     if problem:
-        flash(request, problem, "err")
+        audit(s, None, "login_code_request", None, portal=portal, result="ignored")
+        flash(request, GENERIC_SENT)
         return
     try:
         user, code = request_code(s, email, portal, _ip(request))
     except OTPError as e:
-        flash(request, str(e), "err")
+        if "الجهاز" in str(e):  # حد الجهاز لا يكشف شيئًا عن الحساب
+            flash(request, str(e), "err")
+        else:
+            audit(s, None, "login_code_request", None, portal=portal, result="rate_limited")
+            flash(request, GENERIC_SENT)
         return
     if user is not None and not send_code_email(s, user, code, portal):
         log.error("login code email failed for user %s", user.id)
         s.rollback()
-        flash(request, "تعذر إرسال الكود لأن بريد الشركة غير مربوط بالمنصة بعد. تواصل مع الإدارة.", "err")
-        return
-    request.session[f"otp_{portal}"] = email.strip().lower()
-    flash(request, "أُرسل كود الدخول إلى بريدك. صالح لمدة ٥ دقائق ولمرة واحدة.")
+        from ..inbox import notify
+        for adm in s.scalars(select(User).where(User.role == "admin", User.active.is_(True))):
+            notify(s, adm, None, "تعذر إرسال كود دخول", "بريد الشركة غير مربوط أو متعطل — راجع «ربط بريد الشركة».")
+    flash(request, GENERIC_SENT)
 
 
 def _verify_code(request: Request, portal: str, code: str, s):
@@ -235,6 +281,7 @@ def _verify_code(request: Request, portal: str, code: str, s):
         return None
     request.session.clear()
     request.session.update({"uid": user.id, "sv": user.session_version, "portal": portal})
+    _mark_auth(request)
     return user
 
 
@@ -276,17 +323,77 @@ def staff_restart(request: Request):
 def admin_bootstrap_password(request: Request, email: str = Form(...), password: str = Form(...), s=Depends(get_db)):
     """دخول تأسيسي بكلمة المرور لحساب ADMIN_EMAIL فقط، ويُعطَّل تلقائيًا بعد ربط بريد الشركة."""
     from ..auth import audit, mail_ready
+    from ..models import AuditLog
     if mail_ready(s) or email.strip().lower() != settings.admin_email.lower():
         flash(request, "الدخول بكلمة المرور غير متاح. استخدم رمز البريد.", "err")
         return back("/admin/login")
+    since = now_utc() - timedelta(minutes=15)
+    fails = s.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "login_password_failed",
+                                                           AuditLog.at >= since)) or 0
+    if fails >= 5:  # حد المحاولات: ٥ أخطاء في ١٥ دقيقة تقفل الدخول بكلمة المرور مؤقتًا
+        flash(request, "محاولات خاطئة كثيرة. أُقفل الدخول بكلمة المرور ١٥ دقيقة.", "err")
+        return back("/admin/login")
     u = authenticate(email, password)
     if not u:
+        audit(s, None, "login_password_failed", None, ip=_ip(request))
+        if fails + 1 >= 5:
+            from ..inbox import notify
+            for adm in s.scalars(select(User).where(User.role == "admin", User.active.is_(True))):
+                notify(s, adm, None, "تنبيه أمني: محاولات دخول خاطئة", "٥ محاولات خاطئة بكلمة مرور الأدمن خلال ١٥ دقيقة.")
         flash(request, "البريد أو كلمة المرور غير صحيحة", "err")
         return back("/admin/login")
     audit(s, u, "login", u, portal="admin", method="bootstrap_password")
     request.session.clear()
     request.session.update({"uid": u.id, "sv": u.session_version, "portal": "admin"})
+    _mark_auth(request)
     return back("/")
+
+
+@app.get("/admin/reauth", response_class=HTMLResponse)
+def admin_reauth_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import mail_ready
+    return render(request, "reauth.html", user, s, mail=mail_ready(s), sent=request.session.get("reauth_sent"))
+
+
+@app.post("/admin/reauth/request")
+def admin_reauth_request(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import OTPError, request_code, send_code_email
+    try:
+        u, code = request_code(s, user.email, "admin", _ip(request))
+        if u is not None and send_code_email(s, u, code, "admin"):
+            request.session["reauth_sent"] = True
+            flash(request, "أُرسل كود تحقق جديد إلى بريدك.")
+        else:
+            s.rollback()
+            flash(request, "تعذر إرسال الكود — بريد الشركة غير مربوط.", "err")
+    except OTPError as e:
+        flash(request, str(e), "err")
+    return back("/admin/reauth")
+
+
+@app.post("/admin/reauth/verify")
+def admin_reauth_verify(request: Request, code: str = Form(""), password: str = Form(""),
+                        user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import OTPError, audit, mail_ready, verify_code
+    ok = False
+    if mail_ready(s):
+        try:
+            ok = verify_code(s, user.email, code, "admin") is not None
+        except OTPError as e:
+            s.commit()
+            flash(request, str(e), "err")
+    elif user.email == settings.admin_email.lower() and authenticate(user.email, password):
+        ok = True
+    audit(s, user, "step_up", user, result="ok" if ok else "failed")
+    if not ok:
+        if "flash" not in request.session:
+            flash(request, "تعذر التحقق.", "err")
+        return back("/admin/reauth")
+    _mark_auth(request)
+    request.session.pop("reauth_sent", None)
+    nxt = request.session.pop("reauth_next", "/") or "/"
+    flash(request, "تم التحقق. أعد تنفيذ الإجراء.")
+    return back(nxt if nxt.startswith("/") and not nxt.startswith("//") else "/")
 
 
 @app.get("/logout")
@@ -486,6 +593,7 @@ def prospecting_page(request: Request, user: User = Depends(require_manager), s=
     from .. import prospecting as P
     st = P.status(s)
     from .. import geo
+    st["control"], st["halt"] = P.get_control(s), P.halt_reason()
     return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, DIR_SECTORS=P.SECTORS,
                   GEO=geo, GEO_REGIONS=geo.REGIONS, GEO_PLACES=geo.PLACES,
                   MAIN_CITIES=P.MAIN_CITIES,
@@ -545,12 +653,51 @@ async def prospecting_save(request: Request, user: User = Depends(require_manage
     msg = f"حُفظ الإعداد: الهدف {camp.daily_target} منشأة يوميًا. "
     msg += (f"التشغيل اليومي مفعّل الساعة {P.get_config(s)['time']} بتوقيت الرياض ويعمل على الخادم ولو أُغلقت اللوحة."
             if camp.status == "active" else "التشغيل اليومي متوقف؛ يمكنك البحث الآن يدويًا.")
-    if form.get("run_now"):
+    if form.get("run_now") and P.halt_reason():
+        msg += " (لم يبدأ البحث: " + P.halt_reason() + ")"
+    elif form.get("run_now"):
         s.flush()
+        audit(s, user, "search_start", None, batch=int(form.get("batch") or 0) or None)
         n = int(form.get("batch") or 0) or None
         P.request_run(s, camp.id, n, user.id)
         msg += " وبدأ البحث الآن على الخادم (يلتقطه خلال دقيقة)."
     flash(request, msg)
+    return back("/prospecting")
+
+
+@app.post("/prospecting/stop")
+def prospecting_stop(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """إيقاف البحث: لا نداءات مدفوعة جديدة (فورًا على الخادم)، والطلب المعلّق يُلغى، وما كان قيد التنفيذ يُسجّل."""
+    from .. import prospecting as P
+    from ..auth import audit
+    P.set_control(s, stopped=True, stopped_by=user.name, stopped_at=now_utc().isoformat(timespec="seconds"))
+    req = P.pending_request(s)
+    if req.get("state") == "pending":
+        req.update(state="stopped", error="أُوقف من لوحة الإدارة")
+        P._put(s, P.REQUEST, req)
+    audit(s, user, "search_stop", None, request_state=req.get("state"))
+    flash(request, "أُوقف البحث. لن تبدأ أي نداءات مدفوعة جديدة؛ النداء الجاري (إن وُجد) يكتمل ويُحفظ ثم يتوقف.")
+    return back("/prospecting")
+
+
+@app.post("/prospecting/resume")
+def prospecting_resume(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospecting as P
+    from ..auth import audit
+    P.set_control(s, stopped=False)
+    audit(s, user, "search_resume", None)
+    flash(request, "استُؤنف البحث (يعمل المجدول في موعده، وتستطيع البحث الآن).")
+    return back("/prospecting")
+
+
+@app.post("/prospecting/cap")
+def prospecting_cap(request: Request, cap: float = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospecting as P
+    from ..auth import audit
+    cap = max(0.0, min(cap, 5000.0))
+    P.set_control(s, daily_cap_usd=cap)
+    audit(s, user, "search_cap", None, daily_cap_usd=cap)
+    flash(request, f"سقف الإنفاق اليومي للبحث: {cap:.0f} دولارًا (يُطبَّق على الخادم قبل كل نداء مدفوع).")
     return back("/prospecting")
 
 
@@ -561,7 +708,12 @@ def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends
     if not cfg.get("campaign_id"):
         flash(request, "احفظ الإعداد أولًا", "err")
         return back("/prospecting")
+    if P.halt_reason():
+        flash(request, "البحث موقوف أو بلغ سقف الإنفاق اليومي: " + P.halt_reason(), "err")
+        return back("/prospecting")
     req = P.request_run(s, cfg["campaign_id"], batch or None, user.id)
+    from ..auth import audit
+    audit(s, user, "search_start", None, batch=batch or None)
     flash(request, "بدأ البحث على الخادم؛ تظهر النتائج تباعًا في «عملاء اليوم»." if req.get("by") == user.id and
           req.get("state") == "pending" else "يوجد بحث قيد التشغيل بالفعل.")
     return back("/prospecting")
@@ -807,9 +959,11 @@ def offers_report_page(request: Request, user: User = Depends(current_user), s=D
 
 
 @app.get("/offers-report.xlsx")
-def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def offers_report_xlsx(request: Request, user: User = Depends(require_recent_manager), s=Depends(get_db)):
+    from ..auth import audit
     rep = offers_report(s, user, _filters(request))
     data = export_offers_xlsx(rep)
+    audit(s, user, "export_download", user, kind="offers_report", rows=len(rep.rows) + len(rep.manual))
     fname = f"offers-report-{riyadh_today().isoformat()}.xlsx"
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f"attachment; filename={fname}"})
@@ -1275,9 +1429,11 @@ def today_page(request: Request, day: str = "", campaign: Optional[int] = None, 
 
 
 @app.get("/today.xlsx")
-def today_xlsx(request: Request, day: str = "", campaign: Optional[int] = None, user: User = Depends(current_user),
-               s=Depends(get_db)):
+def today_xlsx(request: Request, day: str = "", campaign: Optional[int] = None,
+               user: User = Depends(require_recent_manager), s=Depends(get_db)):
+    from ..auth import audit
     from ..reports import export_today_xlsx, todays_customers
+    audit(s, user, "export_download", user, kind="today", day=day, campaign=campaign)
     d = date.fromisoformat(day) if day else riyadh_today()
     data = export_today_xlsx(todays_customers(s, user, d, campaign))
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1371,7 +1527,7 @@ def staff_page(request: Request, user: User = Depends(require_manager), s=Depend
 
 
 @app.post("/staff/add")
-async def staff_add(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def staff_add(request: Request, user: User = Depends(require_recent_manager), s=Depends(get_db)):
     from ..auth import audit, send_invite_email
     form = await request.form()
     email = (form.get("email") or "").strip().lower()
@@ -1414,7 +1570,7 @@ def staff_edit(uid: int, request: Request, q: str = "", user: User = Depends(req
 
 
 @app.post("/staff/{uid}/update")
-async def staff_update(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def staff_update(uid: int, request: Request, user: User = Depends(require_recent_manager), s=Depends(get_db)):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     if u.role == "admin" and user.role != "admin":
@@ -1427,6 +1583,10 @@ async def staff_update(uid: int, request: Request, user: User = Depends(require_
     u.profile, u.scope, u.perms = profile, scope, perms
     after = {"team": u.team, "profile": u.profile, "scope": u.scope, "perms": perms, "name": u.name}
     audit(s, user, "update_permissions", u, before=before, after=after)
+    if before != after:  # تنبيه المسؤولين بأي تغيير صلاحيات
+        from ..inbox import notify
+        for adm in s.scalars(select(User).where(User.role == "admin", User.active.is_(True), User.id != user.id)):
+            notify(s, adm, None, f"تغيير صلاحيات: {u.name}", f"بواسطة {user.name}")
     flash(request, "حُفظت الصلاحيات، وتسري فورًا على أي طلب جديد من الموظف.")
     return back(f"/staff/{uid}")
 
@@ -1454,7 +1614,7 @@ async def staff_assign(uid: int, request: Request, user: User = Depends(require_
 
 @app.post("/staff/{uid}/deactivate")
 def staff_deactivate(uid: int, request: Request, transfer_to: Optional[int] = Form(None),
-                     user: User = Depends(require_manager), s=Depends(get_db)):
+                     user: User = Depends(require_recent_manager), s=Depends(get_db)):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     if u.id == user.id or (u.role == "admin" and user.role != "admin"):
@@ -1479,7 +1639,7 @@ def staff_deactivate(uid: int, request: Request, transfer_to: Optional[int] = Fo
 
 
 @app.post("/staff/{uid}/activate")
-def staff_activate(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def staff_activate(uid: int, request: Request, user: User = Depends(require_recent_manager), s=Depends(get_db)):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     u.active = True
@@ -1554,14 +1714,52 @@ def portal_home(request: Request, q: str = "", user: User = Depends(staff_user),
                   d=describe(user), mask=lambda t: mask_text(user, t))
 
 
+EXPORT_TTL_MIN = 10
+BIG_EXPORT_ROWS = 200
+
+
 @app.get("/portal/export.xlsx")
 def portal_export(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
-    from openpyxl import Workbook
-    import io as _io
+    """ينشئ ملف تصدير مؤقتًا (رابط خاص بالموظف، صالح ١٠ دقائق) ثم يحوّل إلى رابط التنزيل."""
+    import secrets as _secrets
     from ..auth import audit
+    from ..models import ExportFile
     from ..permissions import can
     if not can(user, "export"):
         raise HTTPException(403, "لا تملك صلاحية التصدير")
+    ids = [r["c"].id for r in _portal_rows(s, user, q)]
+    ef = ExportFile(token=_secrets.token_urlsafe(32), user_id=user.id, kind="portal_customers", company_ids=ids,
+                    params={"q": q}, expires_at=now_utc() + timedelta(minutes=EXPORT_TTL_MIN))
+    s.add(ef)
+    s.flush()
+    audit(s, user, "export_created", user, export_id=ef.id, rows=len(ids))
+    if len(ids) >= BIG_EXPORT_ROWS:
+        from ..inbox import notify
+        for adm in s.scalars(select(User).where(User.role == "admin", User.active.is_(True))):
+            notify(s, adm, None, f"تنبيه: تصدير كبير من {user.name}", f"{len(ids)} عميلًا في ملف واحد.")
+    return back(f"/portal/exports/{ef.token}")
+
+
+@app.get("/portal/exports/{token}")
+def portal_export_download(token: str, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    """التنزيل يتحقق وقتها من: صاحب الرابط نفسه، والحساب نشط (staff_user)، وصلاحية التصدير الآن، ومدة الصلاحية،
+    ويُبنى الملف من العملاء المسندين له **الآن** فقط — من نُقل عميله لا يجده في الملف ولو أعاد فتح الرابط."""
+    from openpyxl import Workbook
+    import io as _io
+    from ..auth import audit
+    from ..models import ExportFile
+    from ..permissions import can
+    from ..security import harden_sheet
+    ef = s.scalar(select(ExportFile).where(ExportFile.token == token))
+    if ef is None or ef.user_id != user.id:
+        raise HTTPException(404, "غير موجود")
+    if ef.expires_at < now_utc():
+        raise HTTPException(410, "انتهت صلاحية رابط التنزيل — أنشئ تصديرًا جديدًا")
+    if not can(user, "export"):
+        audit(s, user, "export_download_denied", user, export_id=ef.id, why="no_export_permission")
+        raise HTTPException(403, "لا تملك صلاحية التصدير")
+    allowed = {r["c"].id: r for r in _portal_rows(s, user, ef.params.get("q", ""))}
+    rows = [allowed[i] for i in ef.company_ids if i in allowed]
     wb = Workbook()
     ws = wb.active
     ws.title = "عملائي"
@@ -1571,7 +1769,7 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
         (["البريد", "مصدر البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
         (["آخر رد", "نوع الرد"] if can(user, "see_replies") else []) + ["المتابعة القادمة", "موعدها"]
     ws.append(head)
-    for r in _portal_rows(s, user, q):
+    for r in rows:
         c = r["c"]
         row = [c.name, c.activity, c.city, STAGE_LABELS.get(c.stage, c.stage), fmt(c.offer_sent_at) if c.offer_sent_at else "",
                "مؤكد" if c.vehicle_indicator == "confirmed" or (not c.vehicle_indicator and c.fit_phrase) else "غير مؤكد"] + \
@@ -1583,11 +1781,24 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
             row += [mask_text(user, r["reply"].body_text[:500]) if r["reply"] else "", r["reply"].intent_label if r["reply"] else ""]
         row += [r["next"].title if r["next"] else "", fmt(r["next"].due_at) if r["next"] else ""]
         ws.append(row)
+    harden_sheet(wb)
     buf = _io.BytesIO()
     wb.save(buf)
-    audit(s, user, "export", user, rows=ws.max_row - 1)
+    ef.downloads += 1
+    audit(s, user, "export_download", user, export_id=ef.id, rows=len(rows),
+          dropped_since_created=len(ef.company_ids) - len(rows))
     return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": "attachment; filename=my-customers.xlsx"})
+                    headers={"Content-Disposition": "attachment; filename=my-customers.xlsx", "Cache-Control": "no-store"})
+
+
+@app.get("/portal/officials", response_class=HTMLResponse)
+def portal_officials(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    """تقرير مسؤولي الشركات: جهة القرار ووسائل التواصل المنشورة لكل منشأة مسندة للموظف فقط، بحسب صلاحياته."""
+    from ..auth import audit
+    from ..permissions import can
+    rows = _portal_rows(s, user, "")
+    audit(s, user, "officials_report_view", user, rows=len(rows))
+    return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: can(user, p))
 
 
 def _portal_company(s, user: User, cid: int) -> Company:

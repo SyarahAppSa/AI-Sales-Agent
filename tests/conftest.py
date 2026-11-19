@@ -11,3 +11,4 @@ os.environ["OTP_IP_LIMIT"] = "1000"  # كل الاختبارات تأتي من �
 # الكود المحفوظ (الاتصال الآلي والإرسال التلقائي) يُختبر مفعّلًا؛ واختبارات الوضع الحالي تعطّله صراحة
 os.environ["ENABLE_VOICE_CALLS"] = "1"
 os.environ["ENABLE_AUTO_OUTREACH"] = "1"
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-for-pytest-0123456789")

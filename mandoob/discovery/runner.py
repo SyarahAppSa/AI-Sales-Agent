@@ -94,6 +94,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
 
     disabled: dict[str, str] = {}
     exhausted: dict[int, bool] = {}
+    halted: dict[str, str] = {}
     if scope and max_new and hasattr(sources.get("ai_agent"), "per_call"):
         # دفعة صغيرة على نطاق جغرافي: نداءات أصغر تمتد على عدة مواقع بدل موقع واحد
         sources["ai_agent"].per_call = min(sources["ai_agent"].per_call, max(2, -(-max_new // 3)))
@@ -143,6 +144,11 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         for src_name in SOURCE_ORDER:
             for pi, (city, qi, query) in enumerate(pairs):
                 if True:
+                    from ..prospecting import halt_reason
+                    why = halt_reason()
+                    if why:
+                        halted["why"] = why
+                        return
                     with session_scope() as s:
                         if cat_full(s, cat_id, quota) or batch_full(s):
                             return
@@ -204,6 +210,8 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         exhausted[cat_id] = True
 
     for cat_id, label, quota, cities, queries in cats:
+        if halted:
+            break
         with session_scope() as s:
             if batch_full(s):
                 break
@@ -212,7 +220,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         process_category(cat_id, quota, cities, queries)
 
     # تعويض النقص من فئة أخرى (إن سُمح بذلك)
-    if allow_backfill and max_new is None:
+    if allow_backfill and max_new is None and not halted:
         with session_scope() as s:
             done_total = sum(_count_today(s, cid, day) for cid, *_ in cats)
         gap = total_target - done_total
@@ -229,7 +237,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                     break
 
     # إعادة محاولة استكمال السجلات الناقصة — في التشغيل اليومي فقط، لا في الدفعات اليدوية (أسرع وأوضح تكلفة)
-    if max_new is None:
+    if max_new is None and not halted:
         enrich_incomplete(crawler=crawler, limit=int(__import__("os").environ.get("ENRICH_LIMIT", "15")))
 
     with session_scope() as s:
@@ -242,7 +250,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             total += got
             per_cat[str(cat_id)] = {"label": label, "quota": quota, "complete": got}
             if got < quota:
-                if max_new is not None and not exhausted.get(cat_id):
+                if halted:
+                    why = halted["why"]
+                elif max_new is not None and not exhausted.get(cat_id):
                     why = f"تشغيل على دفعات: توقف البحث بعد دفعة من {max_new} عملاء جدد كما طُلب"
                 elif exhausted.get(cat_id):
                     why = "استُنفدت عبارات البحث والمصادر المتاحة"
@@ -260,7 +270,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         if incomplete_today:
             reasons.append(f"{incomplete_today} شركة مطابقة ينقصها هاتف أو بريد موثّق (قيد الاستكمال)")
         run.shortfall_reason = "\n".join(reasons) if run.shortfall else ""
-        run.status = "done" if run.shortfall == 0 else "partial"
+        run.status = "done" if run.shortfall == 0 else ("stopped" if halted else "partial")
+        if halted:
+            _log(run, f"توقف البحث: {halted['why']} — لا نداءات مدفوعة جديدة؛ ما كان قيد التنفيذ اكتمل وحُفظ")
         run.finished_at = now_utc()
         _log(run, f"انتهى التشغيل: {total} مكتملة من {total_target}")
         return run_id

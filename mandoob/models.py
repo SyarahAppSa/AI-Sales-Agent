@@ -584,3 +584,18 @@ class JobLock(Base):
     name: Mapped[str] = mapped_column(String(80), primary_key=True)
     locked_until: Mapped[datetime] = mapped_column(DateTime)
     holder: Mapped[str] = mapped_column(String(120), default="")
+
+
+class ExportFile(Base):
+    """ملف تصدير مؤقت: مربوط بهوية من أنشأه، صالح دقائق، ويُبنى عند التنزيل من الصلاحيات **الحالية** فقط
+    (من نُقل عنه عميل أو عُطّل حسابه لا يحصل عليه ولو كان الرابط بيده)."""
+    __tablename__ = "export_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    company_ids: Mapped[list] = mapped_column(JSON, default=list)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    downloads: Mapped[int] = mapped_column(Integer, default=0)

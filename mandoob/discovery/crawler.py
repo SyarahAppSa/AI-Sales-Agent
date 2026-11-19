@@ -140,7 +140,10 @@ class SiteResult:
 
 class Crawler:
     def __init__(self, http: httpx.Client | None = None, max_pages: int = 6):
-        self.http = http or httpx.Client(timeout=20, follow_redirects=True,
+        from ..security import public_url_guard
+        # كل طلب (وكل إعادة توجيه) يُفحص: لا شبكات خاصة/محلية ولا خدمات البنية الداخلية (SSRF)
+        self.http = http or httpx.Client(timeout=httpx.Timeout(15, connect=8), follow_redirects=True, max_redirects=5,
+                                         event_hooks={"request": [public_url_guard]},
                                          headers={"User-Agent": settings.crawler_user_agent,
                                                   "Accept-Language": "ar,en;q=0.8"})
         self.max_pages = max_pages
@@ -157,7 +160,7 @@ class Crawler:
                 else:
                     rp.parse([])
                 self._robots[host] = rp
-            except httpx.HTTPError:
+            except (httpx.HTTPError, Exception):  # noqa: BLE001 — يشمل BlockedURL
                 self._robots[host] = None
         rp = self._robots[host]
         return True if rp is None else rp.can_fetch(settings.crawler_user_agent, url)
@@ -166,11 +169,21 @@ class Crawler:
         if not self._allowed(url):
             log.info("robots.txt يمنع %s", url)
             return None
-        r = self.http.get(url)
-        ctype = r.headers.get("content-type", "")
-        if r.status_code != 200 or "html" not in ctype:
+        from ..security import MAX_PAGE_BYTES, BlockedURL
+        try:
+            with self.http.stream("GET", url) as r:
+                ctype = r.headers.get("content-type", "")
+                if r.status_code != 200 or "html" not in ctype:
+                    return None
+                buf = b""
+                for chunk in r.iter_bytes():
+                    buf += chunk
+                    if len(buf) > MAX_PAGE_BYTES:  # حد حجم المحتوى المقروء
+                        break
+                return buf[:MAX_PAGE_BYTES].decode(r.encoding or "utf-8", errors="replace")
+        except BlockedURL as e:
+            log.warning("blocked fetch %s: %s", url, e)
             return None
-        return r.text
 
     def crawl(self, website: str) -> SiteResult:
         if "://" not in website:

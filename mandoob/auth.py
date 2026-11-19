@@ -61,8 +61,9 @@ MAX_CODES_PER_IP_15MIN = int(__import__('os').environ.get('OTP_IP_LIMIT', '10'))
 MAX_FAILED_PER_HOUR = 10         # بعدها يُقفل الحساب ساعة
 
 
-def _hash(code: str, user_id: int) -> str:
-    return hashlib.sha256(f"{settings.secret_key}:{user_id}:{code}".encode()).hexdigest()
+def _hash(code: str, user_id: int, portal: str = "") -> str:
+    """قيمة تحقق محمية بمفتاح الخادم (HMAC-SHA256) ومرتبطة بالحساب والغرض (البوابة)."""
+    return hmac.new(settings.secret_key.encode(), f"login:{portal}:{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
 def portal_of(user: User) -> str:
@@ -75,6 +76,8 @@ def provider_configured(acct) -> bool:
         return bool(settings.ms_tenant_id and settings.ms_client_id and settings.ms_client_secret)
     if acct.provider == "google":
         return bool(settings.google_client_id and settings.google_client_secret and settings.google_refresh_token)
+    if acct.provider == "smtp":
+        return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
     return True
 
 
@@ -131,7 +134,7 @@ def request_code(s, email: str, portal: str, ip_hash: str | None = None) -> tupl
                                                  LoginCode.revoked.is_(False))):
         old.revoked = True  # طلب رمز جديد يلغي السابق
     code = f"{secrets.randbelow(1_000_000):06d}"
-    s.add(LoginCode(user_id=user.id, portal=portal, code_hash=_hash(code, user.id),
+    s.add(LoginCode(user_id=user.id, portal=portal, code_hash=_hash(code, user.id, portal),
                     expires_at=now_utc() + CODE_TTL, ip_hash=ip_hash))
     s.flush()
     return user, code
@@ -154,12 +157,18 @@ def verify_code(s, email: str, code: str, portal: str) -> User:
                   .order_by(LoginCode.id.desc()))
     if lc is None or lc.expires_at < now_utc() or lc.attempts >= MAX_ATTEMPTS_PER_CODE:
         raise generic
-    if not hmac.compare_digest(lc.code_hash, _hash(code, user.id)):
+    if not hmac.compare_digest(lc.code_hash, _hash(code, user.id, portal)):
         lc.attempts += 1
         if lc.attempts >= MAX_ATTEMPTS_PER_CODE:
             lc.revoked = True
         raise generic
-    lc.used = True
+    # استهلاك ذري: طلبان متزامنان بالكود نفسه ← جلسة واحدة فقط
+    from sqlalchemy import update as _update
+    done = s.execute(_update(LoginCode).where(LoginCode.id == lc.id, LoginCode.used.is_(False),
+                                              LoginCode.revoked.is_(False)).values(used=True))
+    if done.rowcount != 1:
+        raise generic
+    s.flush()
     user.last_login_at = now_utc()
     audit(s, user, "login", user, portal=portal)
     return user

@@ -210,18 +210,19 @@ def test_6_bootstrap_password_only_without_mail():
         assert "دخول تأسيسي" not in c.get("/admin/login").text
 
 
-def test_7_email_is_username_clear_messages():
+def test_7_same_response_for_any_email_no_enumeration():
+    """غير مسجّل، أو لبوابة أخرى، أو موقوف، أو صحيح: الاستجابة نفسها حرفيًا؛ والكود يصل للصحيح فقط."""
+    with session_scope() as s:
+        s.query(LoginCode).delete()  # الاختبار السابق استنفد حد الطلبات عمدًا
+    bodies = []
     with TestClient(app) as c:
-        r = c.post("/portal/login/request", data={"email": "nobody@syarahapp.test"})
-        assert "غير مسجّل" in r.text and 'name="code"' not in r.text
-        r = c.post("/portal/login/request", data={"email": ADMIN})
-        assert "بوابة الإدارة" in r.text
-        r = c.post("/portal/login/request", data={"email": E2})  # منى موقوفة
-        assert "موقوف" in r.text
-        with session_scope() as s:
-            s.query(LoginCode).delete()  # الاختبار السابق استنفد حد الطلبات عمدًا
-        r = c.post("/portal/login/request", data={"email": E1.upper()})  # البريد لا يتأثر بحالة الأحرف
-        assert "أُرسل كود الدخول" in r.text and 'name="code"' in r.text and "password" not in r.text
+        for em in ["nobody@syarahapp.test", ADMIN, E2, E1.upper()]:  # منى (E2) موقوفة
+            r = c.post("/portal/login/request", data={"email": em})
+            import re as _re
+            bodies.append(r.text.replace(em.strip().lower(), "EMAIL"))  # البريد المكتوب نفسه يُعاد عرضه فقط
+            c.post("/portal/login/restart")
+    assert len(set(bodies)) == 1 and "إن كان هذا البريد مسجّلًا" in bodies[0] and 'name="code"' in bodies[0]
+    assert last_code_for(E1) is not None and last_code_for("nobody@syarahapp.test") is None
 
 
 def test_8_unconfigured_m365_keeps_bootstrap_until_verified():

@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>تحقق قبل المتابعة</h1><p class="sub" style="margin:0">تغيير الصلاحيات أو تعطيل الحسابات أو التصدير الشامل يتطلب تحققًا حديثًا (صالح ١٠ دقائق).</p></div></div>
+<div class="card" style="max-width:520px">
+{% if mail %}
+<form method="post" action="/admin/reauth/request"><button class="btn">أرسل كود تحقق إلى {{ user.email }}</button></form>
+<form method="post" action="/admin/reauth/verify" style="margin-top:10px"><label>الكود</label><div class="row"><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required><button class="btn p" style="flex:0 0 auto">تحقق</button></div></form>
+{% else %}
+<form method="post" action="/admin/reauth/verify"><label>كلمة مرور الأدمن التأسيسية (البريد غير مربوط بعد)</label><div class="row"><input type="password" name="password" required autocomplete="current-password"><button class="btn p" style="flex:0 0 auto">تحقق</button></div></form>
+{% endif %}
+</div>
+{% endblock %}

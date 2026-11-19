@@ -338,7 +338,8 @@ class AgentSource:
         state["rejected_values"] = len(res.rejected_values)
         state["pages_read"] = res.pages_read
         for r in res.rejected_values[:20]:
-            log.info("agent rejected %s", json.dumps(r, ensure_ascii=False))
+            # السجل بلا بيانات العملاء (لا اسم ولا هاتف ولا بريد): النوع والسبب فقط
+            log.info("agent rejected kind=%s why=%s", r.get("kind", "-"), r.get("why", ""))
         yield from res.candidates
 
 

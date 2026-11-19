@@ -15,6 +15,12 @@
     {% if req.state == 'pending' %}بانتظار الخادم…{% elif req.state == 'running' or (run and run.status == 'running') %}يبحث الآن…{% elif cfg.scheduled %}مجدول يوميًا {{ cfg.time }}{% else %}متوقف{% endif %}</div>
     <div class="s">{% if run %}آخر تشغيل: {{ fmt(run.started_at) }}{% if run.finished_at %} ← {{ fmt(run.finished_at) }}{% endif %}{% else %}لم يبدأ اليوم{% endif %}</div></div><div class="badge">{{ icon('search', 34) }}</div></div>
 </div>
+<div class="card row" style="align-items:end">
+  <div style="flex:1 1 260px"><b>التحكم في البحث والإنفاق</b><div class="small {{ 'muted' if not st.halt else '' }}" style="{{ 'color:var(--err)' if st.halt }}">{{ st.halt or 'البحث مسموح' }} · سقف الإنفاق اليومي: {{ st.control.daily_cap_usd|int }}$ · إنفاق اليوم: {{ st.cost_today }}$</div></div>
+  {% if st.control.stopped %}<form method="post" action="/prospecting/resume" style="flex:0 0 auto"><button class="btn p">استئناف البحث</button></form>
+  {% else %}<form method="post" action="/prospecting/stop" style="flex:0 0 auto" onsubmit="return confirm('إيقاف البحث؟ لن تبدأ أي نداءات مدفوعة جديدة.')"><button class="btn d">إيقاف البحث</button></form>{% endif %}
+  <form method="post" action="/prospecting/cap" class="row" style="flex:0 0 auto;align-items:end"><div><label class="small">سقف الإنفاق اليومي ($)</label><input type="number" name="cap" min="0" max="5000" value="{{ st.control.daily_cap_usd|int }}" style="width:110px"></div><button class="btn" style="flex:0 0 auto">حفظ السقف</button></form>
+</div>
 {% if run and run.shortfall_reason %}<div class="card" style="border-color:var(--warn)"><b>جُمع {{ st.done_today }} من {{ cfg.daily_target }} — سبب النقص:</b><div class="small" style="white-space:pre-line;margin-top:6px">{{ run.shortfall_reason }}</div></div>{% endif %}
 
 <form class="card" method="post" action="/prospecting">
@@ -121,6 +127,6 @@ document.addEventListener('DOMContentLoaded',geoMode);
 {% if st.runs %}<div class="card"><h2>سجل التشغيل</h2><div class="tablewrap"><table>
 <tr><th>اليوم</th><th>البدء ← الانتهاء</th><th>الحالة</th><th>مكتملة / الهدف</th><th>قيد الاستكمال</th><th>مكررة مستبعدة</th><th>سبب النقص</th></tr>
 {% for r in st.runs %}<tr><td>{{ fmt_date(r.run_date) }}</td><td class="small">{{ fmt(r.started_at) }}{% if r.finished_at %} ← {{ fmt(r.finished_at) }}{% endif %}</td>
-<td>{{ {'running':'قيد التشغيل','done':'اكتمل','partial':'جزئي','failed':'فشل'}.get(r.status, r.status) }}</td><td>{{ r.complete_count }} / {{ r.target }}</td><td>{{ r.incomplete_count }}</td><td>{{ r.duplicate_count }}</td>
+<td>{{ {'running':'قيد التشغيل','done':'اكتمل','partial':'جزئي','failed':'فشل','stopped':'أُوقف'}.get(r.status, r.status) }}</td><td>{{ r.complete_count }} / {{ r.target }}</td><td>{{ r.incomplete_count }}</td><td>{{ r.duplicate_count }}</td>
 <td class="small" style="white-space:pre-line;max-width:360px">{{ r.shortfall_reason or '—' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
 {% endblock %}

@@ -80,6 +80,9 @@ def discovery_tick(force: bool = False) -> list[int]:
     sched = get_setting("schedule", DEFAULT_SCHEDULE)
     if not force and not _due(sched.get("discovery_time", "06:00"), "discovery_done"):
         return []
+    from .prospecting import halt_reason
+    if halt_reason():
+        return []
     run_ids = []
     with job_lock("discovery", minutes=600) as ok:
         if not ok:
@@ -131,6 +134,12 @@ def discovery_request_tick() -> bool:
         req.update(state="pending", resumed_after_stall=now_utc().isoformat(timespec="seconds"))
         put_setting(REQUEST, req)
     if req.get("state") != "pending":
+        return False
+    from .prospecting import halt_reason
+    why = halt_reason()
+    if why:  # موقوف أو بلغ السقف: لا يبدأ طلب مدفوع
+        req.update(state="stopped", error=why, finished_at=now_utc().isoformat(timespec="seconds"))
+        put_setting(REQUEST, req)
         return False
     with job_lock("discovery", minutes=600) as ok:
         if not ok:

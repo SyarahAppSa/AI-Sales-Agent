@@ -3,7 +3,7 @@
 <div class="grid g2">
 <div class="card"><h2>الحساب المرتبط</h2>
 {% for a in accounts %}<div style="border-bottom:1px solid var(--line);padding:8px 0">
-<b>{{ {'microsoft365':'Microsoft 365','google':'Google Workspace','sandbox':'صندوق تجربة محلي'}[a.provider] }}</b> {% if a.active %}<span class="pill ok">نشط</span>{% else %}<span class="pill">غير نشط</span>{% endif %}
+<b>{{ {'microsoft365':'Microsoft 365','google':'Google Workspace','smtp':'SMTP','sandbox':'صندوق تجربة محلي'}.get(a.provider, a.provider) }}</b> {% if a.active %}<span class="pill ok">نشط</span>{% else %}<span class="pill">غير نشط</span>{% endif %}
 <div class="small">المرسل: {{ a.sender_name }} &lt;<span class="ltr">{{ a.sender_address }}</span>&gt; — الردود: <span class="ltr">{{ a.reply_mailbox or a.sender_address }}</span></div>
 <div class="small muted">آخر مزامنة: {{ fmt(a.last_sync_at) if a.last_sync_at else 'لم تتم' }}</div></div>{% else %}<p class="muted">لم يُربط بريد بعد.</p>{% endfor %}
 {% if accounts %}<form method="post" action="/mail/test" style="margin-top:12px">
@@ -21,7 +21,7 @@
 </div>
 <div class="card"><h2>ربط / تغيير البريد</h2>
 <form method="post" action="/mail">
-<div class="field"><label>المزود</label><select name="provider"><option value="microsoft365">Microsoft 365</option><option value="google">Google Workspace</option><option value="sandbox">صندوق تجربة محلي (بدون إرسال حقيقي)</option></select></div>
+<div class="field"><label>المزود</label><select name="provider"><option value="microsoft365">Microsoft 365</option><option value="google">Google Workspace</option><option value="smtp">SMTP (مثل بريد Zoho على الدومين)</option><option value="sandbox">صندوق تجربة محلي (بدون إرسال حقيقي)</option></select></div>
 <div class="row"><div><label>عنوان المرسل</label><input name="sender_address" type="email" required class="ltr" placeholder="sales@syarahapp.sa"></div><div><label>اسم المرسل</label><input name="sender_name" value="سيارة آب"></div></div>
 <div class="field"><label>صندوق استقبال الردود (اختياري)</label><input name="reply_mailbox" type="email" class="ltr"></div>
 <div class="field"><label>توقيع الشركة (HTML)</label><textarea name="signature_html" rows="5">مع التحية،<br><b>فريق المبيعات — سيارة آب</b><br>syarahapp.sa</textarea></div>

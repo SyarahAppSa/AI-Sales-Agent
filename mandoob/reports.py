@@ -225,6 +225,8 @@ def export_offers_xlsx(rep: OffersReport) -> bytes:
     for row in ws.iter_rows(min_row=4):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
+    from .security import harden_sheet
+    harden_sheet(wb)  # لا صيغ: بيانات المواقع الخارجية تُكتب نصًا
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -469,6 +471,8 @@ def export_today_xlsx(t: dict) -> bytes:
     for row in ws.iter_rows(min_row=4):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
+    from .security import harden_sheet
+    harden_sheet(wb)  # لا صيغ: بيانات المواقع الخارجية تُكتب نصًا
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

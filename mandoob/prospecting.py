@@ -55,6 +55,7 @@ def _put(s, key: str, value: dict) -> None:
         row.value = value
     else:
         s.add(Setting(key=key, value=value))
+        s.flush()  # حتى يراه أي قراءة لاحقة في الجلسة نفسها
 
 
 def resolve_cities(cities: list[str], regions: list[str]) -> list[str]:
@@ -239,3 +240,37 @@ def region_table(s, camp, cfg, run) -> list[dict]:
         rows.append({"id": "-", "label": "غير محدد (سجلات قبل دليل المواقع)", "status": "—", "searched": 0,
                      "complete": other_c, "incomplete": other_i, "dup": 0, "out": 0, "last": ""})
     return rows
+
+
+# ---------------------------------------------------------------- إيقاف البحث وسقف الإنفاق
+
+CONTROL = "search_control"
+DEFAULT_CAP_USD = 60.0
+
+
+def get_control(s) -> dict:
+    from .models import Setting
+    row = s.get(Setting, CONTROL)
+    return {"stopped": False, "daily_cap_usd": DEFAULT_CAP_USD, **(dict(row.value) if row else {})}
+
+
+def set_control(s, **kw) -> dict:
+    c = {**get_control(s), **kw}
+    _put(s, CONTROL, c)
+    return c
+
+
+def halt_reason() -> str | None:
+    """سبب منع النداءات المدفوعة الآن (يُقرأ من الخادم عند كل نداء)، أو None."""
+    from .db import session_scope
+    with session_scope() as s:
+        c = get_control(s)
+        if c.get("stopped"):
+            return "أُوقف البحث من لوحة الإدارة"
+        cap = float(c.get("daily_cap_usd") or 0)
+        if cap > 0:
+            spent = float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0))
+                                   .where(CostEntry.day == riyadh_today())) or 0)
+            if spent >= cap:
+                return f"بلغ إنفاق اليوم سقفه ({spent:.2f} من {cap:.0f} دولارًا)"
+    return None

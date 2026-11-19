@@ -31,6 +31,7 @@
 ] + ([('/offers', 'file', 'العروض والمرفقات', False, 'mgr'), ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr')] if outreach_on else []) %}
 {% if user.role not in ('admin','manager') %}{% set nav = [
   ('/portal', 'list', 'عملائي ومتابعاتي', False, 'all'),
+  ('/portal/officials', 'users', 'تقرير مسؤولي الشركات', False, 'all'),
 ] + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False, 'all')] if (user.perms or {}).get('see_reports') else []) %}{% endif %}
 <div class="layout">
 <aside class="side">

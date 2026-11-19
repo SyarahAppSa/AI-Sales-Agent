@@ -58,10 +58,19 @@ def _record_cost(usage, web_searches: int = 0, campaign_id: int | None = None, n
     return cost
 
 
+def spend_guard() -> None:
+    """قبل أي نداء مدفوع: «إيقاف البحث» من لوحة الإدارة، أو بلوغ سقف الإنفاق اليومي ← لا نداء جديد."""
+    from .prospecting import halt_reason
+    why = halt_reason()
+    if why:
+        raise AIUnavailable(why)
+
+
 def ai_json(system: str, prompt: str, schema: dict, *, web_search: bool = False, max_searches: int = 5,
             campaign_id: int | None = None, note: str = "", max_tokens: int = 16000) -> dict[str, Any]:
     """يستدعي Claude ويعيد JSON مطابقًا للمخطط."""
     import anthropic
+    spend_guard()
 
     c = client()
     tools = []
@@ -119,6 +128,7 @@ def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, m
 
     الكتل تُعاد كاملة ليتحقق المستدعي أن كل هاتف/بريد ظهر نصًا في صفحة قرأها الوكيل فعلًا."""
     import anthropic
+    spend_guard()
 
     c = client()
     model = settings.ai_agent_model or settings.ai_model
