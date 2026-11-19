@@ -276,3 +276,46 @@ def department_of_email(email: str) -> str | None:
                 or local.startswith(prefix + "-") or local == prefix + "s":
             return label
     return None
+
+
+# ---------------------------------------------------------------- المدن السعودية (لقاعدة الاحتساب)
+EXTRA_SAUDI_CITIES = {
+    "نجران": ["نجران", "najran"], "القطيف": ["القطيف", "qatif"], "عنيزة": ["عنيزه", "unaizah"], "الخرج": ["الخرج", "kharj"],
+    "الرس": ["الرس", "ar rass"], "خميس مشيط": ["خميس مشيط", "khamis mushait"], "بيشة": ["بيشه", "bisha"],
+    "الباحة": ["الباحه", "baha"], "سكاكا": ["سكاكا", "sakaka"], "عرعر": ["عرعر", "arar"], "القريات": ["القريات", "qurayyat"],
+    "رابغ": ["رابغ", "rabigh"], "الدوادمي": ["الدوادمي", "dawadmi"], "المجمعة": ["المجمعه", "majmaah"],
+    "حفر الباطن": ["حفر الباطن", "hafar al batin"], "بريدة": ["بريده", "buraydah"], "الزلفي": ["الزلفي", "zulfi"],
+    "شقراء": ["شقراء", "shaqra"], "صبيا": ["صبيا", "sabya"], "أبو عريش": ["ابو عريش", "abu arish"],
+    "محايل عسير": ["محايل", "muhayil"], "النماص": ["النماص"], "القنفذة": ["القنفذه", "qunfudhah"], "الليث": ["الليث"],
+    "رأس تنورة": ["راس تنوره", "ras tanura"], "بقيق": ["بقيق", "abqaiq"], "الظهران": ["الظهران", "dhahran"],
+    "الهفوف": ["الهفوف", "hofuf"], "المبرز": ["المبرز", "mubarraz"], "الجبيل": ["الجبيل", "jubail"],
+    "العلا": ["العلا", "alula"], "الوجه": ["الوجه"], "ضباء": ["ضباء", "duba"], "تيماء": ["تيماء", "tayma"],
+    "الدرعية": ["الدرعيه", "diriyah"], "وادي الدواسر": ["وادي الدواسر"], "الأفلاج": ["الافلاج", "aflaj"],
+}
+
+
+def saudi_city(city: str | None) -> str | None:
+    """يعيد اسم المدينة السعودية الموحّد إن تعرّف عليها (عربي/إنجليزي/مع الحي)، وإلا None."""
+    if not city:
+        return None
+    from .targeting import CITIES
+    import re as _re
+    t = " " + _re.sub(r"[^\w\s]", " ", normalize_arabic(city).lower()) + " "
+    t = _re.sub(r"\s+", " ", t)
+    table = {**CITIES, **EXTRA_SAUDI_CITIES}
+    for region, places in REGIONS.items():
+        for p in places:
+            table.setdefault(p, [p])
+    best = None
+    for canon, variants in table.items():
+        for v in variants + [canon]:
+            nv = " " + _re.sub(r"\s+", " ", _re.sub(r"[^\w\s]", " ", normalize_arabic(v).lower())).strip() + " "
+            hit = nv.strip() and (nv in t or (nv.strip().startswith("ال") and (" ب" + nv.strip()[2:] + " ") in t)
+                                  or (" ب" + nv.strip() + " ") in t)
+            if hit and (best is None or len(nv) > best[1]):
+                best = (canon, len(nv))
+    if best:
+        return best[0]
+    if "saudi" in t or "السعوديه" in t or "المملكه" in t:
+        return None  # الدولة وحدها لا تكفي: نحتاج المدينة
+    return None

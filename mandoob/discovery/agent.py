@@ -205,6 +205,29 @@ def quote_on_pages(quote: str, url: str, pages: list[FetchedPage]) -> bool:
     return False
 
 
+def _saudi_or_raw(city: str) -> str:
+    from ..segments import saudi_city
+    return saudi_city(city) or city
+
+
+def same_entity(url: str, name: str, website: str | None, pages: list[FetchedPage]) -> bool:
+    """هل صفحة المصدر تعود للجهة نفسها؟ نعم إن كانت من نطاق موقعها، أو ذكرت اسمها نصًا
+    (مثل صفحة النشاط على منصة تواصل أو دليل أعمال)."""
+    from ..normalize import normalize_name
+    if website and domain_of(url) == domain_of(website if "://" in website else "https://" + website):
+        return True
+    words = [w for w in normalize_name(name).split() if len(w) >= 3]
+    if not words:
+        return False
+    for pg in pages:
+        if pg.url == url or domain_of(pg.url) == domain_of(url):
+            t = normalize_arabic(pg.text).lower()
+            hits = sum(1 for w in words if w in t)
+            if hits >= max(1, (len(words) + 1) // 2):
+                return True
+    return False
+
+
 def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
     pages, extra = _collect_pages(blocks)
     res = AgentResult(pages_read=len(pages))
@@ -215,6 +238,10 @@ def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
         contacts: list[FoundContact] = []
         for ct in p["contacts"]:
             where = value_on_pages(ct["kind"], ct["value"], ct["source_url"], pages, extra)
+            if where and not same_entity(where, p["name"], p["website"], pages):
+                res.rejected_values.append({"name": p["name"], "kind": ct["kind"], "value": ct["value"],
+                                            "why": "صفحة المصدر لا تعود للجهة نفسها"})
+                continue
             if where:
                 contacts.append(FoundContact(ct["kind"], ct["value"], where, "ai_fetch"))
             else:
@@ -226,7 +253,7 @@ def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
         cand = Candidate(
             name=p["name"].strip(), source_type="ai_agent",
             source_url=p["evidence_url"] or (contacts[0].source_url if contacts else website),
-            city=p["city"] or city, activity=p["activity"],
+            city=_saudi_or_raw(p["city"] or city), activity=p["activity"],
             website=_site_root(website) if website and is_company_site(website) else None,
             snippet=f"اكتُشف عبر: {p['discovered_via']} — عبارة البحث: {query}",
             fit_hint=p["vehicle_evidence"] if evidence_ok else (p["vehicle_evidence"] + " (الاقتباس لم يُتحقق منه نصًا)"),

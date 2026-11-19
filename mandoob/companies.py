@@ -258,9 +258,13 @@ def _refresh_preferred(company: Company) -> None:
 
 
 def is_complete(company: Company) -> bool:
-    has_phone = any(c.kind == "phone" and c.verified for c in company.contacts)
-    has_email = any(c.kind == "email" and c.verified and is_offer_suitable_email(c.value) for c in company.contacts)
-    return has_phone and has_email
+    """قاعدة الاحتساب: الاسم والنشاط ومدينة سعودية وهاتف عمل وبريد، ولكل وسيلة رابط مصدرها."""
+    from .segments import saudi_city
+    has_phone = any(c.kind == "phone" and c.verified and c.source_url for c in company.contacts)
+    has_email = any(c.kind == "email" and c.verified and c.source_url and is_offer_suitable_email(c.value)
+                    for c in company.contacts)
+    return bool(has_phone and has_email and company.name and company.activity and
+                (company.is_test or saudi_city(company.city)))
 
 
 def missing_fields(company: Company) -> list[str]:
@@ -269,6 +273,9 @@ def missing_fields(company: Company) -> list[str]:
         out.append("الهاتف")
     if not any(c.kind == "email" and c.verified and is_offer_suitable_email(c.value) for c in company.contacts):
         out.append("البريد الإلكتروني")
+    from .segments import saudi_city
+    if not company.is_test and not saudi_city(company.city):
+        out.append("مدينة سعودية")
     return out
 
 

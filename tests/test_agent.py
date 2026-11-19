@@ -155,3 +155,15 @@ def test_today_page_and_auto_search_screen():
         assert x.status_code == 200 and x.content[:2] == b"PK"
         r = c.get("/auto-search")
         assert r.status_code == 200 and "البحث الآلي عن العملاء" in r.text
+
+
+def test_saudi_city_and_same_entity_rules():
+    from mandoob.segments import saudi_city
+    from mandoob.discovery.agent import same_entity
+    assert saudi_city("Riyadh, Saudi Arabia") == "الرياض" and saudi_city("حي الروضة، جدة") == "جدة"
+    assert saudi_city("Dubai") is None and saudi_city("المملكة العربية السعودية") is None
+    pages = [FetchedPage("https://facebook.example/najdhvac", "صفحة نجد للتكييف — صيانة متنقلة 0551112233"),
+             FetchedPage("https://other.example/list", "دليل شركات: مؤسسة أخرى 0551112233")]
+    assert same_entity("https://facebook.example/najdhvac", "نجد للتكييف", "https://najd-hvac.example", pages)
+    assert same_entity("https://najd-hvac.example/contact", "نجد للتكييف", "https://najd-hvac.example", pages)
+    assert not same_entity("https://other.example/list", "نجد للتكييف", "https://najd-hvac.example", pages)
