@@ -176,7 +176,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                     break
 
     # إعادة محاولة استكمال السجلات الناقصة
-    enrich_incomplete(crawler=crawler, limit=100)
+    enrich_incomplete(crawler=crawler, limit=int(__import__("os").environ.get("ENRICH_LIMIT", "15")))
 
     with session_scope() as s:
         run = s.get(DiscoveryRun, run_id)
@@ -295,7 +295,7 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
     with session_scope() as s:
         nosite = [(c.id, c.name, c.city) for c in s.scalars(
             select(Company).where(Company.data_status == "incomplete", Company.website.is_(None),
-                                  Company.enrich_attempts < 2).limit(20))]
+                                  Company.is_test.is_(False), Company.enrich_attempts < 2).limit(min(limit, 10)))]
     for cid, name, city in nosite:
         site_url = find_official_website(name, city)
         with session_scope() as s:
@@ -308,6 +308,7 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
     with session_scope() as s:
         ids = [cid for (cid,) in s.execute(
             select(Company.id).where(Company.data_status == "incomplete", Company.website.isnot(None),
+                                     Company.is_test.is_(False),
                                      Company.enrich_attempts < 5,
                                      (Company.retry_enrich_at.is_(None)) | (Company.retry_enrich_at <= now_utc()))
             .limit(limit))]

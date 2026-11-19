@@ -549,6 +549,7 @@ class CostEntry(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0)
     campaign_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id"))
     note: Mapped[str] = mapped_column(String(200), default="")
+    at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)  # لقياس تكلفة كل دفعة
 
 
 class Setting(Base):
