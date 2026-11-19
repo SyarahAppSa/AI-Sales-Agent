@@ -50,7 +50,7 @@
 {% endfor %}
 </div>
 
-<div class="card"><h2>إرسال العروض</h2>
+{% if outreach_on %}<div class="card"><h2>إرسال العروض</h2>
 <div class="chips"><label><input type="checkbox" name="send_enabled" {{ 'checked' if camp and camp.send_enabled }}> إرسال العروض تلقائيًا بعد الاعتماد</label></div>
 <div class="chips"><span class="small muted">أيام الإرسال:</span>
 {% for d,l in [(6,'الأحد'),(0,'الإثنين'),(1,'الثلاثاء'),(2,'الأربعاء'),(3,'الخميس'),(4,'الجمعة'),(5,'السبت')] %}
@@ -63,7 +63,7 @@
 </div>
 <div class="field"><label>وضع التجربة — أرسل كل الرسائل إلى بريد نملكه بدلًا من بريد الشركات (اتركه فارغًا للإطلاق الفعلي)</label>
 <input name="test_recipient" value="{{ camp.test_recipient if camp and camp.test_recipient else '' }}" class="ltr" style="text-align:left" placeholder="sales-test@sayaraup.com"></div>
-</div>
+</div>{% endif %}
 <button class="btn p">{{ 'حفظ التعديلات' if camp else 'حفظ الحملة كمسودة' }}</button>
 </form>
 

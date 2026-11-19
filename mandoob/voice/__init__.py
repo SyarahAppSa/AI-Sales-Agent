@@ -43,6 +43,8 @@ def voice_enabled(s: Session) -> bool:
 
 
 def check_call_eligibility(s: Session, company: Company) -> tuple[bool, str]:
+    if not settings.voice_calls_enabled:
+        return False, "الاتصال الآلي معطّل في هذه المرحلة (الفريق يتواصل بنفسه)"
     if company.is_test:
         return False, "بيانات تجريبية — لا يُتصل بها"
     if not voice_enabled(s):
@@ -70,6 +72,8 @@ def check_call_eligibility(s: Session, company: Company) -> tuple[bool, str]:
 
 def start_call(s: Session, company: Company, *, service_name: str, offer_points: str, rep_name: str,
                http: httpx.Client | None = None) -> Call:
+    if not settings.voice_calls_enabled:
+        raise PermissionError("الاتصال الآلي معطّل في هذه المرحلة")
     ok, why = check_call_eligibility(s, company)
     if not ok:
         raise PermissionError(why)

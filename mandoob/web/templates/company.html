@@ -59,8 +59,8 @@
 <label>ملاحظة / آخر إجراء</label><div class="row"><input name="note" required><button class="btn" style="flex:0 0 auto">إضافة</button></div></form>
 <form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="task">
 <label>مهمة متابعة (بتوقيت الرياض)</label><div class="row"><input name="note" placeholder="مثال: الاتصال لتأكيد الاحتياج"><input type="datetime-local" name="when" required><button class="btn" style="flex:0 0 auto">إنشاء</button></div></form>
-<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="meeting">
-<label>حجز اجتماع (يتحقق من تقويم المندوب ويرسل التأكيد)</label><div class="row"><input type="datetime-local" name="when" required><button class="btn p" style="flex:0 0 auto">حجز</button></div></form>
+{% if outreach_on %}<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="meeting">
+<label>حجز اجتماع (يتحقق من تقويم المندوب ويرسل التأكيد)</label><div class="row"><input type="datetime-local" name="when" required><button class="btn p" style="flex:0 0 auto">حجز</button></div></form>{% endif %}
 <div class="row">
 <form method="post" action="/companies/{{ c.id }}/action" class="row"><input type="hidden" name="action" value="won"><input type="number" name="value" placeholder="قيمة الصفقة"><button class="btn" style="flex:0 0 auto">صفقة رابحة</button></form>
 <form method="post" action="/companies/{{ c.id }}/action" style="flex:0 0 auto"><input type="hidden" name="action" value="lost"><button class="btn">غير مهتمة</button></form>
@@ -68,11 +68,11 @@
 </div>
 {% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/action" class="field" style="margin-top:10px"><input type="hidden" name="action" value="assign">
 <label>تغيير المندوب المسؤول</label><div class="row"><select name="owner_id">{% for r in reps %}<option value="{{ r.id }}" {{ 'selected' if r.id==c.owner_id }}>{{ r.name }} ({{ ROLE_LABELS[r.role] }})</option>{% endfor %}</select><button class="btn" style="flex:0 0 auto">إسناد</button></div></form>{% endif %}
-<h2 style="margin-top:14px">المساعد الصوتي</h2>
+{% if voice_on %}<h2 style="margin-top:14px">المساعد الصوتي</h2>
 <form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="call_consent">
 <label>تسجيل موافقة صريحة على الاتصال الآلي (مع الدليل)</label><div class="row"><input name="note" placeholder="مثال: وافق العميل في رده بتاريخ ... على اتصال المساعد"><button class="btn" style="flex:0 0 auto">تسجيل</button></div></form>
 <form method="post" action="/companies/{{ c.id }}/action"><input type="hidden" name="action" value="ai_call">
-<button class="btn {{ 'p' if call_ok }}" {{ '' if call_ok else 'disabled' }}>اتصال بالمساعد الصوتي</button> {% if not call_ok %}<span class="small muted">{{ call_why }}</span>{% endif %}</form>
+<button class="btn {{ 'p' if call_ok }}" {{ '' if call_ok else 'disabled' }}>اتصال بالمساعد الصوتي</button> {% if not call_ok %}<span class="small muted">{{ call_why }}</span>{% endif %}</form>{% endif %}
 </div>
 </div>
 

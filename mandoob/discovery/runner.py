@@ -56,7 +56,8 @@ def _log(run: DiscoveryRun, msg: str) -> None:
 
 def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources: dict | None = None,
                            crawler: Crawler | None = None, max_candidates_factor: int = 6,
-                           on_progress: Callable[[str], None] | None = None, max_new: int | None = None) -> int:
+                           on_progress: Callable[[str], None] | None = None, max_new: int | None = None,
+                           force: bool = False) -> int:
     """max_new: حد الدفعة (مثل 20 عميلًا جديدًا مكتملًا) — للتجربة أو التشغيل على دفعات."""
     """يشغّل (أو يستأنف) اكتشاف اليوم لحملة واحدة ويعيد رقم التشغيل."""
     day = day or riyadh_today()
@@ -65,7 +66,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
 
     with session_scope() as s:
         camp = s.get(Campaign, campaign_id)
-        if camp is None or camp.status != "active":
+        if camp is None or (camp.status != "active" and not force):
             raise ValueError("الحملة غير نشطة")
         run = s.scalar(select(DiscoveryRun).where(DiscoveryRun.campaign_id == campaign_id,
                                                   DiscoveryRun.run_date == day))

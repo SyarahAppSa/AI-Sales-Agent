@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}البحث عن العملاء{% endblock %}{% block content %}
+{% set cfg = st.cfg %}{% set run = st.run %}{% set req = st.request %}
+{% if req.state in ('pending','running') or (run and run.status == 'running') %}<meta http-equiv="refresh" content="30">{% endif %}
+<div class="top"><div><h1>البحث عن العملاء</h1>
+<p class="sub" style="margin:0">مهمة المنصة الآن: إيجاد منشآت داخل السعودية تملك أو تشغّل مركبات، وجمع بياناتها مع مصدر كل معلومة. التواصل يتولاه فريقك بنفسه.</p></div>
+<div class="row" style="flex:0 0 auto"><a class="btn" href="/today{{ '?campaign=%d' % st.camp.id if st.camp else '' }}">عملاء اليوم</a><a class="btn" href="/companies?status=complete&kind=real&owner=none">إسناد للموظفين</a></div></div>
+{% if not ai_ready %}<div class="flash err">البحث يحتاج مفتاح Claude على الخادم (MANDOOB_ANTHROPIC_API_KEY).</div>{% endif %}
+
+<div class="grid g4" style="margin-bottom:14px">
+  <div class="icard"><div class="t"><div class="l">مكتملة اليوم</div><div class="v">{{ st.done_today }} <span class="muted" style="font-size:16px">من {{ cfg.daily_target }}</span></div>
+    <div class="bar" style="margin-top:6px"><i style="width:{{ [100, (100 * st.done_today / cfg.daily_target)|round|int]|min if cfg.daily_target else 0 }}%"></i></div></div><div class="badge">{{ icon('check', 34) }}</div></div>
+  <div class="icard"><div class="t"><div class="l">قيد الاستكمال</div><div class="v">{{ st.incomplete_today }}</div><div class="s">ينقصها هاتف أو بريد يخص المنشأة</div></div><div class="badge">{{ icon('clock', 34) }}</div></div>
+  <div class="icard"><div class="t"><div class="l">تكلفة اليوم</div><div class="v">${{ st.cost_today }}</div><div class="s">{% if st.cost_per_complete %}≈ ${{ st.cost_per_complete }} لكل منشأة مكتملة (آخر ١٤ يومًا){% else %}تظهر بعد أول دفعة{% endif %}</div></div><div class="badge">{{ icon('chart', 34) }}</div></div>
+  <div class="icard"><div class="t"><div class="l">الحالة</div><div class="v" style="font-size:18px">
+    {% if req.state == 'pending' %}بانتظار الخادم…{% elif req.state == 'running' or (run and run.status == 'running') %}يبحث الآن…{% elif cfg.scheduled %}مجدول يوميًا {{ cfg.time }}{% else %}متوقف{% endif %}</div>
+    <div class="s">{% if run %}آخر تشغيل: {{ fmt(run.started_at) }}{% if run.finished_at %} ← {{ fmt(run.finished_at) }}{% endif %}{% else %}لم يبدأ اليوم{% endif %}</div></div><div class="badge">{{ icon('search', 34) }}</div></div>
+</div>
+{% if run and run.shortfall_reason %}<div class="card" style="border-color:var(--warn)"><b>جُمع {{ st.done_today }} من {{ cfg.daily_target }} — سبب النقص:</b><div class="small" style="white-space:pre-line;margin-top:6px">{{ run.shortfall_reason }}</div></div>{% endif %}
+
+<form class="card" method="post" action="/prospecting">
+<h2>ماذا نبحث عنه؟</h2>
+<div class="field"><label>الأنشطة المستهدفة (منشآت تملك أو تشغّل مركبات)</label><div class="chips">
+{% for k, a in ACTIVITIES.items() %}<label><input type="checkbox" name="activities" value="{{ k }}" {{ 'checked' if k in cfg.activities }}> {{ a.label }}</label>{% endfor %}</div></div>
+<div class="field"><label>المدن</label><div class="chips">
+{% for c in MAIN_CITIES %}<label><input type="checkbox" name="cities" value="{{ c }}" {{ 'checked' if c in cfg.cities }}> {{ c }}</label>{% endfor %}</div>
+<input name="extra_cities" placeholder="مدن أخرى أو مدن صناعية، مفصولة بفواصل" value="{{ (cfg.cities | reject('in', MAIN_CITIES) | list) | join('، ') }}" style="margin-top:6px"></div>
+<div class="field"><label>المناطق (تضيف مدنها ومدنها الصناعية)</label><div class="chips">
+{% for r in REGIONS %}<label><input type="checkbox" name="regions" value="{{ r }}" {{ 'checked' if r in cfg.regions }}> {{ r }}</label>{% endfor %}</div></div>
+<div class="row">
+  <div style="flex:0 0 200px"><label>الهدف اليومي (منشأة جديدة مكتملة)</label><input type="number" name="daily_target" value="{{ cfg.daily_target }}" min="1" max="2000"></div>
+  <div style="flex:0 0 170px"><label>وقت التشغيل اليومي (الرياض)</label><input type="time" name="time" value="{{ cfg.time }}"></div>
+  <div class="chips" style="flex:0 0 auto;align-self:end"><label><input type="checkbox" name="scheduled" value="1" {{ 'checked' if cfg.scheduled }}> تشغيل يومي مجدول</label></div>
+</div>
+{% if st.est_cost_target %}<p class="small muted">التقدير بحسب التكلفة الفعلية الأخيرة: نحو ${{ st.est_cost_target|int }} يوميًا لهدف {{ cfg.daily_target }} منشأة مكتملة.</p>{% endif %}
+<div class="row" style="margin-top:8px">
+  <div style="flex:0 0 auto"><button class="btn">حفظ</button></div>
+  <div style="flex:0 0 auto"><button class="btn p" name="run_now" value="1">حفظ وابحث الآن</button></div>
+  <div style="flex:0 0 220px"><label class="small">حد هذه الدفعة (اختياري، فارغ = الهدف كاملًا)</label><input type="number" name="batch" min="1" max="2000" placeholder="مثال: 20"></div>
+</div>
+<p class="small muted" style="margin:10px 0 0">البحث يعمل على الخادم: يكمل ولو أغلقت هذه الصفحة. المنشأة تُحتسب مرة واحدة عبر كل الدفعات، ويُستبعد عملاء سيارة آب الحاليون والبيانات التجريبية. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
+</form>
+
+<div class="grid g2">
+<div class="card"><h2>شروط احتساب المنشأة «مكتملة»</h2><ul class="small" style="margin:0;padding-inline-start:18px;line-height:1.9">
+<li>الاسم والنشاط ومدينة سعودية، ودليل من صفحة المنشأة على أنها تستخدم مركبات.</li>
+<li>هاتف سعودي <b>من موقع المنشأة نفسها</b>، مع رابط الصفحة التي نُشر فيها.</li>
+<li>بريد على نطاق المنشأة، أو بريد مجاني منشور في موقعها، مع رابط الصفحة. لا يُقبل بريد مطوّر الموقع ولا هاتف منشأة أخرى.</li>
+<li>القيمة يجب أن تظهر نصًا في الصفحة التي قرأها الوكيل فعلًا؛ وإلا تُرفض.</li>
+<li>الناقص يذهب إلى «قيد الاستكمال» ويُبحث عنه تلقائيًا.</li></ul></div>
+<div class="card"><h2>مصادر البحث على الخادم</h2><table>{% for k, v in sources.items() %}<tr><td class="small">{{ k }}</td><td>{% if v %}<span class="pill ok">يعمل</span>{% else %}<span class="pill warn">غير مُعد</span>{% endif %}</td></tr>{% endfor %}</table>
+<p class="small muted">المصدر غير المُعد يُتجاوز تلقائيًا ويظهر في سبب النقص.</p></div>
+</div>
+
+{% if st.runs %}<div class="card"><h2>سجل التشغيل</h2><div class="tablewrap"><table>
+<tr><th>اليوم</th><th>البدء ← الانتهاء</th><th>الحالة</th><th>مكتملة / الهدف</th><th>قيد الاستكمال</th><th>مكررة مستبعدة</th><th>سبب النقص</th></tr>
+{% for r in st.runs %}<tr><td>{{ fmt_date(r.run_date) }}</td><td class="small">{{ fmt(r.started_at) }}{% if r.finished_at %} ← {{ fmt(r.finished_at) }}{% endif %}</td>
+<td>{{ {'running':'قيد التشغيل','done':'اكتمل','partial':'جزئي','failed':'فشل'}.get(r.status, r.status) }}</td><td>{{ r.complete_count }} / {{ r.target }}</td><td>{{ r.incomplete_count }}</td><td>{{ r.duplicate_count }}</td>
+<td class="small" style="white-space:pre-line;max-width:360px">{{ r.shortfall_reason or '—' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endblock %}

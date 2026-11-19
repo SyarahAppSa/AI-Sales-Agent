@@ -17,6 +17,9 @@ from .db import init_db
 def configure(scheduler) -> None:
     # الاكتشاف والتقرير اليومي: فحص كل دقيقتين لوقت التشغيل المحدد في الإعدادات (يمكن تغييره من الواجهة)
     scheduler.add_job(jobs.discovery_tick, "interval", minutes=2, id="discovery", max_instances=1, coalesce=True)
+    # «ابحث الآن» من لوحة الإدارة: يلتقطه العامل خلال دقيقة
+    scheduler.add_job(jobs.discovery_request_tick, "interval", minutes=1, id="discovery_request", max_instances=1,
+                      coalesce=True)
     scheduler.add_job(jobs.daily_report_tick, "interval", minutes=5, id="daily_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.weekly_report_tick, "interval", minutes=15, id="weekly_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.outreach_tick, "interval", minutes=10, id="outreach", max_instances=1, coalesce=True)

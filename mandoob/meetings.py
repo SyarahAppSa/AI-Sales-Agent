@@ -46,6 +46,9 @@ def book_meeting(s: Session, company: Company, owner: User, start_utc: datetime,
                  attendee_email: str | None = None, booked_by: User | None = None) -> Meeting:
     if company.is_test:
         raise RuntimeError("بيانات تجريبية — لا تُرسل لها دعوات اجتماع")
+    from .outreach import outreach_disabled
+    if outreach_disabled():
+        raise RuntimeError("دعوات الاجتماع والتأكيدات الآلية للعملاء معطّلة في هذه المرحلة؛ نسّق الموعد مع العميل مباشرة")
     acct = active_account(s)
     if acct is None:
         raise RuntimeError("اربط بريد الشركة أولًا")

@@ -12,15 +12,14 @@
 {% if user %}
 {% set nav = [
   ('/', 'grid', 'لوحة التحكم', False, 'all'),
+  ('/prospecting', 'search', 'البحث عن العملاء', False, 'mgr'),
   ('/today', 'list', 'عملاء اليوم', False, 'all'),
-  ('/auto-search', 'search', 'البحث الآلي عن العملاء', False, 'all'),
+  ('/companies', 'building', 'الشركات وإسنادها للموظفين', False, 'all'),
   ('/followups', 'clock', 'تحتاج متابعة اليوم', False, 'all'),
   ('/offers-report', 'send', 'الشركات التي أُرسلت إليها عروض', False, 'all'),
-  ('/companies', 'building', 'الشركات', False, 'all'),
   ('/notifications', 'bell', 'التنبيهات', True, 'all'),
   ('sep', '', '', False, 'mgr'),
   ('/targets', 'target', 'الفئات المستهدفة', False, 'mgr'),
-  ('/offers', 'file', 'العروض والمرفقات', False, 'mgr'),
   ('/daily-report', 'chart', 'التقرير اليومي', False, 'mgr'),
   ('/weekly-report', 'calendar', 'التقرير الأسبوعي للشرائح', False, 'mgr'),
   ('/leads', 'inbox', 'طلبات العروض الواردة', False, 'mgr'),
@@ -28,9 +27,8 @@
   ('/staff', 'users', 'الموظفون والصلاحيات', False, 'mgr'),
   ('/team', 'target', 'قواعد التوزيع', False, 'mgr'),
   ('/mail', 'mail', 'ربط بريد الشركة', False, 'mgr'),
-  ('/settings', 'settings', 'الإعدادات والمكالمات', False, 'mgr'),
-  ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr'),
-] %}
+  ('/settings', 'settings', 'الإعدادات', False, 'mgr'),
+] + ([('/offers', 'file', 'العروض والمرفقات', False, 'mgr'), ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr')] if outreach_on else []) %}
 {% if user.role not in ('admin','manager') %}{% set nav = [
   ('/portal', 'list', 'عملائي ومتابعاتي', False, 'all'),
 ] + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False, 'all')] if (user.perms or {}).get('see_reports') else []) %}{% endif %}

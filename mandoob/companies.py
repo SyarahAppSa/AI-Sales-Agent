@@ -301,6 +301,14 @@ def _good_email(company: Company, c) -> bool:
             and contact_belongs(company, c))
 
 
+def owned_contact(company: Company, kind: str):
+    """أفضل هاتف/بريد موثّق **يخص المنشأة نفسها** (للعرض والتسليم للفريق) — لا يُعرض ما يفشل في التحقق."""
+    good = _good_phone if kind == "phone" else _good_email
+    cands = [c for c in company.contacts if good(company, c)]
+    cands.sort(key=lambda c: (not c.preferred, c.id or 0))
+    return cands[0] if cands else None
+
+
 def is_complete(company: Company) -> bool:
     """قاعدة الاحتساب: الاسم والنشاط ومدينة سعودية وهاتف عمل وبريد، ولكل وسيلة رابط مصدرها، وكلاهما يخص المنشأة نفسها."""
     from .segments import saudi_city

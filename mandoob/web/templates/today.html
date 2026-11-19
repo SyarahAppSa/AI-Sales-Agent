@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
 {% if t.running %}<meta http-equiv="refresh" content="20">{% endif %}
 <div class="top"><div><h1>عملاء اليوم</h1><p class="sub" style="margin:0">{{ fmt_date(t.day) }}{% if t.running %} — <b style="color:var(--brand)">البحث يعمل الآن، تتحدث الصفحة تلقائيًا</b>{% endif %}</p></div>
-<div class="row"><a class="btn" href="/today.xlsx?{{ qs }}">تصدير إلى Excel</a>{% if user.role in ('admin','manager') %}<a class="btn p" href="/auto-search">البحث الآلي</a>{% endif %}</div></div>
+<div class="row"><a class="btn" href="/today.xlsx?{{ qs }}">تصدير إلى Excel</a>{% if user.role in ('admin','manager') %}<a class="btn p" href="/prospecting">البحث عن العملاء</a>{% endif %}</div></div>
 <div class="grid g3" style="margin-bottom:14px">
   <div class="icard"><div class="t"><div class="l">عملاء جدد مكتملون</div><div class="v">{{ t.complete }} <span class="muted" style="font-size:16px">من {{ t.target }}</span></div>
     <div class="bar" style="margin-top:6px"><i style="width:{{ [100, (100 * t.complete / t.target)|round|int]|min if t.target else 0 }}%"></i></div></div><div class="badge">{{ icon('check', 34) }}</div></div>
@@ -13,21 +13,22 @@
   <div><label>البحث / الحملة</label><select name="campaign"><option value="">الكل</option>{% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id==campaign }}>{{ c.name }}</option>{% endfor %}</select></div>
   <div style="flex:0 0 auto"><button class="btn">عرض</button></div>
 </form>
-<p class="small muted" style="margin:-4px 0 12px">تكلفة البحث التقديرية اليوم: ${{ t.cost }}{% if t.cost_per %} — نحو ${{ t.cost_per }} لكل عميل مكتمل{% endif %}. القيم التي لم تظهر نصًا في الصفحات التي قرأها الوكيل تُرفض ولا تُحفظ.</p>
+<p class="small muted" style="margin:-4px 0 12px">تكلفة البحث التقديرية اليوم: ${{ t.cost }}{% if t.cost_per %} — نحو ${{ t.cost_per }} لكل عميل مكتمل{% endif %}. القيم التي لم تظهر نصًا في الصفحات التي قرأها الوكيل تُرفض، ولا يُعرض إلا هاتف وبريد يخصان المنشأة نفسها (من موقعها أو على نطاقها).</p>
 {% for r in t.runs %}{% if r.shortfall_reason %}<p class="small" style="color:var(--warn);white-space:pre-line">{{ r.shortfall_reason }}</p>{% endif %}{% endfor %}
 <div class="card tablewrap"><table>
-<tr><th>اسم العميل</th><th>النشاط والمدينة</th><th>الهاتف</th><th>البريد</th><th>سبب الاستهداف</th><th>روابط المصادر</th></tr>
+<tr><th>اسم العميل</th><th>النشاط والمدينة</th><th>الهاتف ومصدره</th><th>البريد ومصدره</th><th>سبب الاستهداف</th><th>روابط المصادر</th><th>تاريخ الجمع</th></tr>
 {% for r in t.rows %}{% set c = r.c %}
 <tr>
 <td style="min-width:160px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>
   <div>{% if r.complete %}<span class="pill ok">مكتمل</span>{% elif r.branch %}<span class="pill">فرع</span>{% else %}<span class="pill warn">قيد الاستكمال</span>{% endif %}</div>
   {% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
 <td class="small" style="min-width:120px">{{ c.activity }}<div class="muted">{{ c.city }}</div></td>
-<td class="small" style="min-width:130px">{% if r.phone %}<span class="ltr">{{ phone(r.phone.value) }}</span><div><a href="{{ r.phone.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
-<td class="small" style="min-width:150px">{% if r.email %}<span class="ltr">{{ r.email.value }}</span><div><a href="{{ r.email.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
+<td class="small" style="min-width:130px">{% if r.phone %}<span class="ltr">{{ phone(r.phone.value) }}</span><div><a href="{{ r.phone.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.phone.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
+<td class="small" style="min-width:150px">{% if r.email %}<span class="ltr">{{ r.email.value }}</span><div><a href="{{ r.email.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.email.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td class="small" style="min-width:220px;max-width:380px">{{ c.fit_reason }}{% if c.fit_phrase %}<div class="muted">«{{ c.fit_phrase[:140] }}»</div>{% endif %}
   <div class="muted">{{ OPERATOR_LABELS.get(c.operator_status, '') }}</div></td>
 <td class="small" style="min-width:160px">{% for u in r.links %}<div><a href="{{ u }}" target="_blank" rel="noopener" class="ltr">{{ u.split('//')[-1][:38] }}</a></div>{% endfor %}</td>
-</tr>{% else %}<tr><td colspan="6" class="muted">لا يوجد عملاء جدد لهذا اليوم بعد.</td></tr>{% endfor %}
+<td class="small" style="min-width:90px">{{ fmt(c.first_found_at) }}{% if c.owner %}<div class="muted">مسند: {{ c.owner.name }}</div>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="7" class="muted">لا يوجد عملاء جدد لهذا اليوم بعد.</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

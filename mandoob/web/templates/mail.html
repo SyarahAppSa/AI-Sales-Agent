@@ -13,7 +13,7 @@
 <button class="btn p">إرسال تجربة</button></form>
 {% for a in accounts if a.active %}<p class="small" style="margin-top:8px">{% if a.verified_at %}<span class="pill ok">تم التحقق من الإرسال {{ fmt(a.verified_at, False) }}</span> الدخول للجميع بكود البريد.{% else %}<span class="pill warn">لم يُتحقق بعد</span> يبقى دخول الإدارة بكلمة المرور متاحًا حتى تنجح أول رسالة تجربة.{% endif %}</p>{% endfor %}
 <div class="row" style="margin-top:8px"><form method="post" action="/mail/sync" style="flex:0 0 auto"><button class="btn">مزامنة الصندوق الآن</button></form>
-<form method="post" action="/outreach/run" style="flex:0 0 auto"><input type="hidden" name="ignore_window" value=""><button class="btn">جهّز وأرسل العروض المستحقة الآن</button></form></div>{% endif %}
+{% if outreach_on %}<form method="post" action="/outreach/run" style="flex:0 0 auto"><input type="hidden" name="ignore_window" value=""><button class="btn">جهّز وأرسل العروض المستحقة الآن</button></form>{% endif %}</div>{% endif %}
 <h2 style="margin-top:16px">حالة الإعداد على الخادم</h2>
 <p class="small">Microsoft 365: {% if status.microsoft365 %}<span class="pill ok">مُعد</span>{% else %}<span class="pill warn">ينقصه MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET</span>{% endif %}</p>
 <p class="small">Google Workspace: {% if status.google %}<span class="pill ok">مُعد</span>{% else %}<span class="pill warn">ينقصه GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN</span>{% endif %}</p>

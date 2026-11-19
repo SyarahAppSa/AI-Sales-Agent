@@ -172,9 +172,17 @@ def offer_for(company: Company, s: Session | None = None) -> Offer | None:
     return None
 
 
+def outreach_disabled() -> bool:
+    """الإرسال التلقائي للعروض والإيميلات التسويقية معطّل في المرحلة الحالية (ENABLE_AUTO_OUTREACH)."""
+    from .config import settings
+    return not settings.auto_outreach_enabled
+
+
 def queue_offers(campaign_id: int, limit: int = 500) -> dict:
     """يجهّز رسائل العروض للشركات المؤهلة (تُكتب الرسالة الآن وتُحفظ كما ستُرسل)."""
     stats = {"queued": 0, "skipped": {}}
+    if outreach_disabled():
+        return stats
     with session_scope() as s:
         camp = s.get(Campaign, campaign_id)
         acct = active_account(s)
@@ -235,6 +243,8 @@ def _snapshot_attachment(msg: OutboundMessage, offer: Offer) -> tuple[bytes | No
 def send_due(campaign_id: int | None = None, *, ignore_window: bool = False, max_batch: int = 50) -> dict:
     """يرسل الرسائل المجهزة ضمن الأيام والساعات والحد اليومي لكل حملة."""
     stats = {"sent": 0, "failed": 0, "held": 0}
+    if outreach_disabled():
+        return stats
     with session_scope() as s:
         q = select(OutboundMessage.id, OutboundMessage.campaign_id).where(OutboundMessage.status == "queued")
         if campaign_id:
@@ -318,6 +328,8 @@ def send_due(campaign_id: int | None = None, *, ignore_window: bool = False, max
 def queue_followups() -> int:
     """متابعة آلية واحدة لمن لم يرد بعد المدة المحددة، في نفس المحادثة."""
     n = 0
+    if outreach_disabled():
+        return n
     with session_scope() as s:
         rows = list(s.scalars(select(OutboundMessage).where(
             OutboundMessage.kind == "offer", OutboundMessage.status.in_(["sent", "delivered"]),

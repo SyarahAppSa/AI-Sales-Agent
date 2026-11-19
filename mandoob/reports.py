@@ -16,7 +16,8 @@ from .timeutil import fmt, riyadh_day_bounds_utc, riyadh_today
 
 STATUS_LABELS = {"queued": "بانتظار الإرسال", "sending": "قيد الإرسال", "sent": "أُرسل", "delivered": "تم التسليم",
                  "bounced": "مرتد", "failed": "فشل الإرسال", "skipped": "أُلغي"}
-STAGE_LABELS = {"new": "لم يتم التواصل", "contacted": "أُرسل عرض", "replied": "ردّت", "interested": "مهتمة",
+STAGE_LABELS = {"new": "لم يتم التواصل", "contacted": "تم التواصل", "offer_sent": "أُرسل عرض",
+                "needs_followup": "تحتاج متابعة", "replied": "ردّت", "interested": "مهتمة",
                 "meeting": "اجتماع محجوز", "won": "صفقة رابحة", "lost": "غير مهتمة",
                 "do_not_contact": "أوقفت التواصل"}
 
@@ -75,6 +76,7 @@ class OffersReport:
     rows: list[OfferRow] = field(default_factory=list)
     unique_companies: int = 0
     total_offers: int = 0
+    manual: list = field(default_factory=list)  # عروض أرسلها الموظفون بأنفسهم وسجّلوها في المنصة
 
 
 def offers_report(s: Session, user: User, f: OfferFilters) -> OffersReport:
@@ -122,9 +124,34 @@ def offers_report(s: Session, user: User, f: OfferFilters) -> OffersReport:
                                  c.owner.name if c.owner else "غير مسند", last,
                                  m.offer.service_name if m.offer else "—",
                                  m.campaign.name if m.campaign else "—"))
-    rep.total_offers = len(rep.rows)
-    rep.unique_companies = len({r.company.id for r in rep.rows})
+    rep.manual = manual_offers(s, user, f)
+    rep.total_offers = len(rep.rows) + len(rep.manual)
+    rep.unique_companies = len({r.company.id for r in rep.rows} | {c.id for c in rep.manual})
     return rep
+
+
+def manual_offers(s: Session, user: User, f: OfferFilters) -> list[Company]:
+    """المنشآت التي سجّل موظف أنه أرسل لها عرضًا بنفسه: المنشأة والموظف وتاريخ الإرسال المسجّل."""
+    q = scope_companies(select(Company), user).where(Company.offer_sent_at.isnot(None), visible(s))
+    if f.date_from:
+        q = q.where(Company.offer_sent_at >= riyadh_day_bounds_utc(f.date_from)[0])
+    if f.date_to:
+        q = q.where(Company.offer_sent_at < riyadh_day_bounds_utc(f.date_to)[1])
+    if f.city:
+        q = q.where(Company.city == f.city)
+    if f.sector:
+        q = q.where(Company.sector_key == f.sector)
+    if f.campaign_id:
+        q = q.where(Company.campaign_id == f.campaign_id)
+    if f.owner_id:
+        q = q.where((Company.owner_id == f.owner_id) | (Company.offer_sent_by_id == f.owner_id))
+    if f.source:
+        q = q.where(Company.lead_source.like(f"{f.source}%"))
+    if f.q:
+        q = q.where(Company.name.like(f"%{f.q}%"))
+    if f.status or f.offer_id or f.reply:  # مرشحات خاصة بالبريد الآلي
+        return []
+    return list(s.scalars(q.order_by(Company.offer_sent_at.desc())))
 
 
 def needs_followup_today(s: Session, user: User, day: date | None = None) -> list[dict]:
@@ -183,6 +210,18 @@ def export_offers_xlsx(rep: OffersReport) -> bytes:
     for col, w in zip("ABCDEFGHIJKLMNOPQRSTUV", [28, 20, 12, 18, 26, 26, 26, 26, 24, 24, 34, 60, 22, 14, 30, 24,
                                                  50, 16, 18, 30, 26, 24]):
         ws.column_dimensions[col].width = w
+    if rep.manual:
+        wm = wb.create_sheet("عروض أرسلها الموظفون")
+        wm.sheet_view.rightToLeft = True
+        wm.append(["المنشأة", "النشاط", "المدينة", "الموظف الذي أرسل", "تاريخ الإرسال المسجّل (الرياض)", "العرض",
+                   "الموظف المسؤول", "الحالة الحالية", "الهاتف", "البريد"])
+        for c in rep.manual:
+            ph, em = c.primary("phone"), c.primary("email")
+            wm.append([c.name, c.activity, c.city, c.offer_sent_by.name if c.offer_sent_by else "", fmt(c.offer_sent_at),
+                       c.offer_note or "", c.owner.name if c.owner else "", STAGE_LABELS.get(c.stage, c.stage),
+                       format_phone_display(ph.value) if ph else "", em.value if em else ""])
+        for col, w in zip("ABCDEFGHIJ", [30, 22, 12, 18, 24, 30, 18, 16, 18, 28]):
+            wm.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=4):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
@@ -248,8 +287,8 @@ def daily_report(s: Session, day: date | None = None) -> dict:
     start, end = riyadh_day_bounds_utc(day)
     # القطاعات والعروض التي جلبت اجتماعات وصفقات (تراكميًا مع أرقام اليوم)
     by_sector = {}
-    for c in s.scalars(select(Company).where(visible(s), Company.stage.in_(["contacted", "replied", "interested", "meeting",
-                                                                            "won", "lost", "do_not_contact"]))):
+    for c in s.scalars(select(Company).where(visible(s), Company.stage.in_(["contacted", "offer_sent", "needs_followup", "replied",
+                                                                            "interested", "meeting", "won", "lost", "do_not_contact"]))):
         key = SECTORS.get(c.sector_key, {}).get("label", c.sector_key or "—")
         d = by_sector.setdefault(key, {"contacted": 0, "replied": 0, "meetings": 0, "won": 0})
         d["contacted"] += 1
@@ -408,7 +447,7 @@ def export_today_xlsx(t: dict) -> bytes:
                f"قيد الاستكمال: {t['incomplete']}", f"مكررات مستبعدة: {t['duplicates']}"])
     ws.append([])
     ws.append(["اسم العميل", "نوع النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
-               "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر"])
+               "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر", "تاريخ الجمع", "المسؤول"])
     for cell in ws[3]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="6941C6")
@@ -419,8 +458,9 @@ def export_today_xlsx(t: dict) -> bytes:
                    r["phone"].source_url if r["phone"] else "", r["email"].value if r["email"] else "",
                    r["email"].source_url if r["email"] else "", c.fit_reason, c.fit_evidence_url or "",
                    OPERATOR_LABELS.get(c.operator_status, ""), "مكتمل" if r["complete"] else
-                   ("فرع" if r["branch"] else "قيد الاستكمال"), "\n".join(r["links"])])
-    for col, w in zip("ABCDEFGHIJKL", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60]):
+                   ("فرع" if r["branch"] else "قيد الاستكمال"), "\n".join(r["links"]),
+                   fmt(c.first_found_at), c.owner.name if c.owner else ""])
+    for col, w in zip("ABCDEFGHIJKLMN", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60, 20, 16]):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=4):
         for cell in row:

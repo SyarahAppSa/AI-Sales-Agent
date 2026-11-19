@@ -188,6 +188,13 @@ class Company(Base):
     owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     # new / contacted / replied / interested / meeting / won / lost / do_not_contact
     stage: Mapped[str] = mapped_column(String(30), default="new")
+    # التواصل اليدوي من الفريق: ما سجّله الموظف بنفسه (من ومتى) — مصدر تقرير العروض في المرحلة الحالية
+    contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    contacted_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    offer_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    offer_sent_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    offer_note: Mapped[Optional[str]] = mapped_column(String(300))
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
     is_existing_customer: Mapped[bool] = mapped_column(Boolean, default=False)
     next_action: Mapped[Optional[str]] = mapped_column(String(300))
@@ -212,12 +219,16 @@ class Company(Base):
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     sources: Mapped[list["CompanySource"]] = relationship(back_populates="company", cascade="all, delete-orphan")
-    owner: Mapped[Optional[User]] = relationship()
+    owner: Mapped[Optional[User]] = relationship(foreign_keys=[owner_id])
+    offer_sent_by: Mapped[Optional[User]] = relationship(foreign_keys=[offer_sent_by_id])
+    contacted_by: Mapped[Optional[User]] = relationship(foreign_keys=[contacted_by_id])
     campaign: Mapped[Optional[Campaign]] = relationship()
     category: Mapped[Optional[Category]] = relationship()
 
     def primary(self, kind: str) -> Optional["Contact"]:
-        cs = [c for c in self.contacts if c.kind == kind and c.verified]
+        """الهاتف/البريد الموثّق الذي يخص المنشأة نفسها (يُستبعد بريد مطوّر الموقع أو هاتف منشأة أخرى)."""
+        from .companies import contact_belongs
+        cs = [c for c in self.contacts if c.kind == kind and c.verified and contact_belongs(self, c)]
         cs.sort(key=lambda c: (not c.preferred, c.id or 0))
         return cs[0] if cs else None
 

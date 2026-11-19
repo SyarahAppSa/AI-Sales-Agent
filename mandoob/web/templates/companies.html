@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>الشركات</h1><p class="sub">كل شركة لها سجل واحد مهما تعددت مصادرها.</p></div></div>
+<div class="top"><div><h1>الشركات وإسنادها للموظفين</h1><p class="sub">كل منشأة لها سجل واحد مهما تعددت مصادرها. حدّد مجموعة وأسندها لموظف؛ المسندة لموظف آخر لا تُنقل إلا بتأكيد صريح.</p></div></div>
 <div class="row" style="margin-bottom:12px">
   <a class="btn {{ 'p' if status=='complete' }}" href="?status=complete" style="flex:0 0 auto">مكتملة البيانات ({{ counts.complete }})</a>
   <a class="btn {{ 'p' if status=='incomplete' }}" href="?status=incomplete" style="flex:0 0 auto">قيد استكمال البيانات ({{ counts.incomplete }})</a>
@@ -15,19 +15,28 @@
   <div><label>المسؤول</label><select name="owner"><option value="">الكل</option><option value="none" {{ 'selected' if owner=='none' }}>بانتظار التوزيع</option>{% for u in staff %}<option value="{{ u.id }}" {{ 'selected' if owner==u.id|string }}>{{ u.name }}</option>{% endfor %}</select></div>
   <div style="flex:0 0 auto"><button class="btn">تصفية</button></div>
 </form>
+{% set mgr = user.role in ('admin','manager') %}
+{% if mgr %}<form method="post" action="/companies/assign" id="bulk">
+<div class="card row" style="align-items:end;position:sticky;top:0;z-index:5">
+  <div style="flex:0 0 auto"><label class="chips"><input type="checkbox" onclick="document.querySelectorAll('input[name=company_ids]').forEach(x=>x.checked=this.checked);cnt()"> تحديد الكل في الصفحة</label></div>
+  <div><label>إسناد المحدد (<b id="selcnt">0</b>) إلى</label><select name="owner_id" required><option value="">اختر موظفًا</option>{% for u in staff if u.active %}<option value="{{ u.id }}">{{ u.name }} — {{ u.email }}</option>{% endfor %}</select></div>
+  <div class="chips" style="flex:0 0 auto"><label><input type="checkbox" name="reassign" value="1"> نقل المسند لموظف آخر</label></div>
+  <div style="flex:0 0 auto"><button class="btn p">إسناد</button></div>
+</div>{% endif %}
 <div class="card tablewrap"><table>
-<tr><th>الشركة</th><th>النشاط / المدينة</th><th>الهاتف</th><th>البريد</th><th>سبب الترشيح</th><th>الاكتشاف</th><th>المرحلة</th><th>المسؤول</th></tr>
+<tr>{% if mgr %}<th></th>{% endif %}<th>الشركة</th><th>النشاط / المدينة</th><th>الهاتف</th><th>البريد</th><th>سبب الترشيح</th><th>الاكتشاف</th><th>المرحلة</th><th>المسؤول</th></tr>
 {% for c in rows %}{% set ph = c.primary('phone') %}{% set em = c.primary('email') %}
-<tr><td><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>{% if c.is_test %} <span class="pill warn">بيانات تجريبية</span>{% endif %}{% if c.vehicles_estimate %}<div class="small muted">{{ c.vehicles_estimate }} مركبة</div>{% endif %}{% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
+<tr>{% if mgr %}<td><input type="checkbox" name="company_ids" value="{{ c.id }}" onchange="cnt()"></td>{% endif %}<td><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>{% if c.is_test %} <span class="pill warn">بيانات تجريبية</span>{% endif %}{% if c.vehicles_estimate %}<div class="small muted">{{ c.vehicles_estimate }} مركبة</div>{% endif %}{% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
 <td>{{ c.activity }}<div class="small muted">{{ c.city }}</div></td>
 <td>{% if ph %}<span class="ltr">{{ phone(ph.value) }}</span><div class="small"><a href="{{ ph.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td>{% if em %}<span class="ltr small">{{ em.value }}</span><div class="small"><a href="{{ em.source_url }}" target="_blank" rel="noopener">المصدر</a> · {{ em.label }}</div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td class="small" style="max-width:320px">{% if sig.get(c.id) %}<span class="pill warn">لماذا الآن ({{ sig[c.id] }})</span> {% endif %}{% if c.parent_id %}<span class="pill">فرع</span> {% endif %}{% if c.operator_status=='contracted' %}<span class="pill warn">تتعاقد مع ناقل</span> {% endif %}{% if c.lead_source and c.lead_source not in ('discovery','test_seed','training_demo') %}<span class="pill info">{{ source_label(c.lead_source) }}</span> {% endif %}{{ c.fit_reason }}{% if c.fit_evidence_url %} <a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الدليل)</a>{% endif %}</td>
 <td class="small">{{ fmt(c.first_found_at, False) }}<div class="muted">{{ c.campaign.name if c.campaign else '' }} — {{ c.category.label if c.category else '' }}</div><div class="muted">{{ c.sources|length }} مصدر</div></td>
 <td><span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>{% if status=='incomplete' %}<div class="small muted">ينقص: {{ missing_fields(c)|join('، ') }}</div>{% endif %}</td>
-<td>{{ c.owner.name if c.owner else '—' }}</td></tr>
-{% else %}<tr><td colspan="8" class="muted">لا توجد شركات.</td></tr>{% endfor %}
+<td>{% if c.owner %}{{ c.owner.name }}{% if c.assigned_at %}<div class="small muted">{{ fmt(c.assigned_at, False) }}</div>{% endif %}{% else %}<span class="pill warn">غير مسند</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="9" class="muted">لا توجد شركات.</td></tr>{% endfor %}
 </table></div>
+{% if mgr %}</form><script>function cnt(){document.getElementById('selcnt').textContent=document.querySelectorAll('input[name=company_ids]:checked').length}</script>{% endif %}
 <div class="row"><span class="muted" style="flex:0 0 auto">{{ total }} سجل</span>
 {% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&page={{ page-1 }}">السابق</a>{% endif %}
 {% if page*50 < total %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&page={{ page+1 }}">التالي</a>{% endif %}</div>

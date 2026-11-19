@@ -97,7 +97,33 @@ def discovery_tick(force: bool = False) -> list[int]:
     return run_ids
 
 
+def discovery_request_tick() -> bool:
+    """يلتقط طلب «ابحث الآن» من لوحة الإدارة ويشغّله على العامل (يكمل ولو أُغلقت اللوحة)."""
+    from .prospecting import REQUEST
+    req = get_setting(REQUEST)
+    if req.get("state") != "pending":
+        return False
+    with job_lock("discovery", minutes=600) as ok:
+        if not ok:
+            return False  # تشغيل آخر قائم؛ يُلتقط الطلب بعد انتهائه
+        req.update(state="running", started_at=now_utc().isoformat(timespec="seconds"))
+        put_setting(REQUEST, req)
+        from .discovery.runner import run_campaign_discovery
+        try:
+            req["run_id"] = run_campaign_discovery(int(req["campaign_id"]), max_new=req.get("max_new"), force=True)
+            req["state"] = "done"
+        except Exception as e:  # noqa: BLE001
+            log.exception("requested discovery failed")
+            req.update(state="failed", error=str(e)[:300])
+        req["finished_at"] = now_utc().isoformat(timespec="seconds")
+        put_setting(REQUEST, req)
+    return True
+
+
 def outreach_tick() -> dict:
+    from .outreach import outreach_disabled
+    if outreach_disabled():  # المرحلة الحالية: لا إرسال تلقائي ولا متابعات آلية
+        return {}
     with job_lock("outreach", minutes=30) as ok:
         if not ok:
             return {}

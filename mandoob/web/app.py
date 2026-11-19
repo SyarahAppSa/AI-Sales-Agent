@@ -146,6 +146,8 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
         from ..reports import demo_view
         demo = demo_view(s)
     return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
+                                                      "voice_on": settings.voice_calls_enabled,
+                                                      "outreach_on": settings.auto_outreach_enabled,
                                                       "path": request.url.path, **ctx})
 
 
@@ -442,7 +444,8 @@ def target_status(cid: int, request: Request, action: str = Form(...), user: Use
                   s=Depends(get_db)):
     camp = s.get(Campaign, cid) or _404()
     if action == "activate":
-        missing = [c.label for c in camp.categories if c.active and c.offer_id and not c.offer.approved]
+        missing = [c.label for c in camp.categories if c.active and c.offer_id and not c.offer.approved] \
+            if settings.auto_outreach_enabled else []
         if missing:
             flash(request, "اعتمد العروض المرتبطة أولًا: " + "، ".join(missing), "err")
             return back(f"/targets/{cid}")
@@ -472,6 +475,55 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
     jobs.put_setting("schedule", {"discovery_time": discovery_time, "daily_report_time": daily_report_time})
     flash(request, f"سيعمل الاكتشاف يوميًا الساعة {discovery_time} بتوقيت الرياض")
     return back("/targets")
+
+
+# ---------------------------------------------------------------- البحث عن العملاء (الأداة الرئيسية للمرحلة الحالية)
+
+@app.get("/prospecting", response_class=HTMLResponse)
+def prospecting_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospecting as P
+    st = P.status(s)
+    return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, MAIN_CITIES=P.MAIN_CITIES,
+                  REGIONS=list(P.REGIONS.keys()), ai_ready=settings.ai_enabled,
+                  sources={"وكيل البحث (Claude: بحث الويب وقراءة الصفحات)": settings.ai_enabled,
+                           "خرائط Google (GOOGLE_PLACES_API_KEY)": bool(settings.google_places_api_key),
+                           "بحث Brave (BRAVE_SEARCH_API_KEY)": bool(settings.brave_search_api_key)})
+
+
+@app.post("/prospecting")
+async def prospecting_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospecting as P
+    from ..auth import audit
+    form = await request.form()
+    extra = [c.strip() for c in (form.get("extra_cities") or "").replace("،", ",").split(",") if c.strip()]
+    camp = P.save_config(s, cities=list(form.getlist("cities")) + extra, regions=list(form.getlist("regions")),
+                         activities=list(form.getlist("activities")),
+                         daily_target=int(form.get("daily_target") or 400), scheduled=bool(form.get("scheduled")),
+                         time=(form.get("time") or "06:00")[:5], user_id=user.id)
+    audit(s, user, "prospecting_config", user, after=P.get_config(s))
+    msg = f"حُفظ الإعداد: الهدف {camp.daily_target} منشأة يوميًا. "
+    msg += (f"التشغيل اليومي مفعّل الساعة {P.get_config(s)['time']} بتوقيت الرياض ويعمل على الخادم ولو أُغلقت اللوحة."
+            if camp.status == "active" else "التشغيل اليومي متوقف؛ يمكنك البحث الآن يدويًا.")
+    if form.get("run_now"):
+        s.flush()
+        n = int(form.get("batch") or 0) or None
+        P.request_run(s, camp.id, n, user.id)
+        msg += " وبدأ البحث الآن على الخادم (يلتقطه خلال دقيقة)."
+    flash(request, msg)
+    return back("/prospecting")
+
+
+@app.post("/prospecting/run")
+def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospecting as P
+    cfg = P.get_config(s)
+    if not cfg.get("campaign_id"):
+        flash(request, "احفظ الإعداد أولًا", "err")
+        return back("/prospecting")
+    req = P.request_run(s, cfg["campaign_id"], batch or None, user.id)
+    flash(request, "بدأ البحث على الخادم؛ تظهر النتائج تباعًا في «عملاء اليوم»." if req.get("by") == user.id and
+          req.get("state") == "pending" else "يوجد بحث قيد التشغيل بالفعل.")
+    return back("/prospecting")
 
 
 # ---------------------------------------------------------------- الشركات
@@ -518,6 +570,43 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
                   operator=operator, signals=signals, sig=sig, source_label=source_label, kind=kind, owner=owner,
                   staff=list(s.scalars(select(User).where(User.role == "rep").order_by(User.name))),
                   test_total=s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0)
+
+
+@app.post("/companies/assign")
+async def companies_bulk_assign(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """إسناد مجموعة منشآت لموظف مبيعات. المنشأة المسندة لموظف آخر لا تُنقل إلا بتأكيد صريح،
+    حتى لا يتواصل موظفان مع المنشأة نفسها."""
+    from ..auth import audit
+    form = await request.form()
+    rep_id = int(form.get("owner_id") or 0)
+    u = s.get(User, rep_id) if rep_id else None
+    if not u or not u.active:
+        flash(request, "اختر موظفًا نشطًا", "err")
+        return back(request.headers.get("referer") or "/companies")
+    reassign = bool(form.get("reassign"))
+    ids = [int(x) for x in form.getlist("company_ids") if str(x).isdigit()]
+    done, skipped, moved = 0, [], 0
+    for c in s.scalars(select(Company).where(Company.id.in_(ids))):
+        if c.owner_id == u.id:
+            continue
+        if c.owner_id and not reassign:
+            skipped.append(f"{c.name} (لدى {c.owner.name})")
+            continue
+        prev = c.owner.name if c.owner else None
+        moved += 1 if prev else 0
+        c.owner_id, c.assigned_at = u.id, now_utc()
+        for t in s.scalars(select(Task).where(Task.company_id == c.id, Task.status == "open")):
+            t.owner_id = u.id
+        log_activity(s, c.id, "assigned", f"أُسندت المنشأة إلى {u.name}",
+                     f"بواسطة {user.name}" + (f" (نُقلت من {prev})" if prev else ""), user_id=user.id)
+        done += 1
+    audit(s, user, "bulk_assign", u, rows=done, moved=moved, skipped=len(skipped))
+    msg = f"أُسندت {done} منشأة إلى {u.name}."
+    if skipped:
+        msg += f" تُركت {len(skipped)} لأنها مسندة لموظف آخر: " + "، ".join(skipped[:5]) + \
+               ("…" if len(skipped) > 5 else "") + " — فعّل «نقل المسند لموظف آخر» إن أردت نقلها."
+    flash(request, msg, "ok" if done else "err")
+    return back(request.headers.get("referer") or "/companies")
 
 
 @app.get("/companies/{cid}", response_class=HTMLResponse)
@@ -613,6 +702,8 @@ def company_action(cid: int, request: Request, action: str = Form(...), note: st
     elif action == "opt_out":
         apply_opt_out(s, c, source="manual", detail=note or f"سجّله {user.name}")
         flash(request, "سُجل طلب إيقاف التواصل واستُبعدت الشركة من الحملات اللاحقة")
+    elif action in ("call_consent", "ai_call") and not settings.voice_calls_enabled:
+        flash(request, "الاتصال الآلي معطّل في هذه المرحلة", "err")
     elif action == "call_consent":
         s.add(Consent(company_id=cid, channel="call", basis="explicit", granted=True, recorded_by=user.id,
                       evidence=note or f"سجّلها {user.name}"))
@@ -842,6 +933,8 @@ def mail_sync(request: Request, user: User = Depends(current_user)):
 
 @app.post("/outreach/run")
 def outreach_run(request: Request, ignore_window: str = Form(""), user: User = Depends(require_manager)):
+    if not settings.auto_outreach_enabled:
+        raise HTTPException(403, "الإرسال التلقائي معطّل في هذه المرحلة")
     from ..outreach import queue_offers, send_due
     with session_scope() as s:
         ids = [c.id for c in s.scalars(select(Campaign).where(Campaign.status == "active",
@@ -883,7 +976,7 @@ def team(request: Request, user: User = Depends(require_manager), s=Depends(get_
     for u in users:
         perf[u.id] = {
             "open": s.scalar(select(func.count(Company.id)).where(Company.owner_id == u.id,
-                                                                  Company.stage.in_(["contacted", "replied", "interested", "meeting"]))) or 0,
+                                                                  Company.stage.in_(["contacted", "offer_sent", "needs_followup", "replied", "interested", "meeting"]))) or 0,
             "tasks": s.scalar(select(func.count(Task.id)).where(Task.owner_id == u.id, Task.status == "open")) or 0,
             "overdue": s.scalar(select(func.count(Task.id)).where(Task.owner_id == u.id, Task.status == "open",
                                                                   Task.due_at < now_utc())) or 0,
@@ -945,6 +1038,8 @@ def settings_page(request: Request, user: User = Depends(require_manager), s=Dep
 
 @app.post("/settings/voice")
 def settings_voice(request: Request, enabled: str = Form(""), user: User = Depends(require_manager)):
+    if not settings.voice_calls_enabled:
+        raise HTTPException(403, "الاتصال الآلي معطّل في هذه المرحلة")
     jobs.put_setting("voice", {"enabled": bool(enabled)})
     flash(request, "حُفظت إعدادات قناة الاتصال")
     return back("/settings")
@@ -1404,7 +1499,9 @@ def _portal_rows(s, u: User, q: str = ""):
                               .order_by(InboundMessage.received_at.desc())) if can(u, "see_replies") else None
         nxt = s.scalar(select(Task).where(Task.company_id == c.id, Task.status == "open").order_by(Task.due_at))
         rows.append({"c": c, "phone": format_phone_display(ph.value) if ph and can(u, "see_phone") else None,
-                     "email": em.value if em and can(u, "see_email") else None, "offer": last_offer, "reply": last_reply,
+                     "email": em.value if em and can(u, "see_email") else None,
+                     "phone_src": ph.source_url if ph and can(u, "see_phone") else None,
+                     "email_src": em.source_url if em and can(u, "see_email") else None, "offer": last_offer, "reply": last_reply,
                      "next": nxt})
     return rows
 
@@ -1428,14 +1525,16 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
     ws = wb.active
     ws.title = "عملائي"
     ws.sheet_view.rightToLeft = True
-    head = ["الشركة", "النشاط", "المدينة"] + (["الهاتف"] if can(user, "see_phone") else []) + \
-        (["البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
+    head = ["الشركة", "النشاط", "المدينة", "الحالة", "تاريخ إرسال العرض (المسجّل)"] + \
+        (["الهاتف", "مصدر الهاتف"] if can(user, "see_phone") else []) + \
+        (["البريد", "مصدر البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
         (["آخر رد", "نوع الرد"] if can(user, "see_replies") else []) + ["المتابعة القادمة", "موعدها"]
     ws.append(head)
     for r in _portal_rows(s, user, q):
         c = r["c"]
-        row = [c.name, c.activity, c.city] + ([r["phone"] or ""] if can(user, "see_phone") else []) + \
-            ([r["email"] or ""] if can(user, "see_email") else [])
+        row = [c.name, c.activity, c.city, STAGE_LABELS.get(c.stage, c.stage), fmt(c.offer_sent_at) if c.offer_sent_at else ""] + \
+            ([r["phone"] or "", r["phone_src"] or ""] if can(user, "see_phone") else []) + \
+            ([r["email"] or "", r["email_src"] or ""] if can(user, "see_email") else [])
         if can(user, "see_offers"):
             row += [r["offer"].subject if r["offer"] else "", fmt(r["offer"].sent_at) if r["offer"] else ""]
         if can(user, "see_replies"):
@@ -1495,13 +1594,23 @@ def portal_note(cid: int, request: Request, note: str = Form(...), user: User = 
 
 @app.post("/portal/companies/{cid}/status")
 def portal_status(cid: int, request: Request, stage: str = Form(""), next_title: str = Form(""), next_at: str = Form(""),
-                  done_task: Optional[int] = Form(None), user: User = Depends(staff_user), s=Depends(get_db)):
+                  done_task: Optional[int] = Form(None), offer_at: str = Form(""), offer_note: str = Form(""),
+                  user: User = Depends(staff_user), s=Depends(get_db)):
     _require(user, "update_status")
     c = _portal_company(s, user, cid)
     changes = []
-    if stage in ("contacted", "replied", "interested", "meeting", "won", "lost") and stage != c.stage:
+    if stage in ("contacted", "offer_sent", "needs_followup", "replied", "interested", "meeting", "won", "lost") \
+            and stage != c.stage:
         changes.append(f"الحالة: {STAGE_LABELS.get(c.stage)} ← {STAGE_LABELS.get(stage)}")
         c.stage = stage
+    if stage in ("contacted", "offer_sent", "needs_followup") and not c.contacted_at:
+        c.contacted_at, c.contacted_by_id = now_utc(), user.id
+    if stage == "offer_sent":
+        # تاريخ الإرسال كما سجّله الموظف (تواصل بنفسه من بريده أو هاتفه)
+        when = riyadh_to_utc(datetime.fromisoformat(offer_at)) if offer_at else now_utc()
+        c.offer_sent_at, c.offer_sent_by_id = when, user.id
+        c.offer_note = (offer_note or "").strip()[:300] or c.offer_note
+        changes.append(f"أُرسل عرض بتاريخ {fmt(when)}" + (f" — {c.offer_note}" if c.offer_note else ""))
     if done_task:
         t = s.get(Task, done_task)
         if t and t.company_id == cid and t.status == "open":
@@ -1524,6 +1633,8 @@ def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_use
     from ..outreach import active_account, check_eligibility, compose, dedupe_key, ensure_email_basis, offer_for, \
         render_html, render_text, send_due
     _require(user, "send_offer")
+    if not settings.auto_outreach_enabled:
+        raise HTTPException(403, "الإرسال من المنصة معطّل؛ أرسل العرض بنفسك ثم سجّل «أُرسل عرض»")
     c = _portal_company(s, user, cid)
     offer = offer_for(c, s)
     acct = active_account(s)
@@ -1579,6 +1690,8 @@ def portal_reports(request: Request, user: User = Depends(staff_user), s=Depends
 
 @app.post("/webhooks/voice")
 async def voice_webhook(request: Request):
+    if not settings.voice_calls_enabled:
+        raise HTTPException(404)
     from ..voice import handle_post_call, verify_webhook
     body = await request.body()
     if not verify_webhook(body, request.headers.get("elevenlabs-signature"), settings.voice_webhook_secret):

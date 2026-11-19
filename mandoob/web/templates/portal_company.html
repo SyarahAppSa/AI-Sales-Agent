@@ -3,19 +3,23 @@
 <div class="row"><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
 <div class="grid g2"><div>
 <div class="card"><h2>بيانات العميل</h2>
-{% if can('see_phone') %}{% for ct in c.contacts if ct.kind == 'phone' and ct.verified %}<div class="kv"><span class="k">الهاتف</span><span class="ltr">{{ phone(ct.value) }}</span></div>{% endfor %}{% endif %}
-{% if can('see_email') %}{% for ct in c.contacts if ct.kind == 'email' and ct.verified %}<div class="kv"><span class="k">البريد</span><span class="ltr">{{ ct.value }}</span></div>{% endfor %}{% endif %}
+{% set ph = c.primary('phone') %}{% set em = c.primary('email') %}
+{% if can('see_phone') and ph %}<div class="kv"><span class="k">الهاتف</span><span><span class="ltr">{{ phone(ph.value) }}</span> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ ph.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ ph.source_url }}" target="_blank" rel="noopener" class="ltr">{{ ph.source_url.split('//')[-1][:50] }}</a></div>{% endif %}
+{% if can('see_email') and em %}<div class="kv" style="margin-top:6px"><span class="k">البريد</span><span><span class="ltr">{{ em.value }}</span> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ em.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ em.source_url }}" target="_blank" rel="noopener" class="ltr">{{ em.source_url.split('//')[-1][:50] }}</a></div>{% endif %}
+{% if c.website %}<div class="small" style="margin-top:6px">الموقع: <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain or c.website }}</a></div>{% endif %}
+{% if c.offer_sent_at %}<p class="small"><span class="pill ok">أُرسل عرض</span> {{ fmt(c.offer_sent_at) }}{% if c.offer_sent_by %} — {{ c.offer_sent_by.name }}{% endif %}{% if c.offer_note %} — {{ c.offer_note }}{% endif %}</p>{% endif %}
 <p class="small" style="margin-top:8px"><b>سبب الترشيح:</b> {{ mask(c.fit_reason) }}</p>
 <p class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</p></div>
 {% if can('see_offers') %}<div class="card"><h2>العروض المرسلة</h2>{% for m in msgs %}<div class="small" style="border-bottom:1px solid var(--line);padding:6px 0"><a href="/portal/messages/{{ m.id }}">{{ m.subject }}</a> — {{ fmt(m.sent_at, False) if m.sent_at else '' }} <span class="pill">{{ STATUS_LABELS.get(m.status) }}</span></div>{% else %}<p class="muted small">لا يوجد.</p>{% endfor %}</div>{% endif %}
 <div class="card"><h2>الإجراءات</h2>
 {% if can('add_note') %}<form method="post" action="/portal/companies/{{ c.id }}/note" class="field"><label>ملاحظة</label><div class="row"><input name="note" required><button class="btn" style="flex:0 0 auto">إضافة</button></div></form>{% endif %}
 {% if can('update_status') %}<form method="post" action="/portal/companies/{{ c.id }}/status">
-<div class="row"><div><label>حالة العميل</label><select name="stage"><option value="">بدون تغيير</option>{% for k in ['contacted','replied','interested','meeting','won','lost'] %}<option value="{{ k }}">{{ STAGE_LABELS[k] }}</option>{% endfor %}</select></div>
+<div class="row"><div><label>حالة العميل</label><select name="stage" onchange="document.getElementById('offerbox').style.display=this.value=='offer_sent'?'flex':'none'"><option value="">بدون تغيير</option>{% for k in ['contacted','offer_sent','needs_followup','interested','won','lost'] %}<option value="{{ k }}">{{ STAGE_LABELS[k] }}</option>{% endfor %}</select></div>
 {% if tasks %}<div><label>إنجاز متابعة</label><select name="done_task"><option value="">—</option>{% for t in tasks %}<option value="{{ t.id }}">{{ t.title.split(' — ')[0] }} ({{ fmt(t.due_at, False) }})</option>{% endfor %}</select></div>{% endif %}</div>
+<div class="row" id="offerbox" style="display:none"><div><label>تاريخ إرسال العرض (الرياض) — فارغ = الآن</label><input type="datetime-local" name="offer_at"></div><div><label>العرض المرسل (اختياري)</label><input name="offer_note" placeholder="مثل: عرض تأجير ٥ سيارات عبر البريد"></div></div>
 <div class="row"><div><label>المتابعة القادمة</label><input name="next_title" placeholder="مثل: اتصال لتأكيد الاحتياج"></div><div><label>موعدها (الرياض)</label><input type="datetime-local" name="next_at"></div></div>
 <button class="btn p" style="margin-top:8px">تحديث</button></form>{% endif %}
-{% if can('send_offer') %}<form method="post" action="/portal/companies/{{ c.id }}/send-offer" style="margin-top:10px" onsubmit="return confirm('إرسال العرض المعتمد لهذا العميل؟')"><button class="btn">إرسال العرض المعتمد</button></form>{% endif %}
+{% if outreach_on and can('send_offer') %}<form method="post" action="/portal/companies/{{ c.id }}/send-offer" style="margin-top:10px" onsubmit="return confirm('إرسال العرض المعتمد لهذا العميل؟')"><button class="btn">إرسال العرض المعتمد</button></form>{% endif %}
 {% if not (can('add_note') or can('update_status') or can('send_offer')) %}<p class="muted small">صلاحيتك: الاطلاع فقط.</p>{% endif %}
 </div></div>
 <div class="card"><h2>السجل</h2><ul class="timeline">{% for a in timeline %}<li><div class="k">{{ fmt(a.at) }}</div><b>{{ mask(a.title) }}</b>{% if a.details %}<pre>{{ mask(a.details) }}</pre>{% endif %}</li>{% endfor %}</ul></div>

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .models import Company, User
 
-OPEN_STAGES = ("new", "contacted", "replied", "interested", "meeting")
+OPEN_STAGES = ("new", "contacted", "offer_sent", "needs_followup", "replied", "interested", "meeting")
 
 
 def _load(s: Session, user_id: int) -> int:

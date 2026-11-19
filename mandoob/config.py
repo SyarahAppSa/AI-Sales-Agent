@@ -66,6 +66,13 @@ class Settings:
     elevenlabs_phone_number_id: str = field(default_factory=lambda: _env("ELEVENLABS_PHONE_NUMBER_ID"))
     voice_webhook_secret: str = field(default_factory=lambda: _env("VOICE_WEBHOOK_SECRET"))
 
+    # مهمة المنصة الحالية: البحث وجمع البيانات فقط — الفريق يتواصل بنفسه.
+    # الاتصال الآلي والإرسال التلقائي للعروض والإيميلات التسويقية محفوظان في الكود ومعطّلان افتراضيًا.
+    # التفعيل مستقبلًا بقرار الإدارة: ENABLE_VOICE_CALLS=1 و/أو ENABLE_AUTO_OUTREACH=1 في إعدادات الخادم.
+    # (كود الدخول للموظفين يُرسل بالبريد دائمًا ولا يتأثر.)
+    voice_calls_enabled: bool = field(default_factory=lambda: _bool("ENABLE_VOICE_CALLS", False))
+    auto_outreach_enabled: bool = field(default_factory=lambda: _bool("ENABLE_AUTO_OUTREACH", False))
+
     # تشغيل
     run_scheduler_in_web: bool = field(default_factory=lambda: _bool("RUN_SCHEDULER_IN_WEB", False))
     admin_email: str = field(default_factory=lambda: _env("ADMIN_EMAIL", "admin@sayaraup.local"))
