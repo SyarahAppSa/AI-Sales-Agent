@@ -338,3 +338,75 @@ def weekly_segments(s: Session, day: date | None = None) -> dict:
     totals["meetings_per_100"] = round(100 * totals["meetings"] / totals["contacted"], 1) if totals["contacted"] else 0.0
     return {"start": start, "end": end - timedelta(days=1), "rows": ordered, "leads": leads, "split": split,
             "totals": totals}
+
+
+
+# ---------------------------------------------------------------- عملاء اليوم
+
+def todays_customers(s: Session, user: User, day: date | None = None, campaign_id: int | None = None) -> dict:
+    """جدول «عملاء اليوم»: كل عميل جديد اكتُشف أو اكتمل اليوم، مع مصادر بياناته."""
+    from .models import CompanySource
+    day = day or riyadh_today()
+    start, end = riyadh_day_bounds_utc(day)
+    q = scope_companies(select(Company), user).where(
+        ((Company.first_found_at >= start) & (Company.first_found_at < end)) | (Company.counted_on == day),
+        Company.data_status.in_(["complete", "incomplete"]))
+    if campaign_id:
+        q = q.where(Company.campaign_id == campaign_id)
+    rows = []
+    for c in s.scalars(q.order_by(Company.data_status, Company.fit_score.desc(), Company.id)):
+        ph, em = c.primary("phone"), c.primary("email")
+        links = []
+        for u in [c.fit_evidence_url] + [ct.source_url for ct in c.contacts if ct.verified] + [x.url for x in c.sources]:
+            if u and u.startswith("http") and u not in links:
+                links.append(u)
+        rows.append({"c": c, "phone": ph, "email": em, "links": links[:6],
+                     "complete": c.data_status == "complete" and c.parent_id is None,
+                     "branch": c.parent_id is not None})
+    runs_q = select(DiscoveryRun).where(DiscoveryRun.run_date == day)
+    if campaign_id:
+        runs_q = runs_q.where(DiscoveryRun.campaign_id == campaign_id)
+    runs = list(s.scalars(runs_q))
+    target_q = select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")
+    if campaign_id:
+        target_q = select(Campaign.daily_target).where(Campaign.id == campaign_id)
+    complete_today = sum(1 for r in rows if r["complete"] and r["c"].counted_on == day)
+    cost = round(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(CostEntry.day == day)) or 0, 2)
+    return {"day": day, "rows": rows, "target": s.scalar(target_q) or 0, "complete": complete_today,
+            "incomplete": sum(1 for r in rows if r["c"].data_status == "incomplete"),
+            "duplicates": sum(r.duplicate_count or 0 for r in runs), "rejected": sum(r.rejected_count or 0 for r in runs),
+            "runs": runs, "running": any(r.status == "running" for r in runs), "cost": cost,
+            "cost_per": round(cost / complete_today, 3) if complete_today else None}
+
+
+def export_today_xlsx(t: dict) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "عملاء اليوم"
+    ws.sheet_view.rightToLeft = True
+    ws.append([f"عملاء اليوم — {t['day']}", f"مكتملون جدد: {t['complete']} من {t['target']}",
+               f"قيد الاستكمال: {t['incomplete']}", f"مكررات مستبعدة: {t['duplicates']}"])
+    ws.append([])
+    ws.append(["اسم العميل", "نوع النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
+               "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر"])
+    for cell in ws[3]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="6941C6")
+    from .companies import OPERATOR_LABELS
+    for r in t["rows"]:
+        c = r["c"]
+        ws.append([c.name, c.activity, c.city, format_phone_display(r["phone"].value) if r["phone"] else "",
+                   r["phone"].source_url if r["phone"] else "", r["email"].value if r["email"] else "",
+                   r["email"].source_url if r["email"] else "", c.fit_reason, c.fit_evidence_url or "",
+                   OPERATOR_LABELS.get(c.operator_status, ""), "مكتمل" if r["complete"] else
+                   ("فرع" if r["branch"] else "قيد الاستكمال"), "\n".join(r["links"])])
+    for col, w in zip("ABCDEFGHIJKL", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60]):
+        ws.column_dimensions[col].width = w
+    for row in ws.iter_rows(min_row=4):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

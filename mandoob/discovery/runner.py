@@ -17,11 +17,19 @@ from ..normalize import domain_of
 from ..timeutil import now_utc, riyadh_day_bounds_utc, riyadh_today
 from .base import Candidate, SourceError, SourceUnavailable
 from .crawler import Crawler, SiteResult
+from .agent import AgentSource
 from .sources import AISignalsSource, AIWebSearchSource, BraveSearchSource, GooglePlacesSource, find_official_website
 
 log = logging.getLogger(__name__)
 
-SOURCE_ORDER = ["google_places", "web_search", "ai_search", "signals"]
+SOURCE_ORDER = ["ai_agent", "google_places", "web_search", "ai_search", "signals"]
+
+
+def known_names() -> list[str]:
+    """أسماء ونطاقات وجدناها مؤخرًا — تُعطى للوكيل ليتجنبها فيأتي بنتائج جديدة."""
+    with session_scope() as s:
+        rows = s.execute(select(Company.name, Company.domain).order_by(Company.id.desc()).limit(200))
+        return [d or n for n, d in rows]
 
 
 def default_sources() -> dict:
@@ -30,7 +38,8 @@ def default_sources() -> dict:
             return [d for (d,) in s.execute(select(Company.domain).where(Company.domain.isnot(None))
                                             .order_by(Company.id.desc()).limit(300))]
     return {"google_places": GooglePlacesSource(), "web_search": BraveSearchSource(),
-            "ai_search": AIWebSearchSource(known_domains), "signals": AISignalsSource()}
+            "ai_search": AIWebSearchSource(known_domains), "signals": AISignalsSource(),
+            "ai_agent": AgentSource(known_names)}
 
 
 def _count_today(s: Session, category_id: int, day: date) -> int:
@@ -47,7 +56,8 @@ def _log(run: DiscoveryRun, msg: str) -> None:
 
 def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources: dict | None = None,
                            crawler: Crawler | None = None, max_candidates_factor: int = 6,
-                           on_progress: Callable[[str], None] | None = None) -> int:
+                           on_progress: Callable[[str], None] | None = None, max_new: int | None = None) -> int:
+    """max_new: حد الدفعة (مثل 20 عميلًا جديدًا مكتملًا) — للتجربة أو التشغيل على دفعات."""
     """يشغّل (أو يستأنف) اكتشاف اليوم لحملة واحدة ويعيد رقم التشغيل."""
     day = day or riyadh_today()
     sources = sources if sources is not None else default_sources()
@@ -76,6 +86,11 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
 
     disabled: dict[str, str] = {}
     exhausted: dict[int, bool] = {}
+    with session_scope() as s:
+        baseline = sum(_count_today(s, cid, day) for cid, *_ in cats)
+
+    def batch_full(s) -> bool:
+        return max_new is not None and sum(_count_today(s, cid, day) for cid, *_ in cats) - baseline >= max_new
 
     def process_category(cat_id: int, quota: int, cities: list[str], queries: list[str]) -> None:
         budget = quota * max_candidates_factor
@@ -84,7 +99,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             for city in cities:
                 for qi, query in enumerate(queries):
                     with session_scope() as s:
-                        if _count_today(s, cat_id, day) >= quota:
+                        if _count_today(s, cat_id, day) >= quota or batch_full(s):
                             return
                     if src_name in disabled or src_name not in sources:
                         break
@@ -95,6 +110,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                     if state.get("done"):
                         continue
                     try:
+                        # نتائج نداء الوكيل الواحد دُفع ثمنها مسبقًا: تُحفظ كلها حتى لو اكتملت الدفعة في منتصفها
+                        whole_call = src_name == "ai_agent"
+                        stop = False
                         for cand in sources[src_name].search(query, city, state):
                             seen_candidates += 1
                             _handle_candidate(run_id, cat_id, cand, crawler, day)
@@ -103,10 +121,14 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                                 cp = dict(run.checkpoint or {})
                                 cp[key] = dict(state)
                                 run.checkpoint = cp
-                                if _count_today(s, cat_id, day) >= quota:
-                                    return
-                            if seen_candidates >= budget:
+                                if _count_today(s, cat_id, day) >= quota or batch_full(s):
+                                    stop = True
+                            if stop and not whole_call:
                                 return
+                            if seen_candidates >= budget and not whole_call:
+                                return
+                        if stop or seen_candidates >= budget:
+                            return
                         state["done"] = True
                     except SourceUnavailable as e:
                         disabled[src_name] = str(e)
@@ -129,12 +151,15 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         exhausted[cat_id] = True
 
     for cat_id, label, quota, cities, queries in cats:
+        with session_scope() as s:
+            if batch_full(s):
+                break
         if on_progress:
             on_progress(f"فئة {label}")
         process_category(cat_id, quota, cities, queries)
 
     # تعويض النقص من فئة أخرى (إن سُمح بذلك)
-    if allow_backfill:
+    if allow_backfill and max_new is None:
         with session_scope() as s:
             done_total = sum(_count_today(s, cid, day) for cid, *_ in cats)
         gap = total_target - done_total
@@ -163,8 +188,12 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             total += got
             per_cat[str(cat_id)] = {"label": label, "quota": quota, "complete": got}
             if got < quota:
-                why = "استُنفدت عبارات البحث والمصادر المتاحة" if exhausted.get(cat_id) else \
-                    "بلغ الحد الأقصى للمرشحين المسموح بفحصهم"
+                if max_new is not None and not exhausted.get(cat_id):
+                    why = f"تشغيل على دفعات: توقف البحث بعد دفعة من {max_new} عملاء جدد كما طُلب"
+                elif exhausted.get(cat_id):
+                    why = "استُنفدت عبارات البحث والمصادر المتاحة"
+                else:
+                    why = "بلغ الحد الأقصى للمرشحين المسموح بفحصهم"
                 reasons.append(f"{label}: {got} من {quota} ({why})")
         d0, d1 = riyadh_day_bounds_utc(day)
         incomplete_today = s.scalar(select(func.count(Company.id)).where(
@@ -200,12 +229,18 @@ def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawle
         # فحص سريع للتكرار قبل الزحف لتوفير الوقت والتكلفة
         pre = find_existing(s, cand, cand.contacts)
         site: SiteResult | None = None
-        if pre is None and cand.website:
+        kinds = {fc.kind for fc in cand.contacts}
+        if pre is None and cand.website and not (cand.prequalified and kinds >= {"phone", "email"}):
             try:
                 site = crawler.crawl(cand.website)
             except Exception as e:  # الزاحف لا يوقف التشغيل
                 site = SiteResult(website=cand.website, error=str(e)[:200])
-        fit = assess_fit(cand, site, cat, camp.exclusions or [], campaign_id=camp.id) if pre is None else None
+        if pre is not None:
+            fit = None
+        elif cand.prequalified:
+            fit = _prequalified_fit(cand, site, cat, camp.exclusions or [])
+        else:
+            fit = assess_fit(cand, site, cat, camp.exclusions or [], campaign_id=camp.id)
         if fit is None:
             from ..companies import FitResult
             fit = FitResult(True, pre.fit_reason, pre.fit_evidence_url, pre.fit_score, pre.activity)
@@ -230,6 +265,26 @@ def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawle
             from ..assignment import assign_owner
             assign_owner(s, res.company)
         return res.outcome
+
+
+def _prequalified_fit(cand: Candidate, site, cat: Category, exclusions: list[str]):
+    """مرشح من «البحث الآلي»: الوكيل قرأ الصفحة ووثّق دليل استخدام المركبات؛ لا حاجة لنداء تأهيل ثانٍ."""
+    from ..companies import BROKER_WORDS, FitResult
+    from ..normalize import normalize_arabic
+    from ..segments import detect_operator, detect_signals
+    from ..targeting import SECTORS
+    text = normalize_arabic(f"{cand.name} {cand.activity} {cand.fit_hint}").lower()
+    if exclusions and any(normalize_arabic(w) in text for w in BROKER_WORDS):
+        return FitResult(False, "", None, 0, cand.activity, "نشاط وساطة (مستبعد)")
+    pages = site.pages if site else []
+    op = detect_operator(pages) if pages else {"status": cand.operator_status or "unknown", "carrier": None,
+                                               "evidence": "", "url": None}
+    if op["status"] == "unknown" and cand.operator_status in ("self", "contracted"):
+        op = {"status": cand.operator_status, "carrier": None, "evidence": cand.phrase or "", "url": cand.evidence_url}
+    return FitResult(True, cand.fit_hint, cand.evidence_url or cand.source_url, 0.75 if cand.phrase else 0.6,
+                     cand.activity or cat.label, phrase=cand.phrase, operator=op,
+                     signals=detect_signals(pages) if pages else [],
+                     decision_unit=SECTORS.get(cat.sector_key, {}).get("decision_unit"))
 
 
 def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> int:
@@ -266,6 +321,13 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
                 site = SiteResult(website=c.website)
             added = sum(_add_contact(s, c, fc) for fc in site.contacts)
             _refresh_preferred(c)
+            if not is_complete(c) and c.enrich_attempts <= 3:
+                # البحث في مصادر أخرى عن البيان الناقص (يتحقق الوكيل من ظهوره نصًا في الصفحة)
+                from ..companies import missing_fields
+                from .agent import agent_complete
+                for fc in agent_complete(c.name, c.city, c.website, missing_fields(c)):
+                    added += _add_contact(s, c, fc)
+                _refresh_preferred(c)
             if is_complete(c):
                 c.data_status = "complete"
                 c.completed_at = now_utc()

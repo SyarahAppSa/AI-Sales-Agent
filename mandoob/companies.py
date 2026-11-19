@@ -370,7 +370,7 @@ def upsert_candidate(s: Session, cand: Candidate, site: SiteResult | None, categ
     return UpsertResult("new_incomplete", company, "ينقصها: " + "، ".join(missing_fields(company)))
 
 
-OPERATOR_LABELS = {"self": "تشغّل مركباتها بنفسها", "contracted": "تتعاقد مع ناقل", "unknown": "المشغّل غير معروف"}
+OPERATOR_LABELS = {"self": "تشغّل مركباتها بنفسها", "contracted": "تتعاقد مع ناقل", "unknown": "مشغّل المركبات غير مؤكد"}
 SIGNAL_RECENT_DAYS = 180
 
 

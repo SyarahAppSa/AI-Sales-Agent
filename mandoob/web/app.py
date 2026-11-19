@@ -869,6 +869,78 @@ def notifications(request: Request, user: User = Depends(current_user), s=Depend
     return page
 
 
+# ---------------------------------------------------------------- البحث الآلي عن العملاء
+
+AUTO_EXAMPLE = ("ابحث لي يوميًا في الرياض وجدة والدمام عن المنشآت وأصحاب الأنشطة الذين يستخدمون سيارات في عملهم. "
+                "اجمع لي اسم كل عميل، ورقم التواصل، والبريد الإلكتروني، والمدينة، والدليل الذي وجدت منه أنه يستخدم مركبات.")
+
+
+@app.get("/auto-search", response_class=HTMLResponse)
+def auto_search_page(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    camps = list(s.scalars(select(Campaign).where(Campaign.name.like("البحث الآلي%")).order_by(Campaign.id.desc())))
+    runs = {c.id: s.scalar(select(DiscoveryRun).where(DiscoveryRun.campaign_id == c.id)
+                           .order_by(DiscoveryRun.id.desc())) for c in camps}
+    return render(request, "auto_search.html", user, s, camps=camps, runs=runs, example=AUTO_EXAMPLE,
+                  ai_ready=settings.ai_enabled)
+
+
+@app.post("/auto-search")
+def auto_search_create(request: Request, text: str = Form(...), daily_target: int = Form(400),
+                       user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..discovery.agent import plan_queries
+    parsed = parse_request(text, daily_target)
+    cities = list(dict.fromkeys(c for cat in parsed["categories"] for c in cat["cities"]))
+    camp = Campaign(name="البحث الآلي — " + "، ".join(cities[:4]), request_text=text, status="active",
+                    daily_target=parsed["daily_target"], exclusions=parsed["exclusions"],
+                    exclude_existing_customers=parsed["exclude_existing_customers"], send_enabled=False,
+                    created_by=user.id, approved_at=now_utc())
+    s.add(camp)
+    s.flush()
+    for c in parsed["categories"]:
+        queries = plan_queries(text if len(parsed["categories"]) == 1 else c["label"], c["cities"])
+        if len(parsed["categories"]) > 1:
+            queries = list(dict.fromkeys(c["keywords_ar"] + queries))
+        s.add(Category(campaign_id=camp.id, sector_key=c["sector_key"], label=c["label"], cities=c["cities"],
+                       keywords_ar=queries, keywords_en=[q for q in c["keywords_en"] if q not in queries],
+                       priority=c["priority"], priority_signals=c["priority_signals"], quota=c["quota"],
+                       is_experiment=c.get("is_experiment", False)))
+    flash(request, "جُهّز البحث الآلي. اضغط «ابحث الآن» لأول دفعة، وسيعمل يوميًا في وقت الاكتشاف المحدد.")
+    return back(f"/auto-search#camp-{camp.id}")
+
+
+@app.post("/auto-search/{cid}/run")
+def auto_search_run(cid: int, request: Request, batch: int = Form(20), user: User = Depends(require_manager),
+                    s=Depends(get_db)):
+    from ..discovery.runner import run_campaign_discovery
+    camp = s.get(Campaign, cid) or _404()
+    if camp.status != "active":
+        flash(request, "الحملة موقوفة", "err")
+        return back("/auto-search")
+    _bg(run_campaign_discovery, cid, max_new=max(1, min(batch, 400)))
+    flash(request, f"بدأ البحث الآلي على الخادم (دفعة حتى {batch} عميل مكتمل جديد). تظهر النتائج هنا تباعًا.")
+    return back(f"/today?campaign={cid}")
+
+
+@app.get("/today", response_class=HTMLResponse)
+def today_page(request: Request, day: str = "", campaign: Optional[int] = None, user: User = Depends(current_user),
+               s=Depends(get_db)):
+    from ..reports import todays_customers
+    d = date.fromisoformat(day) if day else riyadh_today()
+    t = todays_customers(s, user, d, campaign)
+    return render(request, "today.html", user, s, t=t, campaign=campaign, qs=str(request.query_params),
+                  camps=list(s.scalars(select(Campaign).order_by(Campaign.id.desc()))))
+
+
+@app.get("/today.xlsx")
+def today_xlsx(request: Request, day: str = "", campaign: Optional[int] = None, user: User = Depends(current_user),
+               s=Depends(get_db)):
+    from ..reports import export_today_xlsx, todays_customers
+    d = date.fromisoformat(day) if day else riyadh_today()
+    data = export_today_xlsx(todays_customers(s, user, d, campaign))
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=customers-{d.isoformat()}.xlsx"})
+
+
 # ---------------------------------------------------------------- اطلب عرضًا لأسطولك (صفحة عامة)
 
 @app.get("/request-quote", response_class=HTMLResponse)

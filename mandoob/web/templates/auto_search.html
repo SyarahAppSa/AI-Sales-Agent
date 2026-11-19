@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>البحث الآلي عن العملاء</h1><p class="sub" style="margin:0">حدّد الفئة والمنطقة مرة واحدة، ويبحث الذكاء الاصطناعي بنفسه كل يوم ويعود بقائمة العملاء وأرقامهم وإيميلاتهم ومصدر كل معلومة.</p></div></div>
+{% if not ai_ready %}<div class="flash err">البحث الآلي يحتاج مفتاح Claude على الخادم (MANDOOB_ANTHROPIC_API_KEY). بدونه تعمل المصادر الأخرى فقط (خرائط جوجل ومحرك البحث) إن كانت مفاتيحها مضبوطة.</div>{% endif %}
+{% if user.role in ('admin','manager') %}
+<div class="card">
+<form method="post" action="/auto-search">
+  <div class="field"><label>من تستهدف وأين؟</label><textarea name="text" rows="4" required>{{ example }}</textarea></div>
+  <div class="row"><div style="flex:0 0 220px"><label>الهدف اليومي (عميل مكتمل)</label><input type="number" name="daily_target" value="400" min="1"></div>
+  <div style="flex:0 0 auto"><button class="btn p">جهّز البحث الآلي</button></div></div>
+  <p class="small muted" style="margin:10px 0 0">تحوّل المنصة وصفك إلى عشرات عبارات البحث بالعربية والإنجليزية لكل مدينة (صيانة متنقلة، توصيل وتركيب، توزيع مبرد، نقل موظفين، تأجير معدات مع النقل، أدلة الناقلين والمصانع، قوائم العارضين، إعلانات التوسع والتوظيف)، ثم يتتبع الوكيل كل نتيجة حتى صفحة التواصل.</p>
+</form></div>
+{% endif %}
+{% for c in camps %}{% set r = runs[c.id] %}
+<div class="card" id="camp-{{ c.id }}">
+  <div class="top" style="padding:0;min-height:0;margin-bottom:8px"><div><h2 style="margin:0">{{ c.name }}</h2>
+  <p class="small muted" style="margin:4px 0 0">{{ c.request_text }}</p></div>
+  {% if user.role in ('admin','manager') %}<form method="post" action="/auto-search/{{ c.id }}/run" class="row" style="align-items:center">
+    <input type="number" name="batch" value="20" min="1" max="400" style="width:90px">
+    <button class="btn p">{{ 'دفعة جديدة' if r else 'ابحث الآن' }}</button></form>{% endif %}</div>
+  <div class="grid g4">
+    <div class="stat"><div class="l">الهدف اليومي</div><div class="v">{{ c.daily_target }}</div></div>
+    <div class="stat"><div class="l">المدن</div><div style="font-weight:700">{{ (c.categories|map(attribute='cities')|sum(start=[]))|unique|join('، ') }}</div></div>
+    <div class="stat"><div class="l">عبارات البحث المخططة</div><div class="v">{{ c.categories|map(attribute='keywords_ar')|map('length')|sum + c.categories|map(attribute='keywords_en')|map('length')|sum }}</div></div>
+    <div class="stat"><div class="l">آخر تشغيل</div><div style="font-weight:700">{% if r %}{{ {'running':'قيد التشغيل…','done':'اكتمل الهدف','partial':'جزئي','failed':'فشل'}[r.status] }} — {{ r.complete_count }} مكتمل{% else %}لم يبدأ{% endif %}</div></div>
+  </div>
+  <details style="margin-top:10px"><summary>عبارات البحث</summary>
+  <div class="small" style="margin-top:6px">{% for cat in c.categories %}<b>{{ cat.label }}:</b> {{ (cat.keywords_ar + cat.keywords_en)|join(' · ') }}<br>{% endfor %}</div></details>
+  <p class="small" style="margin:10px 0 0"><a href="/today?campaign={{ c.id }}">عرض «عملاء اليوم» لهذا البحث</a> · <a href="/targets/{{ c.id }}">تعديل الإعدادات والحصص</a></p>
+</div>{% endfor %}
+{% endblock %}

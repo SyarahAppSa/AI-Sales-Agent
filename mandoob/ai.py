@@ -36,7 +36,8 @@ def client():
         raise AIUnavailable("ANTHROPIC_API_KEY غير مضبوط")
     if _client is None:
         import anthropic
-        _client = anthropic.Anthropic(api_key=settings.anthropic_api_key, max_retries=3, timeout=300)
+        _client = anthropic.Anthropic(api_key=settings.anthropic_api_key, base_url=settings.anthropic_base_url,
+                                      max_retries=3, timeout=600)
     return _client
 
 
@@ -108,6 +109,61 @@ def ai_json(system: str, prompt: str, schema: dict, *, web_search: bool = False,
             start, end = raw.find("{"), raw.rfind("}")
             if start >= 0 and end > start:
                 return json.loads(raw[start:end + 1])
+            raise AIUnavailable("استجابة غير صالحة")
+    raise AIUnavailable("لم يكتمل البحث")
+
+
+def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, max_fetches: int = 20,
+             note: str = "agent", campaign_id: int | None = None) -> tuple[dict, list, int]:
+    """نداء وكيل بأداتي البحث وقراءة الصفحات. يعيد (JSON، كل كتل الاستجابة عبر الجولات، عدد عمليات البحث).
+
+    الكتل تُعاد كاملة ليتحقق المستدعي أن كل هاتف/بريد ظهر نصًا في صفحة قرأها الوكيل فعلًا."""
+    import anthropic
+
+    c = client()
+    model = settings.ai_agent_model or settings.ai_model
+    tools = [
+        {"type": settings.ai_search_tool, "name": "web_search", "max_uses": max_searches,
+         "user_location": {"type": "approximate", "country": "SA", "timezone": "Asia/Riyadh"}},
+        {"type": settings.ai_fetch_tool, "name": "web_fetch", "max_uses": max_fetches, "max_content_tokens": 12000},
+    ]
+    messages: list[dict] = [{"role": "user", "content": prompt}]
+    all_blocks: list = []
+    searches = 0
+    for _ in range(8):  # جولات pause_turn للأدوات الخادمية
+        try:
+            with c.beta.messages.stream(
+                model=model, max_tokens=32000, system=system, messages=messages, tools=tools,
+                output_config={"effort": settings.ai_effort, "format": {"type": "json_schema", "schema": schema}},
+                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+            ) as stream:
+                resp = stream.get_final_message()
+        except anthropic.RateLimitError as e:
+            raise AIUnavailable(f"تجاوز حد الطلبات: {e}") from e
+        except anthropic.APIStatusError as e:
+            raise AIUnavailable(f"خطأ من خدمة الذكاء الاصطناعي ({e.status_code}): {str(e)[:200]}") from e
+        except anthropic.APIConnectionError as e:
+            raise AIUnavailable("تعذر الاتصال بخدمة الذكاء الاصطناعي") from e
+        all_blocks.extend(resp.content)
+        st = getattr(resp.usage, "server_tool_use", None)
+        searches += (getattr(st, "web_search_requests", 0) or 0) if st else 0
+        _record_cost(resp.usage, 0, campaign_id, note)
+        if resp.stop_reason == "pause_turn":
+            messages = [messages[0], {"role": "assistant", "content": resp.content}]
+            continue
+        if resp.stop_reason == "refusal":
+            raise AIUnavailable("رفض النموذج الطلب")
+        _record_cost(None, searches, campaign_id, note + ":searches")
+        texts = [b.text for b in resp.content if getattr(b, "type", "") == "text"]
+        if not texts:
+            raise AIUnavailable("لا يوجد نص في الاستجابة")
+        raw = texts[-1]
+        try:
+            return json.loads(raw), all_blocks, searches
+        except json.JSONDecodeError:
+            start, end = raw.find("{"), raw.rfind("}")
+            if start >= 0 and end > start:
+                return json.loads(raw[start:end + 1]), all_blocks, searches
             raise AIUnavailable("استجابة غير صالحة")
     raise AIUnavailable("لم يكتمل البحث")
 

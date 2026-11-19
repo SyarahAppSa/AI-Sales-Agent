@@ -33,7 +33,12 @@ class Settings:
     public_base_url: str = field(default_factory=lambda: _env("PUBLIC_BASE_URL", "http://localhost:8000"))
 
     # الذكاء الاصطناعي (Claude)
-    anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+    # MANDOOB_ANTHROPIC_API_KEY له الأولوية حتى لا يتعارض مع إعدادات أدوات أخرى على نفس الجهاز
+    anthropic_api_key: str = field(default_factory=lambda: _env("MANDOOB_ANTHROPIC_API_KEY") or _env("ANTHROPIC_API_KEY"))
+    anthropic_base_url: str = field(default_factory=lambda: _env("MANDOOB_ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
+    ai_agent_model: str = field(default_factory=lambda: _env("AI_AGENT_MODEL"))
+    ai_fetch_tool: str = field(default_factory=lambda: _env("AI_FETCH_TOOL", "web_fetch_20260209"))
+    ai_search_tool: str = field(default_factory=lambda: _env("AI_SEARCH_TOOL", "web_search_20260209"))
     ai_model: str = field(default_factory=lambda: _env("AI_MODEL", "claude-opus-5-5"))
     ai_effort: str = field(default_factory=lambda: _env("AI_EFFORT", "low"))
 

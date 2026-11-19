@@ -29,6 +29,11 @@ class Candidate:
     contacts: list[FoundContact] = field(default_factory=list)  # بيانات منشورة مع مصدرها فقط
     lead_source: str | None = None
     signals: list = field(default_factory=list)  # إشارات توقيت مرفقة من المصدر (مثل خبر افتتاح مستودع)
+    # من «البحث الآلي»: مرشح مؤهَّل مسبقًا بدليل من صفحة قرأها الوكيل
+    prequalified: bool = False
+    phrase: str | None = None
+    operator_status: str | None = None
+    entity_type: str | None = None
 
 
 class SourceError(RuntimeError):

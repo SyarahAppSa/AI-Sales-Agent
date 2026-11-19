@@ -12,6 +12,8 @@
 {% if user %}
 {% set nav = [
   ('/', 'grid', 'لوحة التحكم', False, 'all'),
+  ('/today', 'list', 'عملاء اليوم', False, 'all'),
+  ('/auto-search', 'search', 'البحث الآلي عن العملاء', False, 'all'),
   ('/followups', 'clock', 'تحتاج متابعة اليوم', False, 'all'),
   ('/offers-report', 'send', 'الشركات التي أُرسلت إليها عروض', False, 'all'),
   ('/companies', 'building', 'الشركات', False, 'all'),
