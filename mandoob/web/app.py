@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import logging
 import threading
@@ -22,7 +23,7 @@ from ..companies import OPERATOR_LABELS, SOURCE_LABELS, log_activity
 from ..config import settings
 from ..db import SessionLocal, init_db, session_scope
 from ..discovery.sources import DirectoryImportSource
-from ..models import (Attachment, Call, Campaign, Category, Company, Consent, DiscoveryRun, ExistingCustomer,
+from ..models import (LoginCode, Attachment, Call, Campaign, Category, Company, Consent, DiscoveryRun, ExistingCustomer,
                       InboundMessage, MailAccount, Meeting, Notification, Offer, OutboundMessage, Setting,
                       Suppression, Task, User)
 from ..normalize import domain_of, format_phone_display, normalize_email, normalize_name, normalize_phone
@@ -58,6 +59,9 @@ templates.env.globals.update(fmt=fmt, fmt_date=fmt_date, STATUS_LABELS=STATUS_LA
 def _startup() -> None:
     init_db()
     ensure_admin(settings.admin_email, settings.admin_password)
+    from ..permissions import backfill_default_perms
+    with session_scope() as s:
+        backfill_default_perms(s)
     if settings.run_scheduler_in_web:
         from ..worker import start_background
         start_background()
@@ -66,12 +70,13 @@ def _startup() -> None:
 # ---------------------------------------------------------------- أدوات
 
 class LoginRequired(Exception):
-    pass
+    def __init__(self, to: str = "/admin/login"):
+        self.to = to
 
 
 @app.exception_handler(LoginRequired)
 async def _login_redirect(request, exc):
-    return RedirectResponse("/login", status_code=303)
+    return RedirectResponse(exc.to, status_code=303)
 
 
 def get_db():
@@ -86,11 +91,35 @@ def get_db():
         s.close()
 
 
+def _session_user(request: Request, s, portal: str) -> User | None:
+    """يعيد المستخدم فقط إن كانت جلسته لهذه البوابة، وحسابه نشط، ولم تُغلق جلساته (إيقاف/تغيير)."""
+    uid, sv, p = request.session.get("uid"), request.session.get("sv"), request.session.get("portal")
+    if not uid or p != portal:
+        return None
+    user = s.get(User, uid)
+    if not user or not user.active or user.session_version != sv:
+        request.session.clear()
+        return None
+    from ..auth import portal_of
+    if portal_of(user) != portal:
+        request.session.clear()
+        return None
+    return user
+
+
 def current_user(request: Request, s=Depends(get_db)) -> User:
-    uid = request.session.get("uid")
-    user = s.get(User, uid) if uid else None
-    if not user or not user.active:
-        raise LoginRequired()
+    """بوابة الإدارة."""
+    user = _session_user(request, s, "admin")
+    if user is None:
+        raise LoginRequired("/portal" if request.session.get("portal") == "staff" else "/admin/login")
+    return user
+
+
+def staff_user(request: Request, s=Depends(get_db)) -> User:
+    """بوابة الموظفين."""
+    user = _session_user(request, s, "staff")
+    if user is None:
+        raise LoginRequired("/portal/login")
     return user
 
 
@@ -141,25 +170,118 @@ def _safe(fn, *args, **kwargs):
 
 # ---------------------------------------------------------------- الدخول
 
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return render(request, "login.html", None)
+@app.get("/login")
+def login_legacy():
+    return back("/admin/login")
 
 
-@app.post("/login")
-def login(request: Request, email: str = Form(...), password: str = Form(...)):
+def _ip(request: Request) -> str:
+    from ..leads import hash_ip
+    return hash_ip(request.client.host if request.client else None, settings.secret_key)
+
+
+def _login_page(request: Request, portal: str, s):
+    from ..auth import mail_ready
+    return render(request, "otp_login.html", None, portal=portal, step=request.session.get(f"otp_{portal}"),
+                  bootstrap=(portal == "admin" and not mail_ready(s)))
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(request: Request, s=Depends(get_db)):
+    return _login_page(request, "admin", s)
+
+
+@app.get("/portal/login", response_class=HTMLResponse)
+def staff_login_page(request: Request, s=Depends(get_db)):
+    return _login_page(request, "staff", s)
+
+
+def _request_code(request: Request, portal: str, email: str, s):
+    from ..auth import OTPError, request_code, send_code_email
+    try:
+        user, code = request_code(s, email, portal, _ip(request))
+    except OTPError as e:
+        flash(request, str(e), "err")
+        return
+    if user is not None and not send_code_email(s, user, code, portal):
+        log.error("login code email failed for user %s", user.id)
+        s.rollback()
+        flash(request, "تعذر إرسال الرمز لأن بريد الشركة غير مربوط بالمنصة. تواصل مع الإدارة.", "err")
+        return
+    request.session[f"otp_{portal}"] = email.strip().lower()
+    flash(request, "إذا كان البريد مسجلًا ونشطًا فسيصله رمز من ٦ أرقام صالح لمدة ٥ دقائق.")
+
+
+def _verify_code(request: Request, portal: str, code: str, s):
+    from ..auth import OTPError, verify_code
+    email = request.session.get(f"otp_{portal}")
+    try:
+        user = verify_code(s, email or "", code, portal)
+    except OTPError as e:
+        s.commit()  # حفظ عدّاد المحاولات
+        flash(request, str(e), "err")
+        return None
+    request.session.clear()
+    request.session.update({"uid": user.id, "sv": user.session_version, "portal": portal})
+    return user
+
+
+@app.post("/admin/login/request")
+def admin_request_code(request: Request, email: str = Form(...), s=Depends(get_db)):
+    _request_code(request, "admin", email, s)
+    return back("/admin/login")
+
+
+@app.post("/portal/login/request")
+def staff_request_code(request: Request, email: str = Form(...), s=Depends(get_db)):
+    _request_code(request, "staff", email, s)
+    return back("/portal/login")
+
+
+@app.post("/admin/login/verify")
+def admin_verify(request: Request, code: str = Form(...), s=Depends(get_db)):
+    return back("/" if _verify_code(request, "admin", code, s) else "/admin/login")
+
+
+@app.post("/portal/login/verify")
+def staff_verify(request: Request, code: str = Form(...), s=Depends(get_db)):
+    return back("/portal" if _verify_code(request, "staff", code, s) else "/portal/login")
+
+
+@app.post("/admin/login/restart")
+def admin_restart(request: Request):
+    request.session.pop("otp_admin", None)
+    return back("/admin/login")
+
+
+@app.post("/portal/login/restart")
+def staff_restart(request: Request):
+    request.session.pop("otp_staff", None)
+    return back("/portal/login")
+
+
+@app.post("/admin/login/password")
+def admin_bootstrap_password(request: Request, email: str = Form(...), password: str = Form(...), s=Depends(get_db)):
+    """دخول تأسيسي بكلمة المرور لحساب ADMIN_EMAIL فقط، ويُعطَّل تلقائيًا بعد ربط بريد الشركة."""
+    from ..auth import audit, mail_ready
+    if mail_ready(s) or email.strip().lower() != settings.admin_email.lower():
+        flash(request, "الدخول بكلمة المرور غير متاح. استخدم رمز البريد.", "err")
+        return back("/admin/login")
     u = authenticate(email, password)
     if not u:
         flash(request, "البريد أو كلمة المرور غير صحيحة", "err")
-        return back("/login")
-    request.session["uid"] = u.id
+        return back("/admin/login")
+    audit(s, u, "login", u, portal="admin", method="bootstrap_password")
+    request.session.clear()
+    request.session.update({"uid": u.id, "sv": u.session_version, "portal": "admin"})
     return back("/")
 
 
 @app.get("/logout")
 def logout(request: Request):
+    portal = request.session.get("portal")
     request.session.clear()
-    return back("/login")
+    return back("/portal/login" if portal == "staff" else "/admin/login")
 
 
 @app.get("/healthz")
@@ -746,7 +868,9 @@ async def team_save(request: Request, user: User = Depends(require_manager), s=D
         if s.scalar(select(User.id).where(User.email == email)):
             flash(request, "البريد مستخدم مسبقًا", "err")
             return back("/team")
-        u = User(email=email, name="", password_hash=hash_password(form.get("password") or "change-me"))
+        from ..permissions import PROFILES
+        u = User(email=email, name="", password_hash=hash_password(form.get("password") or os.urandom(16).hex()),
+                 profile="sales_rep", scope="own", perms=dict(PROFILES["sales_rep"]["perms"]), created_by=user.id)
         s.add(u)
     u.name = form.get("name") or u.name
     u.phone = form.get("phone") or None
@@ -1000,6 +1124,372 @@ def weekly_report_page(request: Request, day: str = "", user: User = Depends(req
     w = weekly_segments(s, d)
     return render(request, "weekly_report.html", user, s, w=w, prev=(w["start"] - timedelta(days=7)).isoformat(),
                   next=(w["start"] + timedelta(days=7)).isoformat())
+
+
+# ---------------------------------------------------------------- الموظفون والصلاحيات (بوابة الإدارة)
+
+def _perm_form(form) -> tuple[str, str, dict]:
+    from ..permissions import ACTION_PERMS, DATA_PERMS, PROFILES
+    profile = form.get("profile") or "sales_rep"
+    if profile in PROFILES and profile != "custom" and not form.get("customize"):
+        return profile, PROFILES[profile]["scope"], dict(PROFILES[profile]["perms"])
+    perms = {k: form.get(k) == "on" for k in list(DATA_PERMS) + list(ACTION_PERMS)}
+    scope = form.get("scope") if form.get("scope") in ("own", "team", "all") else "own"
+    return "custom" if form.get("customize") else profile, scope, perms
+
+
+@app.get("/staff", response_class=HTMLResponse)
+def staff_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import AuditLog
+    from ..permissions import ACTION_PERMS, DATA_PERMS, PROFILES, SCOPES, describe
+    users = list(s.scalars(select(User).order_by(User.active.desc(), User.role, User.name)))
+    counts = {u.id: s.scalar(select(func.count(Company.id)).where(Company.owner_id == u.id)) or 0 for u in users}
+    audit_rows = list(s.scalars(select(AuditLog).where(AuditLog.action != "login").order_by(AuditLog.id.desc()).limit(60)))
+    from ..auth import mail_ready
+    return render(request, "staff.html", user, s, users=users, counts=counts, audit_rows=audit_rows, describe=describe,
+                  PROFILES=PROFILES, SCOPES=SCOPES, DATA_PERMS=DATA_PERMS, ACTION_PERMS=ACTION_PERMS,
+                  portal_link=settings.public_base_url.rstrip("/") + "/portal/login", mail_ok=mail_ready(s))
+
+
+@app.post("/staff/add")
+async def staff_add(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit, send_invite_email
+    form = await request.form()
+    email = (form.get("email") or "").strip().lower()
+    name = (form.get("name") or "").strip()
+    if not email or "@" not in email or not name:
+        flash(request, "أدخل الاسم والبريد الوظيفي", "err")
+        return back("/staff")
+    if s.scalar(select(User.id).where(User.email == email)):
+        flash(request, "هذا البريد مسجل مسبقًا", "err")
+        return back("/staff")
+    profile, scope, perms = _perm_form(form)
+    role = "manager" if form.get("portal") == "admin" and user.role == "admin" else "rep"
+    u = User(name=name, email=email, team=(form.get("team") or "").strip() or None, role=role, profile=profile,
+             scope=scope, perms=perms, password_hash=hash_password(os.urandom(16).hex()), created_by=user.id)
+    s.add(u)
+    s.flush()
+    audit(s, user, "add_user", u, email=email, team=u.team, role=role, profile=profile, scope=scope, perms=perms)
+    sent = send_invite_email(s, u) if role == "rep" else False
+    flash(request, f"أُضيف {name}. " + ("أُرسل له رابط بوابة الموظفين على بريده." if sent else
+                                         "لم يُرسل البريد (بريد الشركة غير مربوط) — أرسل له رابط البوابة يدويًا."))
+    return back(f"/staff/{u.id}")
+
+
+@app.get("/staff/{uid}", response_class=HTMLResponse)
+def staff_edit(uid: int, request: Request, q: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import AuditLog
+    from ..permissions import ACTION_PERMS, DATA_PERMS, PROFILES, SCOPES
+    u = s.get(User, uid) or _404()
+    assigned = list(s.scalars(select(Company).where(Company.owner_id == uid).order_by(Company.name).limit(300)))
+    found = []
+    if q:
+        found = list(s.scalars(select(Company).where(Company.name.like(f"%{q}%") | Company.domain.like(f"%{q}%"))
+                               .order_by(Company.name).limit(50)))
+    colleagues = list(s.scalars(select(User).where(User.active.is_(True), User.id != uid).order_by(User.name)))
+    audit_rows = list(s.scalars(select(AuditLog).where(AuditLog.target_user_id == uid).order_by(AuditLog.id.desc()).limit(40)))
+    open_tasks = s.scalar(select(func.count(Task.id)).where(Task.owner_id == uid, Task.status == "open")) or 0
+    return render(request, "staff_edit.html", user, s, u=u, assigned=assigned, found=found, q=q, colleagues=colleagues,
+                  audit_rows=audit_rows, open_tasks=open_tasks, PROFILES=PROFILES, SCOPES=SCOPES,
+                  DATA_PERMS=DATA_PERMS, ACTION_PERMS=ACTION_PERMS)
+
+
+@app.post("/staff/{uid}/update")
+async def staff_update(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    u = s.get(User, uid) or _404()
+    if u.role == "admin" and user.role != "admin":
+        raise HTTPException(403)
+    form = await request.form()
+    before = {"team": u.team, "profile": u.profile, "scope": u.scope, "perms": dict(u.perms or {}), "name": u.name}
+    profile, scope, perms = _perm_form(form)
+    u.name = (form.get("name") or u.name).strip()
+    u.team = (form.get("team") or "").strip() or None
+    u.profile, u.scope, u.perms = profile, scope, perms
+    after = {"team": u.team, "profile": u.profile, "scope": u.scope, "perms": perms, "name": u.name}
+    audit(s, user, "update_permissions", u, before=before, after=after)
+    flash(request, "حُفظت الصلاحيات، وتسري فورًا على أي طلب جديد من الموظف.")
+    return back(f"/staff/{uid}")
+
+
+@app.post("/staff/{uid}/assign")
+async def staff_assign(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    u = s.get(User, uid) or _404()
+    form = await request.form()
+    ids = [int(x) for x in form.getlist("company_ids") if str(x).isdigit()]
+    names = []
+    for c in s.scalars(select(Company).where(Company.id.in_(ids))):
+        prev = c.owner.name if c.owner else None
+        c.owner_id = u.id
+        for t in s.scalars(select(Task).where(Task.company_id == c.id, Task.status == "open")):
+            t.owner_id = u.id
+        log_activity(s, c.id, "assigned", f"أُسندت الشركة إلى {u.name}", f"بواسطة {user.name}" + (f" (كانت لدى {prev})" if prev else ""),
+                     user_id=user.id)
+        names.append(c.name)
+    if names:
+        audit(s, user, "assign_customers", u, companies=names)
+    flash(request, f"أُسند {len(names)} عميل إلى {u.name}")
+    return back(f"/staff/{uid}")
+
+
+@app.post("/staff/{uid}/deactivate")
+def staff_deactivate(uid: int, request: Request, transfer_to: Optional[int] = Form(None),
+                     user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    u = s.get(User, uid) or _404()
+    if u.id == user.id or (u.role == "admin" and user.role != "admin"):
+        raise HTTPException(403, "لا يمكن إيقاف هذا الحساب")
+    u.active = False
+    u.session_version = (u.session_version or 1) + 1  # يغلق جلساته المفتوحة فورًا
+    for lc in s.scalars(select(LoginCode).where(LoginCode.user_id == uid, LoginCode.used.is_(False))):
+        lc.revoked = True
+    moved = 0
+    target = s.get(User, transfer_to) if transfer_to else None
+    if target is not None and target.active:
+        for c in s.scalars(select(Company).where(Company.owner_id == uid)):
+            c.owner_id = target.id
+            log_activity(s, c.id, "assigned", f"نُقلت الشركة من {u.name} إلى {target.name}",
+                         "إيقاف حساب الموظف — سجل العروض والمحادثات محفوظ", user_id=user.id)
+            moved += 1
+        for t in s.scalars(select(Task).where(Task.owner_id == uid, Task.status == "open")):
+            t.owner_id = target.id
+    audit(s, user, "deactivate", u, transferred_to=target.name if target else None, customers_moved=moved)
+    flash(request, f"أُوقف حساب {u.name} وأُغلقت جلساته" + (f"، ونُقل {moved} عميل ومتابعاتهم إلى {target.name}" if target else ""))
+    return back(f"/staff/{uid}")
+
+
+@app.post("/staff/{uid}/activate")
+def staff_activate(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    u = s.get(User, uid) or _404()
+    u.active = True
+    audit(s, user, "activate", u)
+    flash(request, f"أُعيد تفعيل {u.name}")
+    return back(f"/staff/{uid}")
+
+
+@app.post("/staff/{uid}/invite")
+def staff_invite(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit, send_invite_email
+    u = s.get(User, uid) or _404()
+    ok = send_invite_email(s, u)
+    if ok:
+        audit(s, user, "invite", u)
+    flash(request, "أُرسلت الدعوة" if ok else "تعذر الإرسال: اربط بريد الشركة أولًا", "ok" if ok else "err")
+    return back(f"/staff/{uid}")
+
+
+# ---------------------------------------------------------------- بوابة الموظفين
+
+_PHONE_RX = None
+
+
+def mask_text(u: User, text: str | None) -> str:
+    """يحجب الأرقام والإيميلات من النصوص الحرة إن لم يكن للموظف حق رؤيتها."""
+    import re
+    from ..permissions import can
+    t = text or ""
+    if not can(u, "see_phone"):
+        t = re.sub(r"(?:\+|00)?[\d٠-٩][\d٠-٩\s\-()]{7,}[\d٠-٩]", "••• مخفي •••", t)
+    if not can(u, "see_email"):
+        t = re.sub(r"[\w.+\-]+@[\w\-]+\.[\w.\-]+", "••• مخفي •••", t)
+    return t
+
+
+def _portal_rows(s, u: User, q: str = ""):
+    from ..permissions import can, scoped
+    qq = scoped(select(Company), s, u).where(Company.data_status.in_(["complete", "incomplete"]))
+    if q:
+        conds = [Company.name.like(f"%{q}%"), Company.activity.like(f"%{q}%"), Company.city.like(f"%{q}%")]
+        # البحث بالهاتف/البريد فقط لمن يحق له رؤيتهما — وإلا لا يمكن الاستدلال عليهما بالبحث
+        from ..models import Contact
+        digits = "".join(ch for ch in q if ch.isdigit())
+        if can(u, "see_phone") and len(digits) >= 5:
+            conds.append(Company.id.in_(select(Contact.company_id).where(Contact.kind == "phone", Contact.value.like(f"%{digits}%"))))
+        if can(u, "see_email") and "@" in q or (can(u, "see_email") and "." in q):
+            conds.append(Company.id.in_(select(Contact.company_id).where(Contact.kind == "email", Contact.value.like(f"%{q.lower()}%"))))
+        from sqlalchemy import or_
+        qq = qq.where(or_(*conds))
+    rows = []
+    for c in s.scalars(qq.order_by(Company.next_action_at.is_(None), Company.next_action_at, Company.name).limit(500)):
+        ph, em = c.primary("phone"), c.primary("email")
+        last_offer = s.scalar(select(OutboundMessage).where(OutboundMessage.company_id == c.id, OutboundMessage.kind == "offer",
+                                                            OutboundMessage.sent_at.isnot(None)).order_by(OutboundMessage.id.desc())) \
+            if can(u, "see_offers") else None
+        last_reply = s.scalar(select(InboundMessage).where(InboundMessage.company_id == c.id, InboundMessage.message_type == "reply")
+                              .order_by(InboundMessage.received_at.desc())) if can(u, "see_replies") else None
+        nxt = s.scalar(select(Task).where(Task.company_id == c.id, Task.status == "open").order_by(Task.due_at))
+        rows.append({"c": c, "phone": format_phone_display(ph.value) if ph and can(u, "see_phone") else None,
+                     "email": em.value if em and can(u, "see_email") else None, "offer": last_offer, "reply": last_reply,
+                     "next": nxt})
+    return rows
+
+
+@app.get("/portal", response_class=HTMLResponse)
+def portal_home(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..permissions import can, describe
+    return render(request, "portal_home.html", user, s, rows=_portal_rows(s, user, q), q=q, can=lambda p: can(user, p),
+                  d=describe(user), mask=lambda t: mask_text(user, t))
+
+
+@app.get("/portal/export.xlsx")
+def portal_export(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
+    from openpyxl import Workbook
+    import io as _io
+    from ..auth import audit
+    from ..permissions import can
+    if not can(user, "export"):
+        raise HTTPException(403, "لا تملك صلاحية التصدير")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "عملائي"
+    ws.sheet_view.rightToLeft = True
+    head = ["الشركة", "النشاط", "المدينة"] + (["الهاتف"] if can(user, "see_phone") else []) + \
+        (["البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
+        (["آخر رد", "نوع الرد"] if can(user, "see_replies") else []) + ["المتابعة القادمة", "موعدها"]
+    ws.append(head)
+    for r in _portal_rows(s, user, q):
+        c = r["c"]
+        row = [c.name, c.activity, c.city] + ([r["phone"] or ""] if can(user, "see_phone") else []) + \
+            ([r["email"] or ""] if can(user, "see_email") else [])
+        if can(user, "see_offers"):
+            row += [r["offer"].subject if r["offer"] else "", fmt(r["offer"].sent_at) if r["offer"] else ""]
+        if can(user, "see_replies"):
+            row += [mask_text(user, r["reply"].body_text[:500]) if r["reply"] else "", r["reply"].intent_label if r["reply"] else ""]
+        row += [r["next"].title if r["next"] else "", fmt(r["next"].due_at) if r["next"] else ""]
+        ws.append(row)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    audit(s, user, "export", user, rows=ws.max_row - 1)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=my-customers.xlsx"})
+
+
+def _portal_company(s, user: User, cid: int) -> Company:
+    from ..permissions import can_view_company
+    c = s.get(Company, cid)
+    if not can_view_company(s, user, c):
+        raise HTTPException(404, "غير موجود")  # لا نكشف وجود سجل لا يخصه
+    return c
+
+
+@app.get("/portal/companies/{cid}", response_class=HTMLResponse)
+def portal_company(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..permissions import can
+    c = _portal_company(s, user, cid)
+    offer_kinds = {"email_sent", "email_delivered", "email_bounced"}
+    reply_kinds = {"reply", "auto_reply", "opt_out"}
+    timeline = []
+    for a in company_timeline(s, cid):
+        if a.kind in offer_kinds and not can(user, "see_offers"):
+            continue
+        if a.kind in reply_kinds and not can(user, "see_replies"):
+            continue
+        timeline.append(a)
+    tasks = list(s.scalars(select(Task).where(Task.company_id == cid, Task.status == "open").order_by(Task.due_at)))
+    msgs = list(s.scalars(select(OutboundMessage).where(OutboundMessage.company_id == cid).order_by(OutboundMessage.id.desc()))) \
+        if can(user, "see_offers") else []
+    return render(request, "portal_company.html", user, s, c=c, timeline=timeline, tasks=tasks, msgs=msgs,
+                  can=lambda p: can(user, p), mask=lambda t: mask_text(user, t))
+
+
+def _require(user: User, perm: str):
+    from ..permissions import can
+    if not can(user, perm):
+        raise HTTPException(403, "لا تملك صلاحية هذا الإجراء")
+
+
+@app.post("/portal/companies/{cid}/note")
+def portal_note(cid: int, request: Request, note: str = Form(...), user: User = Depends(staff_user), s=Depends(get_db)):
+    _require(user, "add_note")
+    c = _portal_company(s, user, cid)
+    c.last_action, c.last_action_at = note[:300], now_utc()
+    log_activity(s, cid, "note", f"ملاحظة من {user.name}", note, user_id=user.id)
+    flash(request, "أُضيفت الملاحظة")
+    return back(f"/portal/companies/{cid}")
+
+
+@app.post("/portal/companies/{cid}/status")
+def portal_status(cid: int, request: Request, stage: str = Form(""), next_title: str = Form(""), next_at: str = Form(""),
+                  done_task: Optional[int] = Form(None), user: User = Depends(staff_user), s=Depends(get_db)):
+    _require(user, "update_status")
+    c = _portal_company(s, user, cid)
+    changes = []
+    if stage in ("contacted", "replied", "interested", "meeting", "won", "lost") and stage != c.stage:
+        changes.append(f"الحالة: {STAGE_LABELS.get(c.stage)} ← {STAGE_LABELS.get(stage)}")
+        c.stage = stage
+    if done_task:
+        t = s.get(Task, done_task)
+        if t and t.company_id == cid and t.status == "open":
+            t.status, t.done_at = "done", now_utc()
+            changes.append(f"أُنجزت: {t.title}")
+    if next_at:
+        due = riyadh_to_utc(datetime.fromisoformat(next_at))
+        s.add(Task(company_id=cid, owner_id=c.owner_id or user.id, kind="call", title=next_title or f"متابعة {c.name}", due_at=due))
+        c.next_action, c.next_action_at = next_title or "متابعة", due
+        changes.append(f"المتابعة القادمة: {fmt(due)}")
+    if changes:
+        c.last_action, c.last_action_at = "؛ ".join(changes)[:300], now_utc()
+        log_activity(s, cid, "status", f"تحديث من {user.name}", "\n".join(changes), user_id=user.id)
+        flash(request, "حُدّثت المتابعة")
+    return back(f"/portal/companies/{cid}")
+
+
+@app.post("/portal/companies/{cid}/send-offer")
+def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..outreach import active_account, check_eligibility, compose, dedupe_key, ensure_email_basis, offer_for, \
+        render_html, render_text, send_due
+    _require(user, "send_offer")
+    c = _portal_company(s, user, cid)
+    offer = offer_for(c, s)
+    acct = active_account(s)
+    if offer is None or acct is None:
+        flash(request, "لا يوجد عرض معتمد مناسب أو بريد الشركة غير مربوط", "err")
+        return back(f"/portal/companies/{cid}")
+    ok, why = check_eligibility(s, c, offer)
+    if not ok:
+        flash(request, f"لا يمكن الإرسال: {why}", "err")
+        return back(f"/portal/companies/{cid}")
+    em = c.primary("email")
+    ensure_email_basis(s, c, em)
+    subject, body = compose(c, offer, acct.sender_name)
+    camp = c.campaign
+    s.add(OutboundMessage(company_id=c.id, campaign_id=c.campaign_id, category_id=c.category_id, offer_id=offer.id,
+                          dedupe_key=dedupe_key(c.id, offer.key), mail_account_id=acct.id, from_address=acct.sender_address,
+                          to_address=(camp.test_recipient if camp and camp.test_recipient else em.value), intended_to=em.value,
+                          subject=subject, body_text=render_text(body, acct.signature_html),
+                          body_html=render_html(body, acct.signature_html),
+                          attachment_name=offer.attachment.filename if offer.attachment else None))
+    s.commit()
+    send_due(c.campaign_id, ignore_window=True, max_batch=5)
+    log_activity(s, cid, "note", f"أرسل {user.name} العرض يدويًا", offer.service_name, user_id=user.id)
+    flash(request, "أُرسل العرض")
+    return back(f"/portal/companies/{cid}")
+
+
+@app.get("/portal/messages/{mid}", response_class=HTMLResponse)
+def portal_message(mid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    _require(user, "see_offers")
+    m = s.get(OutboundMessage, mid) or _404()
+    _portal_company(s, user, m.company_id)
+    return render(request, "portal_message.html", user, s, m=m, mask=lambda t: mask_text(user, t))
+
+
+@app.get("/portal/reports", response_class=HTMLResponse)
+def portal_reports(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..permissions import scoped
+    _require(user, "see_reports")
+    base = scoped(select(Company), s, user).subquery()
+    by_stage = dict(s.execute(select(base.c.stage, func.count()).group_by(base.c.stage)).all())
+    ids = [r[0] for r in s.execute(select(base.c.id))]
+    sent = s.scalar(select(func.count(OutboundMessage.id)).where(OutboundMessage.company_id.in_(ids), OutboundMessage.kind == "offer",
+                                                                  OutboundMessage.sent_at.isnot(None))) or 0
+    replies = s.scalar(select(func.count(InboundMessage.id)).where(InboundMessage.company_id.in_(ids),
+                                                                   InboundMessage.message_type == "reply")) or 0
+    meetings = s.scalar(select(func.count(Meeting.id)).where(Meeting.company_id.in_(ids))) or 0
+    return render(request, "portal_reports.html", user, s, by_stage=by_stage, total=len(ids), sent=sent, replies=replies,
+                  meetings=meetings)
 
 
 # ---------------------------------------------------------------- Webhooks

@@ -146,7 +146,8 @@ def test_two_batches_of_real_style_results_without_repeats():
 def test_today_page_and_auto_search_screen():
     from mandoob.web.app import app
     with TestClient(app) as c:
-        c.post("/login", data={"email": "admin@sayaraup.test", "password": "admin-pass-123"})
+        from helpers import otp_login
+        otp_login(c, "admin@sayaraup.test", "admin")
         r = c.get("/today")
         assert r.status_code == 200 and "عملاء اليوم" in r.text and "مكررات مستبعدة" in r.text
         assert "نجد للتكييف" in r.text and "https://najd-hvac.example/ar/contact" in r.text

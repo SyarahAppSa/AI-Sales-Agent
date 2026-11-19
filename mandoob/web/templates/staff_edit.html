@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>{{ u.name }}</h1><p class="sub" style="margin:0"><span class="ltr">{{ u.email }}</span> — {{ u.team or 'بلا فريق' }} {% if not u.active %}<span class="pill err">موقوف</span>{% else %}<span class="pill ok">نشط</span>{% endif %}</p></div>
+<div class="row"><a class="btn sm" href="/staff">كل الموظفين</a>{% if u.active and u.role == 'rep' %}<form method="post" action="/staff/{{ u.id }}/invite"><button class="btn sm">إعادة إرسال رابط البوابة</button></form>{% endif %}</div></div>
+<div class="grid g2">
+<div>
+{% if u.role == 'rep' %}
+<div class="card"><h2>الصلاحيات</h2>
+<form method="post" action="/staff/{{ u.id }}/update">
+  <div class="row"><div><label>الاسم</label><input name="name" value="{{ u.name }}"></div><div><label>الفريق</label><input name="team" value="{{ u.team or '' }}"></div></div>
+  {% include "_perm_fields.html" %}
+  <button class="btn p">حفظ — يسري فورًا</button>
+</form></div>
+{% else %}<div class="card"><h2>حساب إدارة</h2><p class="small">حسابات الإدارة ترى كل العملاء والتقارير.</p></div>{% endif %}
+<div class="card"><h2>{{ 'إيقاف الحساب' if u.active else 'إعادة التفعيل' }}</h2>
+{% if u.active %}<form method="post" action="/staff/{{ u.id }}/deactivate" onsubmit="return confirm('إيقاف الحساب وإغلاق جلساته المفتوحة؟')">
+  <p class="small">يُغلق الإيقاف جلساته المفتوحة فورًا، ويُلغي رموز الدخول المعلقة. لديه {{ assigned|length }} عميل و{{ open_tasks }} متابعة مفتوحة.</p>
+  <div class="row"><div><label>نقل عملائه ومتابعاته إلى (يبقى سجل العروض والمحادثات كما هو)</label><select name="transfer_to"><option value="">بدون نقل</option>{% for c in colleagues %}<option value="{{ c.id }}">{{ c.name }}{{ ' — ' + c.team if c.team }}</option>{% endfor %}</select></div>
+  <div style="flex:0 0 auto"><button class="btn d">إيقاف الحساب</button></div></div></form>
+{% else %}<form method="post" action="/staff/{{ u.id }}/activate"><button class="btn p">إعادة التفعيل</button></form>{% endif %}</div>
+</div>
+<div>
+<div class="card"><h2>العملاء المسندون ({{ assigned|length }})</h2>
+<form method="get" class="row"><input name="q" value="{{ q }}" placeholder="ابحث عن عميل لإسناده"><button class="btn" style="flex:0 0 auto">بحث</button></form>
+{% if found %}<form method="post" action="/staff/{{ u.id }}/assign" style="margin-top:10px">
+{% for c in found %}<div class="chips"><label><input type="checkbox" name="company_ids" value="{{ c.id }}"> {{ c.name }} — {{ c.city }} <span class="muted">({{ c.owner.name if c.owner else 'غير مسند' }})</span></label></div>{% endfor %}
+<button class="btn p">إسناد المحدد إلى {{ u.name }}</button></form>{% endif %}
+<div style="margin-top:12px">{% for c in assigned %}<div class="small" style="border-bottom:1px solid var(--line);padding:5px 0"><a href="/companies/{{ c.id }}">{{ c.name }}</a> — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></div>{% else %}<p class="muted small">لا يوجد عملاء مسندون.</p>{% endfor %}</div></div>
+<div class="card"><h2>سجل هذا الموظف</h2>
+{% for a in audit_rows %}<div class="small" style="border-bottom:1px solid var(--line);padding:5px 0"><b>{{ fmt(a.at) }}</b> — {{ a.actor_name }}: {{ {'add_user':'أضافه','update_permissions':'غيّر صلاحياته','deactivate':'أوقف الحساب','activate':'أعاد التفعيل','assign_customers':'أسند عملاء','invite':'أرسل دعوة','login':'دخول','export':'تصدير'}.get(a.action, a.action) }}</div>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+</div></div>
+{% endblock %}

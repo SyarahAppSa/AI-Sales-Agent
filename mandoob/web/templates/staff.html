@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>الموظفون والصلاحيات</h1><p class="sub" style="margin:0">أضف الموظفين، وحدد ما يرونه وما يفعلونه، ووزّع العملاء عليهم. كل تغيير يسري فورًا ويُسجَّل.</p></div></div>
+<div class="card small"><b>رابط بوابة الموظفين (أرسله للجميع):</b> <span class="ltr">{{ portal_link }}</span>
+{% if not mail_ok %}<div style="color:var(--err);margin-top:6px">بريد الشركة غير مربوط: لن تصل رموز الدخول ولا الدعوات حتى تربطه من «ربط بريد الشركة».</div>{% endif %}</div>
+<div class="card"><details {{ 'open' if users|length < 3 }}><summary><b>إضافة موظف</b></summary>
+<form method="post" action="/staff/add" style="margin-top:12px">
+  <div class="row"><div><label>الاسم</label><input name="name" required></div>
+  <div><label>البريد الوظيفي</label><input name="email" type="email" required class="ltr" style="text-align:left"></div>
+  <div><label>الفريق</label><input name="team" placeholder="مثل: فريق الرياض"></div>
+  {% if user.role == 'admin' %}<div style="flex:0 0 200px"><label>البوابة</label><select name="portal"><option value="staff">بوابة الموظفين</option><option value="admin">بوابة الإدارة (مدير مبيعات)</option></select></div>{% endif %}</div>
+  {% with u=None %}{% include "_perm_fields.html" %}{% endwith %}
+  <button class="btn p">إضافة وإرسال رابط البوابة</button>
+</form></details></div>
+<div class="card tablewrap"><table>
+<tr><th>الموظف</th><th>الفريق</th><th>البوابة</th><th>نطاق الاطلاع</th><th>البيانات الظاهرة</th><th>الإجراءات</th><th>العملاء</th><th>آخر دخول</th></tr>
+{% for u in users %}{% set d = describe(u) %}<tr>
+<td><a href="/staff/{{ u.id }}"><b>{{ u.name }}</b></a> {% if not u.active %}<span class="pill err">موقوف</span>{% endif %}<div class="small ltr muted">{{ u.email }}</div></td>
+<td>{{ u.team or '—' }}</td><td>{% if u.role in ('admin','manager') %}<span class="pill info">الإدارة</span>{% else %}<span class="pill">الموظفين</span>{% endif %}</td>
+<td class="small">{{ 'الكل' if u.role in ('admin','manager') else d.scope }}</td>
+<td class="small">{{ 'الكل' if u.role in ('admin','manager') else (d.data|join('، ') or 'الاسم والنشاط فقط') }}</td>
+<td class="small">{{ 'الكل' if u.role in ('admin','manager') else d.actions|join('، ') }}</td>
+<td>{{ counts[u.id] }}</td><td class="small">{{ fmt(u.last_login_at) if u.last_login_at else '—' }}</td></tr>{% endfor %}
+</table></div>
+<div class="card"><h2>السجل الإداري</h2>
+{% for a in audit_rows %}<div class="small" style="border-bottom:1px solid var(--line);padding:6px 0"><b>{{ fmt(a.at) }}</b> — {{ a.actor_name }}:
+{{ {'add_user':'أضاف الموظف','update_permissions':'غيّر صلاحيات','deactivate':'أوقف حساب','activate':'أعاد تفعيل','assign_customers':'أسند عملاء إلى','invite':'أرسل دعوة إلى','export':'صدّر تقريرًا'}.get(a.action, a.action) }} <b>{{ a.target_name }}</b>
+{% if a.action == 'update_permissions' %}<span class="muted">— {% for k in ['team','profile','scope'] %}{% if a.details.before[k] != a.details.after[k] %}{{ k }}: {{ a.details.before[k] }} ← {{ a.details.after[k] }}؛ {% endif %}{% endfor %}{% for k, v in a.details.after.perms.items() %}{% if a.details.before.perms.get(k) != v %}{{ k }}: {{ 'منح' if v else 'سحب' }}؛ {% endif %}{% endfor %}</span>{% endif %}
+{% if a.action == 'assign_customers' %}<span class="muted">— {{ a.details.companies|join('، ') }}</span>{% endif %}
+{% if a.action == 'deactivate' and a.details.transferred_to %}<span class="muted">— نُقل {{ a.details.customers_moved }} عميل إلى {{ a.details.transferred_to }}</span>{% endif %}</div>
+{% else %}<p class="muted">لا توجد تغييرات بعد.</p>{% endfor %}</div>
+{% endblock %}

@@ -5,7 +5,7 @@
 <div class="row"><div><label>الدور</label><select name="role">{% for k,v in ROLE_LABELS.items() %}{% if k!='admin' or user.role=='admin' %}<option value="{{ k }}" {{ 'selected' if (u and u.role==k) or (not u and k=='rep') }}>{{ v }}</option>{% endif %}{% endfor %}</select></div>
 <div><label>بريد التقويم</label><input name="calendar_email" value="{{ u.calendar_email if u and u.calendar_email else '' }}" class="ltr"></div>
 <div><label>حد الفرص المفتوحة</label><input type="number" name="max_open_leads" value="{{ u.max_open_leads if u else 60 }}"></div>
-<div><label>كلمة المرور{{ ' (اتركها فارغة)' if u }}</label><input name="password" type="password" {{ '' if u else 'required' }}></div></div>
+</div>
 <div class="chips"><span class="small muted">القطاعات (فارغ = الكل):</span>{% for k,v in SECTORS.items() %}<label><input type="checkbox" name="sectors" value="{{ k }}" {{ 'checked' if u and k in u.sectors }}> {{ v.label }}</label>{% endfor %}</div>
 <div class="chips"><span class="small muted">المدن (فارغ = الكل):</span>{% for c in CITIES %}<label><input type="checkbox" name="cities" value="{{ c }}" {{ 'checked' if u and c in u.cities }}> {{ c }}</label>{% endfor %}</div>
 <div class="chips"><label><input type="checkbox" name="active" {{ 'checked' if not u or u.active }}> نشط</label></div>

@@ -1,0 +1,12 @@
+{# حقول الصلاحيات المشتركة بين الإضافة والتعديل؛ u = الموظف أو None #}
+<div class="row">
+  <div><label>الإعداد</label><select name="profile">{% for k, p in PROFILES.items() %}<option value="{{ k }}" {{ 'selected' if (u and u.profile == k) or (not u and k == 'sales_rep') }}>{{ p.label }}</option>{% endfor %}</select></div>
+  <div class="chips" style="flex:0 0 auto"><label><input type="checkbox" name="customize" {{ 'checked' if u and u.profile == 'custom' }}> تخصيص الصلاحيات أدناه</label></div>
+</div>
+<p class="small muted" style="margin:4px 0 8px">«مندوب مبيعات»: يرى عملاءه المسندين إليه فقط، ويضيف ملاحظات ويحدّث المتابعة. «اطلاع فقط»: قراءة دون أي تعديل أو إرسال أو تصدير. لتطبيق الخيارات أدناه فعّل «تخصيص».</p>
+<div class="field"><label>من يحق له الاطلاع عليه؟</label><div class="chips">
+{% for k, v in SCOPES.items() %}<label><input type="radio" name="scope" value="{{ k }}" {{ 'checked' if (u and u.scope == k) or (not u and k == 'own') }}> {{ v }}</label>{% endfor %}</div></div>
+<div class="field"><label>ما البيانات التي يستطيع رؤيتها؟ (اسم العميل ونشاطه يظهران دائمًا)</label><div class="chips">
+{% for k, v in DATA_PERMS.items() %}<label><input type="checkbox" name="{{ k }}" {{ 'checked' if (u and (u.perms or {}).get(k)) or (not u and PROFILES['sales_rep'].perms.get(k)) }}> {{ v }}</label>{% endfor %}</div></div>
+<div class="field"><label>ما الإجراءات التي يستطيع تنفيذها؟ (بدونها: اطلاع فقط)</label><div class="chips">
+{% for k, v in ACTION_PERMS.items() %}<label><input type="checkbox" name="{{ k }}" {{ 'checked' if (u and (u.perms or {}).get(k)) or (not u and PROFILES['sales_rep'].perms.get(k)) }}> {{ v }}</label>{% endfor %}</div></div>

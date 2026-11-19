@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>تقرير مبيعاتي</h1><p class="sub" style="margin:0">ضمن نطاق الاطلاع المسموح لك</p></div></div>
+<div class="grid g4"><div class="stat"><div class="l">العملاء</div><div class="v">{{ total }}</div></div><div class="stat"><div class="l">عروض مرسلة</div><div class="v">{{ sent }}</div></div>
+<div class="stat"><div class="l">ردود</div><div class="v">{{ replies }}</div></div><div class="stat"><div class="l">اجتماعات</div><div class="v">{{ meetings }}</div></div></div>
+<div class="card" style="margin-top:14px"><h2>حسب المرحلة</h2>{% for k, v in by_stage.items() %}<div class="kv"><span class="k">{{ STAGE_LABELS.get(k, k) }}</span><span class="n">{{ v }}</span></div>{% endfor %}</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }} — مندوب سيارة آب{% endblock %}{% block public %}
+{% set base = '/admin/login' if portal == 'admin' else '/portal/login' %}
+<div class="login card">
+  <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div>
+  <span class="tag">{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }} — المندوب الذكي</span></div>
+  {% if not step %}
+  <form method="post" action="{{ base }}/request">
+    <div class="field"><label>البريد الوظيفي</label><input name="email" type="email" required autofocus class="ltr" style="text-align:left" autocomplete="email"></div>
+    <button class="btn p" style="width:100%">إرسال رمز الدخول</button>
+  </form>
+  <p class="small muted" style="margin-top:12px">سيصلك رمز من ٦ أرقام صالح لمدة ٥ دقائق ولمرة واحدة. الدخول للحسابات النشطة التي أضافتها الإدارة فقط.</p>
+  {% else %}
+  <p class="small">أُرسل الرمز إلى <b class="ltr">{{ step }}</b> إن كان مسجلًا ونشطًا.</p>
+  <form method="post" action="{{ base }}/verify">
+    <div class="field"><label>رمز الدخول</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9٠-٩ ]{6,8}" maxlength="8" required autofocus class="ltr" style="text-align:center;font-size:24px;letter-spacing:8px"></div>
+    <button class="btn p" style="width:100%">دخول</button>
+  </form>
+  <div class="row" style="margin-top:12px;justify-content:space-between">
+    <form method="post" action="{{ base }}/request"><input type="hidden" name="email" value="{{ step }}"><button class="btn sm">إرسال رمز جديد</button></form>
+    <form method="post" action="{{ base }}/restart"><button class="btn sm">تغيير البريد</button></form>
+  </div>
+  {% endif %}
+  {% if bootstrap %}
+  <details style="margin-top:16px"><summary class="small">دخول تأسيسي بكلمة المرور (مؤقت حتى ربط بريد الشركة)</summary>
+  <form method="post" action="/admin/login/password" style="margin-top:8px">
+    <div class="field"><input name="email" type="email" placeholder="البريد" class="ltr" required></div>
+    <div class="field"><input name="password" type="password" placeholder="كلمة المرور" required></div>
+    <button class="btn" style="width:100%">دخول</button>
+    <p class="small muted">يُعطَّل تلقائيًا فور ربط بريد الشركة من «ربط بريد الشركة»، ويصبح الدخول برمز البريد فقط.</p>
+  </form></details>
+  {% endif %}
+</div>
+{% endblock %}

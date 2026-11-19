@@ -25,15 +25,19 @@
   ('/weekly-report', 'calendar', 'التقرير الأسبوعي للشرائح', False, 'mgr'),
   ('/leads', 'inbox', 'طلبات العروض الواردة', False, 'mgr'),
   ('/runs', 'list', 'سجل التشغيل', False, 'mgr'),
-  ('/team', 'users', 'الفريق والتوزيع', False, 'mgr'),
+  ('/staff', 'users', 'الموظفون والصلاحيات', False, 'mgr'),
+  ('/team', 'target', 'قواعد التوزيع', False, 'mgr'),
   ('/mail', 'mail', 'ربط بريد الشركة', False, 'mgr'),
   ('/settings', 'settings', 'الإعدادات والمكالمات', False, 'mgr'),
   ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr'),
 ] %}
+{% if user.role not in ('admin','manager') %}{% set nav = [
+  ('/portal', 'list', 'عملائي ومتابعاتي', False, 'all'),
+] + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False, 'all')] if (user.perms or {}).get('see_reports') else []) %}{% endif %}
 <div class="layout">
 <aside class="side">
   <div class="brand">
-    <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div><span class="tag">المندوب الذكي</span></div>
+    <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div><span class="tag">{{ 'بوابة الإدارة' if user.role in ('admin','manager') else 'بوابة الموظفين' }}</span></div>
     <button class="collapse" type="button" title="طي القائمة" onclick="document.body.classList.toggle('mini');try{localStorage.setItem('mini',document.body.classList.contains('mini')?'1':'0')}catch(e){}">{{ icon('panel') }}</button>
   </div>
   <nav class="nav">
@@ -51,8 +55,8 @@
 </aside>
 <main class="main">
   <div class="topbar">
-    <a class="chip" href="/notifications" title="{{ user.name }} — {{ ROLE_LABELS[user.role] }}" style="color:inherit;text-decoration:none"><span>{{ user.email }}</span>{{ icon('user', 30) }}</a>
-    <a class="round" href="/notifications" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
+    <a class="chip" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="{{ user.name }} — {{ ROLE_LABELS[user.role] }}" style="color:inherit;text-decoration:none"><span>{{ user.email }}</span>{{ icon('user', 30) }}</a>
+    <a class="round" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
     <span class="flag" title="المملكة العربية السعودية"><i></i></span>
   </div>
 {% if flash %}<div class="flash {{ flash.kind }}" style="margin-top:70px">{{ flash.msg }}</div>{% endif %}

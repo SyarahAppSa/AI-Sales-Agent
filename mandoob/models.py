@@ -29,6 +29,42 @@ class User(Base):
     max_open_leads: Mapped[int] = mapped_column(Integer, default=60)
     calendar_email: Mapped[Optional[str]] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # بوابة الموظفين: الفريق ونطاق الاطلاع والصلاحيات (انظر mandoob/permissions.py)
+    team: Mapped[Optional[str]] = mapped_column(String(120))
+    scope: Mapped[str] = mapped_column(String(10), default="own")  # own / team / all
+    perms: Mapped[dict] = mapped_column(JSON, default=dict)
+    profile: Mapped[str] = mapped_column(String(40), default="sales_rep")
+    session_version: Mapped[int] = mapped_column(Integer, default=1)  # زيادته تُغلق كل الجلسات المفتوحة
+    created_by: Mapped[Optional[int]] = mapped_column(Integer)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class LoginCode(Base):
+    """رمز دخول لمرة واحدة (٦ أرقام، ٥ دقائق). يُخزَّن مُجزّأً فقط."""
+    __tablename__ = "login_codes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    portal: Mapped[str] = mapped_column(String(10))  # admin / staff
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    ip_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class AuditLog(Base):
+    """السجل الإداري: من أضاف الموظف، ومن غيّر صلاحياته، ومتى."""
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    actor_id: Mapped[Optional[int]] = mapped_column(Integer)
+    actor_name: Mapped[str] = mapped_column(String(120), default="")
+    action: Mapped[str] = mapped_column(String(40))
+    target_user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    target_name: Mapped[str] = mapped_column(String(120), default="")
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 # ---------------------------------------------------------------- الحملات والفئات

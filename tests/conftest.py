@@ -7,3 +7,4 @@ os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///
 os.environ["ANTHROPIC_API_KEY"] = ""          # الاختبارات حتمية بدون ذكاء اصطناعي
 os.environ["ADMIN_EMAIL"] = "admin@sayaraup.test"
 os.environ["ADMIN_PASSWORD"] = "admin-pass-123"
+os.environ["OTP_IP_LIMIT"] = "1000"  # كل الاختبارات تأتي من «جهاز» واحد

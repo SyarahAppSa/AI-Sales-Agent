@@ -8,15 +8,15 @@ from mandoob.models import Company, OutboundMessage, User
 from mandoob.web.app import app
 
 
-def _login(c, email, pw):
-    r = c.post("/login", data={"email": email, "password": pw}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+def _login(c, email, pw=None, portal="admin"):
+    from helpers import otp_login
+    otp_login(c, email, portal)
 
 
 def test_pages_render_for_admin_and_scoping_for_rep():
     init_db()
     with TestClient(app) as c:
-        assert c.get("/", follow_redirects=False).status_code == 303
+        assert c.get("/", follow_redirects=False).headers["location"] == "/admin/login"
         _login(c, "admin@sayaraup.test", "admin-pass-123")
         for url in ["/", "/targets", "/companies", "/companies?status=incomplete", "/offers-report", "/followups",
                     "/offers", "/mail", "/team", "/settings", "/runs", "/daily-report", "/notifications", "/sandbox"]:
@@ -39,14 +39,14 @@ def test_pages_render_for_admin_and_scoping_for_rep():
         assert r.status_code == 200 and "التوصيل" in r.text and "جدة" in r.text
     with session_scope() as s:
         if not s.scalar(select(User).where(User.email == "rep2@sayaraup.test")):
-            s.add(User(name="مندوب آخر", email="rep2@sayaraup.test", password_hash=hash_password("p"), role="rep"))
+            s.add(User(name="مندوب آخر", email="rep2@sayaraup.test", password_hash=hash_password("p"), role="rep",
+                       perms={"see_phone": True}))
     with TestClient(app) as c:
-        _login(c, "rep2@sayaraup.test", "p")
-        assert c.get(f"/companies/{cid}").status_code == 403  # ليست من شركاته
-        assert c.get("/targets").status_code == 200
-        assert c.get("/team").status_code == 403
-        assert c.post("/targets/parse", data={"text": "x"}).status_code == 403
-
+        _login(c, "rep2@sayaraup.test", portal="staff")
+        assert c.get(f"/portal/companies/{cid}").status_code == 404  # ليست من عملائه
+        assert c.get("/targets", follow_redirects=False).headers["location"] == "/portal"  # بوابة الإدارة مغلقة عليه
+        assert c.get("/staff", follow_redirects=False).status_code == 303
+        assert c.post("/targets/parse", data={"text": "x"}, follow_redirects=False).status_code == 303
 
 def test_save_campaign_from_parsed_form():
     import re
