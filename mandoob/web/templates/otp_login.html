@@ -10,15 +10,18 @@
   </form>
   <p class="small muted" style="margin-top:12px">سيصلك كود من ٦ أرقام صالح لمدة ٥ دقائق ولمرة واحدة. الدخول للحسابات النشطة التي أضافتها الإدارة فقط.</p>
   {% else %}
-  <p class="small">أُرسل الكود إلى <b class="ltr">{{ step }}</b>. افتح بريدك وأدخله هنا.</p>
+  <p class="small">أُرسل الكود إلى <b class="ltr">{{ step }}</b> من بريد الشركة. افتح بريدك وأدخله هنا.</p>
   <form method="post" action="{{ base }}/verify">
-    <div class="field"><label>كود الدخول</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9٠-٩ ]{6,8}" maxlength="8" required autofocus class="ltr" style="text-align:center;font-size:24px;letter-spacing:8px"></div>
+    <div class="field"><label>أدخل كود الدخول</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9٠-٩ ]{6,8}" maxlength="8" required autofocus class="ltr" style="text-align:center;font-size:24px;letter-spacing:8px"></div>
     <button class="btn p" style="width:100%">دخول</button>
   </form>
   <div class="row" style="margin-top:12px;justify-content:space-between">
-    <form method="post" action="{{ base }}/request"><input type="hidden" name="email" value="{{ step }}"><button class="btn sm">إرسال كود جديد</button></form>
+    <form method="post" action="{{ base }}/request"><input type="hidden" name="email" value="{{ step }}"><button class="btn sm" id="resend" {{ 'disabled' if wait > 0 }}>إعادة إرسال الكود{% if wait > 0 %} (<span id="wait">{{ wait }}</span> ث){% endif %}</button></form>
     <form method="post" action="{{ base }}/restart"><button class="btn sm">تغيير البريد</button></form>
   </div>
+  <p class="small muted" style="margin-top:8px">الكود صالح ٥ دقائق ولمرة واحدة. إرسال كود جديد يلغي السابق.</p>
+  <script>(function(){var w={{ wait }},b=document.getElementById('resend'),sp=document.getElementById('wait');if(w<=0||!b)return;
+  var t=setInterval(function(){w--;if(sp)sp.textContent=w;if(w<=0){clearInterval(t);b.disabled=false;b.textContent='إعادة إرسال الكود';}},1000);})();</script>
   {% endif %}
   {% if bootstrap %}
   <details style="margin-top:16px"><summary class="small">دخول تأسيسي بكلمة المرور (مؤقت حتى ربط بريد الشركة)</summary>

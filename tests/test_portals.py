@@ -136,7 +136,9 @@ def test_4_deactivation_cuts_open_session_and_transfers_customers():
         assert log.actor_name and log.details["before"]["perms"]["add_note"] is False and log.details["after"]["perms"]["add_note"]
 
 
-def test_5_code_rules():
+def test_5_code_rules(monkeypatch):
+    import mandoob.auth as _auth
+    monkeypatch.setattr(_auth, "RESEND_AFTER_SECONDS", 0)  # مهلة إعادة الإرسال لها اختبار مستقل
     from mandoob.auth import OTPError, request_code, verify_code
     with session_scope() as s:
         s.query(LoginCode).delete()
@@ -238,7 +240,7 @@ def test_8_unconfigured_m365_keeps_bootstrap_until_verified():
         r = c.post("/admin/login/password", data={"email": ADMIN, "password": "admin-pass-123"}, follow_redirects=False)
         assert r.headers["location"] == "/"
         r = c.post("/mail/test", data={"to": "", "message": "السلام عليكم"})
-        assert "لم تُضف مفاتيح Microsoft 365" in r.text
+        assert "مفاتيح المزود غير مضبوطة" in r.text
     with session_scope() as s:  # إعادة صندوق التجربة لبقية الاختبارات
         for a in s.scalars(select(MailAccount)):
             a.active = a.provider == "sandbox"

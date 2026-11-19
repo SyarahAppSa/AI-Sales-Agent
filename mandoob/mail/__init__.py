@@ -15,6 +15,9 @@ def get_provider(account: MailAccount):
     if account.provider == "google":
         from .gmail import GmailProvider
         return GmailProvider(account.sender_address)
+    if account.provider == "smtp":
+        from .smtp import SMTPProvider
+        return SMTPProvider(account.sender_address)
     from .sandbox import SandboxProvider
     return SandboxProvider(account.sender_address)
 
