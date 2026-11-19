@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>الشركات</h1><p class="sub">كل شركة لها سجل واحد مهما تعددت مصادرها.</p></div></div>
+<div class="row" style="margin-bottom:12px">
+  <a class="btn {{ 'p' if status=='complete' }}" href="?status=complete" style="flex:0 0 auto">مكتملة البيانات ({{ counts.complete }})</a>
+  <a class="btn {{ 'p' if status=='incomplete' }}" href="?status=incomplete" style="flex:0 0 auto">قيد استكمال البيانات ({{ counts.incomplete }})</a>
+</div>
+<form class="card row" method="get"><input type="hidden" name="status" value="{{ status }}">
+  <div><label>بحث</label><input name="q" value="{{ q }}"></div>
+  <div><label>المدينة</label><select name="city"><option value="">الكل</option>{% for c in CITIES %}<option {{ 'selected' if c==city }}>{{ c }}</option>{% endfor %}</select></div>
+  <div><label>القطاع</label><select name="sector"><option value="">الكل</option>{% for k,v in SECTORS.items() %}<option value="{{ k }}" {{ 'selected' if k==sector }}>{{ v.label }}</option>{% endfor %}</select></div>
+  <div style="flex:0 0 auto"><button class="btn">تصفية</button></div>
+</form>
+<div class="card tablewrap"><table>
+<tr><th>الشركة</th><th>النشاط / المدينة</th><th>الهاتف</th><th>البريد</th><th>سبب الترشيح</th><th>الاكتشاف</th><th>المرحلة</th><th>المسؤول</th></tr>
+{% for c in rows %}{% set ph = c.primary('phone') %}{% set em = c.primary('email') %}
+<tr><td><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>{% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
+<td>{{ c.activity }}<div class="small muted">{{ c.city }}</div></td>
+<td>{% if ph %}<span class="ltr">{{ phone(ph.value) }}</span><div class="small"><a href="{{ ph.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
+<td>{% if em %}<span class="ltr small">{{ em.value }}</span><div class="small"><a href="{{ em.source_url }}" target="_blank" rel="noopener">المصدر</a> · {{ em.label }}</div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
+<td class="small" style="max-width:320px">{{ c.fit_reason }}{% if c.fit_evidence_url %} <a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الدليل)</a>{% endif %}</td>
+<td class="small">{{ fmt(c.first_found_at, False) }}<div class="muted">{{ c.campaign.name if c.campaign else '' }} — {{ c.category.label if c.category else '' }}</div><div class="muted">{{ c.sources|length }} مصدر</div></td>
+<td><span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>{% if status=='incomplete' %}<div class="small muted">ينقص: {{ missing_fields(c)|join('، ') }}</div>{% endif %}</td>
+<td>{{ c.owner.name if c.owner else '—' }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">لا توجد شركات.</td></tr>{% endfor %}
+</table></div>
+<div class="row"><span class="muted" style="flex:0 0 auto">{{ total }} سجل</span>
+{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&page={{ page-1 }}">السابق</a>{% endif %}
+{% if page*50 < total %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&page={{ page+1 }}">التالي</a>{% endif %}</div>
+{% endblock %}

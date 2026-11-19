@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>الإعدادات والمكالمات</h1><p class="sub">حالة التكاملات، قناة الاتصال الصوتي، الاستبعاد، وقوائم إيقاف التواصل.</p></div></div>
+<div class="grid g2">
+<div class="card"><h2>التكاملات على الخادم</h2><table>{% for k,v in integrations.items() %}<tr><td>{{ k }}</td><td>{% if v %}<span class="pill ok">مُعد</span>{% else %}<span class="pill warn">غير مُعد</span>{% endif %}</td></tr>{% endfor %}</table>
+<p class="small muted">تُضبط المفاتيح كمتغيرات بيئة على الخادم (راجع docs/SETUP.md). المصدر غير المُعد يُتجاوز تلقائيًا ويظهر في سبب العجز.</p></div>
+<div class="card"><h2>قناة الاتصال الصوتي</h2>
+<form method="post" action="/settings/voice"><div class="chips"><label><input type="checkbox" name="enabled" {{ 'checked' if voice.enabled }}> تفعيل المساعد الصوتي</label></div><button class="btn">حفظ</button></form>
+<p class="small">لا يتصل المساعد إلا بشركة لديها <b>موافقة صريحة مسجلة</b>، ورقمها خارج قائمة الإيقاف، ضمن الأحد–الخميس 9ص–5م بتوقيت الرياض. يعرّف بنفسه أنه «المساعد الآلي لشركة سيارة اب» ويستأذن أولًا.</p></div>
+<div class="card"><h2>عملاء سيارة اب الحاليون (للاستبعاد)</h2><p class="small">المسجل حاليًا: {{ customers }}. ملف CSV بالأعمدة: name, website, phone, email</p>
+<form method="post" action="/settings/customers" enctype="multipart/form-data" class="row"><input type="file" name="file" accept=".csv" required><button class="btn" style="flex:0 0 auto">استيراد</button></form></div>
+<div class="card"><h2>استيراد من دليل أعمال مرخّص</h2><p class="small">CSV بالأعمدة: name, city, activity, website, phone, phone_source_url, email, email_source_url, source_url. لا يُقبل أي هاتف أو بريد بدون رابط مصدره.</p>
+<form method="post" action="/settings/directory" enctype="multipart/form-data"><div class="row"><div><label>الحملة</label><input type="number" name="campaign_id" required placeholder="رقم الحملة"></div><div><label>اسم الدليل</label><input name="directory_name" value="directory"></div></div>
+<div class="row"><input type="file" name="file" accept=".csv" required><button class="btn" style="flex:0 0 auto">استيراد</button></div></form></div>
+<div class="card"><h2>قائمة إيقاف التواصل</h2>
+<form method="post" action="/settings/suppress" class="row"><input name="value" placeholder="بريد أو رقم أو نطاق" required><button class="btn" style="flex:0 0 auto">إضافة</button></form>
+<table style="margin-top:8px">{% for x in suppressions %}<tr><td class="ltr small">{{ x.value }}</td><td class="small">{{ x.kind }} / {{ x.channel }}</td><td class="small">{{ x.reason }}</td><td class="small muted">{{ fmt(x.created_at, False) }}</td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

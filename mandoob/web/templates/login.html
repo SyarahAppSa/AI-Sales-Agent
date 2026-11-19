@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block public %}
+<div class="login card">
+  <h1>مندوب سيارة اب الذكي</h1><p class="sub">سجّل الدخول للمتابعة</p>
+  <form method="post" action="/login">
+    <div class="field"><label>البريد الإلكتروني</label><input name="email" type="email" required class="ltr" style="text-align:left"></div>
+    <div class="field"><label>كلمة المرور</label><input name="password" type="password" required></div>
+    <button class="btn p" style="width:100%;justify-content:center">دخول</button>
+  </form>
+</div>
+{% endblock %}

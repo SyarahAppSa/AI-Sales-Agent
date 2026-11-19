@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<h1>التنبيهات</h1><p class="sub">تنبيهات الردود والمواعيد والتقارير.</p>
+{% for n in rows %}<div class="card" style="{{ '' if n.read else 'border-color:var(--brand)' }}"><b>{{ n.title }}</b> <span class="small muted">{{ fmt(n.created_at) }}</span>
+{% if n.company_id %} — <a href="/companies/{{ n.company_id }}">فتح سجل الشركة</a>{% endif %}<pre class="small" style="white-space:pre-wrap;font-family:inherit;margin:6px 0 0">{{ n.body }}</pre></div>{% else %}<p class="muted">لا توجد تنبيهات.</p>{% endfor %}
+{% endblock %}

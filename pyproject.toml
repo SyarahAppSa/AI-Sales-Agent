@@ -1,0 +1,9 @@
+[project]
+name = "sayaraup-mandoob"
+version = "1.0.0"
+description = "مندوب سيارة اب الذكي — منصة اكتشاف العملاء والتواصل والمتابعة"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "tests"]
+testpaths = ["tests"]

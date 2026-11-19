@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>ربط بريد الشركة</h1><p class="sub">ترسل المنصة العروض من بريد الشركة الرسمي وتقرأ الردود وحالات التسليم منه.</p></div></div>
+<div class="grid g2">
+<div class="card"><h2>الحساب المرتبط</h2>
+{% for a in accounts %}<div style="border-bottom:1px solid var(--line);padding:8px 0">
+<b>{{ {'microsoft365':'Microsoft 365','google':'Google Workspace','sandbox':'صندوق تجربة محلي'}[a.provider] }}</b> {% if a.active %}<span class="pill ok">نشط</span>{% else %}<span class="pill">غير نشط</span>{% endif %}
+<div class="small">المرسل: {{ a.sender_name }} &lt;<span class="ltr">{{ a.sender_address }}</span>&gt; — الردود: <span class="ltr">{{ a.reply_mailbox or a.sender_address }}</span></div>
+<div class="small muted">آخر مزامنة: {{ fmt(a.last_sync_at) if a.last_sync_at else 'لم تتم' }}</div></div>{% else %}<p class="muted">لم يُربط بريد بعد.</p>{% endfor %}
+{% if accounts %}<form method="post" action="/mail/test" class="row" style="margin-top:10px"><div><label>أرسل رسالة تجربة إلى</label><input name="to" type="email" required class="ltr"></div><div style="flex:0 0 auto"><button class="btn">إرسال تجربة</button></div></form>
+<div class="row" style="margin-top:8px"><form method="post" action="/mail/sync" style="flex:0 0 auto"><button class="btn">مزامنة الصندوق الآن</button></form>
+<form method="post" action="/outreach/run" style="flex:0 0 auto"><input type="hidden" name="ignore_window" value=""><button class="btn">جهّز وأرسل العروض المستحقة الآن</button></form></div>{% endif %}
+<h2 style="margin-top:16px">حالة الإعداد على الخادم</h2>
+<p class="small">Microsoft 365: {% if status.microsoft365 %}<span class="pill ok">مُعد</span>{% else %}<span class="pill warn">ينقصه MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET</span>{% endif %}</p>
+<p class="small">Google Workspace: {% if status.google %}<span class="pill ok">مُعد</span>{% else %}<span class="pill warn">ينقصه GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN</span>{% endif %}</p>
+<p class="small muted">التفاصيل في docs/SETUP.md. ملاحظة: Microsoft 365 يعيد تأكيد تسليم عند دعم خادم المستلم لذلك؛ Gmail لا يعيد تأكيدات تسليم، فتبقى الحالة «أُرسل» ما لم يصل ارتداد.</p>
+</div>
+<div class="card"><h2>ربط / تغيير البريد</h2>
+<form method="post" action="/mail">
+<div class="field"><label>المزود</label><select name="provider"><option value="microsoft365">Microsoft 365</option><option value="google">Google Workspace</option><option value="sandbox">صندوق تجربة محلي (بدون إرسال حقيقي)</option></select></div>
+<div class="row"><div><label>عنوان المرسل</label><input name="sender_address" type="email" required class="ltr" placeholder="sales@sayaraup.com"></div><div><label>اسم المرسل</label><input name="sender_name" value="سيارة اب"></div></div>
+<div class="field"><label>صندوق استقبال الردود (اختياري)</label><input name="reply_mailbox" type="email" class="ltr"></div>
+<div class="field"><label>توقيع الشركة (HTML)</label><textarea name="signature_html" rows="5">مع التحية،<br><b>فريق المبيعات — سيارة اب</b><br>sayaraup.com</textarea></div>
+<button class="btn p">حفظ وربط</button></form></div>
+</div>
+{% endblock %}

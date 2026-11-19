@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>تحتاج متابعة اليوم</h1><p class="sub">الشركات التي حان موعد متابعتها، مع آخر رد واسم المسؤول والإجراء المطلوب.</p></div></div>
+<div class="card tablewrap"><table>
+<tr><th>الشركة</th><th>الإجراء المطلوب</th><th>الموعد</th><th>آخر رد</th><th>العرض الذي وصلها</th><th>المسؤول</th><th></th></tr>
+{% for it in items %}<tr>
+<td><a href="/companies/{{ it.company.id }}"><b>{{ it.company.name }}</b></a><div class="small muted">{{ it.company.activity }} — {{ it.company.city }}</div><div class="ltr small">{{ it.phone }}</div></td>
+<td>{{ it.task.title.split(' — ')[0] }}</td>
+<td class="small">{{ it.task.window_label or '' }}<div>{{ fmt(it.task.due_at) }}</div>{% if it.overdue %}<span class="pill err">متأخرة</span>{% endif %}</td>
+<td class="small" style="max-width:300px">{% if it.last_reply %}<span class="pill info">{{ it.last_reply.intent_label }}</span> «{{ it.last_reply.body_text[:160] }}»{% else %}—{% endif %}</td>
+<td class="small">{% if it.offer %}<a href="/messages/{{ it.offer.id }}">{{ it.offer.offer.service_name if it.offer.offer else it.offer.subject }}</a><div class="muted">{{ fmt(it.offer.sent_at, False) }}</div>{% else %}—{% endif %}</td>
+<td>{{ it.owner }}</td>
+<td><form method="post" action="/tasks/{{ it.task.id }}/done" class="row"><input name="note" placeholder="نتيجة المتابعة" style="min-width:140px"><button class="btn sm" style="flex:0 0 auto">تم</button></form></td>
+</tr>{% else %}<tr><td colspan="7" class="muted">لا توجد متابعات مستحقة اليوم.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>العروض والمرفقات</h1><p class="sub">لكل حملة/فئة خدمة واحدة معتمدة. أي تعديل على العرض يعيده إلى «غير معتمد» حتى تعتمده مجددًا.</p></div></div>
+{% for o in offers + [None] %}
+<div class="card">
+{% if o %}<div class="top" style="margin:0"><h2>{{ o.service_name }} {% if o.approved %}<span class="pill ok">معتمد {{ fmt(o.approved_at, False) }}</span>{% else %}<span class="pill warn">غير معتمد</span>{% endif %}</h2>
+<div class="row" style="flex:0 0 auto"><a class="btn" href="/offers/{{ o.id }}/preview">معاينة رسالة</a>{% if not o.approved and user.role in ('admin','manager') %}<form method="post" action="/offers/{{ o.id }}/approve"><button class="btn p">اعتماد العرض</button></form>{% endif %}</div></div>
+<details><summary>تعديل</summary>{% else %}<details {{ 'open' if not offers }}><summary><b>إضافة عرض جديد</b></summary>{% endif %}
+<form method="post" action="/offers" enctype="multipart/form-data" style="margin-top:10px">
+{% if o %}<input type="hidden" name="id" value="{{ o.id }}">{% endif %}
+<div class="row"><div><label>اسم الخدمة</label><input name="service_name" value="{{ o.service_name if o else '' }}" required placeholder="إدارة استهلاك الوقود"></div>
+{% if not o %}<div><label>مفتاح العرض (لمنع التكرار، بالإنجليزية)</label><input name="key" class="ltr" placeholder="fuel-management"></div>{% endif %}
+<div><label>عنوان الرسالة ({company} {city} {service})</label><input name="subject_template" value="{{ o.subject_template if o else '{service} لشركة {company}' }}"></div></div>
+<div class="field"><label>الفوائد المعتمدة (يلتزم بها الذكاء الاصطناعي ولا يضيف غيرها)</label><textarea name="value_points">{{ o.value_points if o else '' }}</textarea></div>
+<div class="field"><label>النص المعتمد ({company} {city} {activity} {service}) — يُستخدم كما هو إن لم يتوفر الذكاء الاصطناعي</label><textarea name="approved_body" rows="6">{{ o.approved_body if o else '' }}</textarea></div>
+<div class="row"><div><label>الأسعار المعتمدة (اختياري)</label><input name="pricing_text" value="{{ o.pricing_text if o else '' }}"></div>
+<div><label>الخطوة المطلوبة في الختام</label><input name="call_to_action" value="{{ o.call_to_action if o else 'هل يناسبكم اتصال تعريفي لمدة عشر دقائق هذا الأسبوع؟' }}"></div></div>
+<div class="row"><div><label>المرفق (اختر موجودًا)</label><select name="attachment_id"><option value="">بدون مرفق</option>{% for a in attachments %}<option value="{{ a.id }}" {{ 'selected' if o and o.attachment_id==a.id }}>{{ a.title }} ({{ (a.size_bytes/1024)|round|int }} KB)</option>{% endfor %}</select></div>
+<div><label>أو ارفع ملفًا تعريفيًا (PDF)</label><input type="file" name="attachment" accept=".pdf"></div><div><label>عنوان الملف</label><input name="attachment_title"></div></div>
+<button class="btn p">حفظ</button></form></details>
+</div>{% endfor %}
+{% endblock %}

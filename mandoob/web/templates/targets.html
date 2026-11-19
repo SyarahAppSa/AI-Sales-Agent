@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>الفئات المستهدفة</h1><p class="sub">اكتب من تريد أن نستهدف بالعربية، وستحوّله المنصة إلى إعدادات تراجعها وتعدّلها قبل الاعتماد.</p></div></div>
+{% if user.role in ('admin','manager') %}
+<div class="card">
+<form method="post" action="/targets/parse">
+  <div class="field"><label>طلبك</label>
+  <textarea name="text" rows="4" required placeholder="ابحث يوميًا عن شركات النقل والخدمات اللوجستية والتوصيل وتأجير السيارات في الرياض وجدة والدمام. أعطِ الأولوية للشركات التي تدير أسطول مركبات، واستبعد الوسطاء وعملاء «سيارة اب» الحاليين."></textarea></div>
+  <div class="row"><div style="flex:0 0 200px"><label>الهدف اليومي (شركة مكتملة)</label><input type="number" name="daily_target" value="400" min="1"></div>
+  <div style="flex:0 0 auto"><button class="btn p">حوّل الطلب إلى إعدادات</button></div></div>
+</form>
+</div>
+<div class="card"><h2>وقت التشغيل اليومي على الخادم (بتوقيت الرياض)</h2>
+<form method="post" action="/schedule" class="row">
+  <div><label>بدء الاكتشاف</label><input type="time" name="discovery_time" value="{{ sched.discovery_time }}"></div>
+  <div><label>التقرير اليومي</label><input type="time" name="daily_report_time" value="{{ sched.daily_report_time }}"></div>
+  <div style="flex:0 0 auto"><button class="btn">حفظ</button></div>
+</form><p class="small muted">يعمل التشغيل على الخادم حتى لو كان المتصفح مغلقًا. الإرسال يتم ضمن أيام وساعات كل حملة.</p></div>
+{% endif %}
+{% for c in camps %}
+<div class="card">
+  <div class="top" style="margin:0"><div><h2><a href="/targets/{{ c.id }}">{{ c.name }}</a></h2>
+  <span class="pill {{ 'ok' if c.status=='active' else 'warn' }}">{{ {'active':'نشطة','paused':'موقوفة','draft':'مسودة'}[c.status] }}</span>
+  <span class="pill">الهدف اليومي {{ c.daily_target }}</span>{% if c.allow_backfill %}<span class="pill info">تعويض النقص من فئة أخرى</span>{% endif %}
+  {% if c.send_enabled %}<span class="pill ok">الإرسال مفعّل</span>{% else %}<span class="pill">الإرسال غير مفعّل</span>{% endif %}
+  {% if c.test_recipient %}<span class="pill warn">وضع التجربة: {{ c.test_recipient }}</span>{% endif %}</div>
+  {% if user.role in ('admin','manager') %}<form method="post" action="/targets/{{ c.id }}/status" style="flex:0 0 auto">
+    {% if c.status=='active' %}<button class="btn d" name="action" value="pause">إيقاف الحملة</button>{% else %}<button class="btn p" name="action" value="activate">اعتماد وتفعيل</button>{% endif %}</form>{% endif %}</div>
+  <table style="margin-top:10px"><tr><th>الفئة</th><th>المدن</th><th>الأولوية</th><th>إنجاز اليوم</th><th>العرض</th></tr>
+  {% for cat in c.categories %}<tr><td>{{ cat.label }}{% if not cat.active %} <span class="pill">موقوفة</span>{% endif %}</td><td>{{ cat.cities|join('، ') }}</td><td>{{ cat.priority }}</td>
+  <td style="min-width:160px">{{ progress[cat.id] }} / {{ cat.quota }}<div class="bar"><i style="width:{{ (100*progress[cat.id]/cat.quota)|round|int if cat.quota else 0 }}%"></i></div></td>
+  <td>{% if cat.offer %}{{ cat.offer.service_name }} {% if cat.offer.approved %}<span class="pill ok">معتمد</span>{% else %}<span class="pill warn">غير معتمد</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}</table>
+</div>
+{% endfor %}
+{% endblock %}

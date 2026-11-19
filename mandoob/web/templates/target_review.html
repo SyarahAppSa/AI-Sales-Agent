@@ -1,0 +1,70 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>{% if camp %}{{ camp.name }}{% else %}مراجعة الإعدادات قبل الحفظ{% endif %}</h1>
+<p class="sub">{% if parsed.parser == 'ai' %}حلّل الذكاء الاصطناعي طلبك.{% elif parsed.parser == 'rules' %}حُلّل الطلب بالقواعد المحلية (الذكاء الاصطناعي غير مفعّل).{% endif %} عدّل أي إعداد ثم احفظ.</p></div>
+{% if camp and user.role in ('admin','manager') %}<div class="row" style="flex:0 0 auto">
+<form method="post" action="/targets/{{ camp.id }}/status">{% if camp.status=='active' %}<button class="btn d" name="action" value="pause">إيقاف الحملة</button>{% else %}<button class="btn p" name="action" value="activate">اعتماد وتفعيل</button>{% endif %}</form>
+{% if camp.status=='active' %}<form method="post" action="/targets/{{ camp.id }}/run"><button class="btn">شغّل اكتشاف اليوم الآن</button></form>{% endif %}
+</div>{% endif %}</div>
+{% if text %}<div class="card small"><b>الطلب الأصلي:</b> {{ text }}</div>{% endif %}
+<form method="post" action="{{ '/targets/%d' % camp.id if camp else '/targets/save' }}">
+<input type="hidden" name="request_text" value="{{ text }}">
+<div class="card"><h2>إعدادات الحملة</h2>
+<div class="row">
+  <div style="flex:2 1 300px"><label>اسم الحملة</label><input name="name" value="{{ parsed.name }}"></div>
+  <div style="flex:2 1 300px"><label>الأنشطة المستبعدة (افصل بفواصل)</label><input name="exclusions" value="{{ parsed.exclusions|join('، ') }}"></div>
+</div>
+<div class="chips" style="margin-top:6px">
+  <label><input type="checkbox" name="exclude_existing_customers" {{ 'checked' if parsed.exclude_existing_customers }}> استبعاد عملاء سيارة اب الحاليين</label>
+  <label><input type="checkbox" name="allow_backfill" {{ 'checked' if camp and camp.allow_backfill }}> السماح بتعويض النقص من فئة أخرى</label>
+</div></div>
+
+<div class="card"><h2>الفئات وحصصها من الهدف اليومي</h2>
+<input type="hidden" name="cat_count" value="{{ parsed.categories|length + 1 }}">
+{% for c in parsed.categories + [{'sector_key':'','label':'','cities':[],'keywords_ar':[],'keywords_en':[],'priority':parsed.categories|length+1,'priority_signals':[],'quota':0,'new':True}] %}
+{% set i = loop.index0 %}
+<div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px">
+  {% if c.new %}<details><summary>إضافة فئة جديدة</summary>{% endif %}
+  {% if c.id %}<input type="hidden" name="cat_{{ i }}_id" value="{{ c.id }}">{% endif %}
+  <div class="row">
+    <div style="flex:2 1 220px"><label>الفئة</label><input name="cat_{{ i }}_label" value="{{ c.label }}"></div>
+    <div><label>مفتاح القطاع</label><select name="cat_{{ i }}_sector_key">{% if c.new %}<option value=""></option>{% endif %}{% for k,v in SECTORS.items() %}<option value="{{ k }}" {{ 'selected' if k==c.sector_key }}>{{ v.label }}</option>{% endfor %}{% if c.sector_key and c.sector_key not in SECTORS %}<option selected value="{{ c.sector_key }}">{{ c.sector_key }}</option>{% endif %}</select></div>
+    <div style="flex:0 0 110px"><label>الحصة اليومية</label><input type="number" min="0" name="cat_{{ i }}_quota" value="{{ c.quota }}"></div>
+    <div style="flex:0 0 90px"><label>الأولوية</label><input type="number" min="1" name="cat_{{ i }}_priority" value="{{ c.priority }}"></div>
+    <div><label>العرض المرسل لهذه الفئة</label><select name="cat_{{ i }}_offer_id"><option value="">— اختر —</option>{% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if c.offer_id==o.id }}>{{ o.service_name }}{{ '' if o.approved else ' (غير معتمد)' }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>المدن</label><input name="cat_{{ i }}_cities" value="{{ c.cities|join('، ') }}"></div>
+    <div><label>إشارات الأولوية</label><input name="cat_{{ i }}_signals" value="{{ c.priority_signals|join('، ') }}"></div>
+  </div>
+  <div class="row">
+    <div><label>كلمات البحث العربية</label><textarea rows="2" name="cat_{{ i }}_keywords_ar">{{ c.keywords_ar|join('، ') }}</textarea></div>
+    <div><label>كلمات البحث الإنجليزية</label><textarea rows="2" name="cat_{{ i }}_keywords_en" class="ltr" style="text-align:left">{{ c.keywords_en|join(', ') }}</textarea></div>
+  </div>
+  <div class="chips"><label><input type="checkbox" name="cat_{{ i }}_active" {{ 'checked' if c.get('active', True) }}> الفئة نشطة</label>
+  {% if not c.new %}<label><input type="checkbox" name="cat_{{ i }}_delete"> حذف الفئة</label>{% endif %}</div>
+  {% if c.new %}</details>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<div class="card"><h2>إرسال العروض</h2>
+<div class="chips"><label><input type="checkbox" name="send_enabled" {{ 'checked' if camp and camp.send_enabled }}> إرسال العروض تلقائيًا بعد الاعتماد</label></div>
+<div class="chips"><span class="small muted">أيام الإرسال:</span>
+{% for d,l in [(6,'الأحد'),(0,'الإثنين'),(1,'الثلاثاء'),(2,'الأربعاء'),(3,'الخميس'),(4,'الجمعة'),(5,'السبت')] %}
+<label><input type="checkbox" name="send_days" value="{{ d }}" {{ 'checked' if (camp.send_days if camp else [6,0,1,2,3]) and d in (camp.send_days if camp else [6,0,1,2,3]) }}> {{ l }}</label>{% endfor %}</div>
+<div class="row">
+  <div><label>من الساعة</label><input type="number" min="0" max="23" name="send_start_hour" value="{{ camp.send_start_hour if camp else 9 }}"></div>
+  <div><label>إلى الساعة</label><input type="number" min="1" max="24" name="send_end_hour" value="{{ camp.send_end_hour if camp else 16 }}"></div>
+  <div><label>الحد اليومي للإرسال</label><input type="number" min="0" name="daily_send_cap" value="{{ camp.daily_send_cap if camp else 150 }}"></div>
+  <div><label>متابعة آلية بعد (أيام، 0 = بلا متابعة)</label><input type="number" min="0" name="followup_days" value="{{ camp.followup_days if camp else 4 }}"></div>
+</div>
+<div class="field"><label>وضع التجربة — أرسل كل الرسائل إلى بريد نملكه بدلًا من بريد الشركات (اتركه فارغًا للإطلاق الفعلي)</label>
+<input name="test_recipient" value="{{ camp.test_recipient if camp and camp.test_recipient else '' }}" class="ltr" style="text-align:left" placeholder="sales-test@sayaraup.com"></div>
+</div>
+<button class="btn p">{{ 'حفظ التعديلات' if camp else 'حفظ الحملة كمسودة' }}</button>
+</form>
+
+{% if runs %}<div class="card" style="margin-top:16px"><h2>آخر عمليات التشغيل</h2>
+<table><tr><th>اليوم</th><th>الحالة</th><th>مكتملة</th><th>قيد الاستكمال</th><th>مكررة</th><th>العجز وسببه</th></tr>
+{% for r in runs %}<tr><td>{{ fmt_date(r.run_date) }}</td><td>{{ {'running':'قيد التشغيل','done':'اكتمل','partial':'جزئي','failed':'فشل'}[r.status] }}</td><td>{{ r.complete_count }} / {{ r.target }}</td><td>{{ r.incomplete_count }}</td><td>{{ r.duplicate_count }}</td><td class="small" style="white-space:pre-line">{{ r.shortfall_reason or '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

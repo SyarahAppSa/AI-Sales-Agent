@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>التقرير اليومي</h1><p class="sub">{{ fmt_date(r.day) }}</p></div>
+<form method="get" class="row" style="flex:0 0 auto"><input type="date" name="day" value="{{ r.day }}"><button class="btn" style="flex:0 0 auto">عرض</button></form></div>
+<div class="grid g4" style="margin-bottom:14px">
+<div class="stat"><div class="v">{{ r.complete }}</div><div class="l">شركات مكتملة جديدة</div></div>
+<div class="stat"><div class="v">${{ r.total_cost }}</div><div class="l">التكلفة التقديرية لليوم</div></div>
+<div class="stat"><div class="v">{{ ('$%s' % r.cost_per_lead) if r.cost_per_lead else '—' }}</div><div class="l">تكلفة العميل المكتمل</div></div>
+<div class="stat"><div class="v">{{ r.actions|length }}</div><div class="l">فرص تحتاج إجراء غدًا (ومتأخرة)</div></div></div>
+<div class="grid g2">
+<div class="card"><h2>القطاعات التي جلبت اجتماعات وصفقات</h2><table><tr><th>القطاع</th><th>تواصلنا</th><th>ردّت</th><th>اجتماعات</th><th>صفقات</th></tr>
+{% for k,v in r.by_sector.items()|sort(attribute='1.meetings', reverse=True) %}<tr><td>{{ k }}</td><td>{{ v.contacted }}</td><td>{{ v.replied }}</td><td>{{ v.meetings }}</td><td>{{ v.won }}</td></tr>{% else %}<tr><td colspan="5" class="muted">لا توجد بيانات بعد.</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>العروض التي جلبت اجتماعات وصفقات</h2><table><tr><th>العرض</th><th>أُرسل</th><th>ردود</th><th>اجتماعات</th><th>صفقات</th></tr>
+{% for k,v in r.by_offer.items() %}<tr><td>{{ k }}</td><td>{{ v.sent }}</td><td>{{ v.replies }}</td><td>{{ v.meetings }}</td><td>{{ v.won }}</td></tr>{% else %}<tr><td colspan="5" class="muted">لا توجد بيانات بعد.</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>المصادر التي وفرت شركات مطابقة</h2><table><tr><th>المصدر</th><th>مرشحون</th><th>مكتملة</th><th>قيد الاستكمال</th><th>مكررة</th></tr>
+{% for k,v in r.by_source.items() %}<tr><td>{{ SOURCE_LABELS.get(k,k) }}</td><td>{{ v.candidates }}</td><td>{{ v.complete_count }}</td><td>{{ v.incomplete_count }}</td><td>{{ v.duplicate_count }}</td></tr>{% else %}<tr><td colspan="5" class="muted">لا يوجد تشغيل في هذا اليوم.</td></tr>{% endfor %}</table>
+<p class="small muted">التكلفة حسب الخدمة: {% for k,v in r.costs.items() %}{{ k }} ${{ v }}{{ '، ' if not loop.last }}{% else %}—{% endfor %}</p></div>
+<div class="card"><h2>فرص تحتاج إجراء من الفريق غدًا</h2><table><tr><th>الشركة</th><th>الإجراء</th><th>الموعد</th><th>المسؤول</th></tr>
+{% for t in r.actions %}<tr><td><a href="/companies/{{ t.company_id }}">{{ t.company.name }}</a></td><td>{{ t.title.split(' — ')[0] }}</td><td class="small">{{ t.window_label or fmt(t.due_at) }}</td><td>{{ t.owner.name if t.owner else '—' }}</td></tr>{% else %}<tr><td colspan="4" class="muted">لا يوجد.</td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

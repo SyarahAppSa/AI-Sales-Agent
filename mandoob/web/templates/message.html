@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>{{ m.subject }}</h1><p class="sub"><a href="/companies/{{ m.company_id }}">{{ m.company.name }}</a></p></div>
+<span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err'}.get(m.status,'') }}" style="flex:0 0 auto">{{ STATUS_LABELS.get(m.status, m.status) }}</span></div>
+<div class="card small grid g2">
+<div><b>من:</b> <span class="ltr">{{ m.from_address }}</span></div><div><b>إلى:</b> <span class="ltr">{{ m.to_address }}</span>{% if m.intended_to and m.intended_to != m.to_address %} <span class="pill warn">وضع التجربة — بريد الشركة: {{ m.intended_to }}</span>{% endif %}</div>
+<div><b>وقت الإرسال (الرياض):</b> {{ fmt(m.sent_at) if m.sent_at else '—' }}</div><div><b>العرض:</b> {{ m.offer.service_name if m.offer else '—' }} — {{ m.campaign.name if m.campaign else '' }}</div>
+<div><b>تم التسليم:</b> {{ fmt(m.delivered_at) if m.delivered_at else '—' }}</div><div><b>الارتداد:</b> {{ m.bounce_reason or '—' }}</div>
+<div><b>المرفق كما أُرسل:</b> {% if m.attachment_id %}<a href="/messages/{{ m.id }}/attachment" target="_blank">{{ m.attachment_name }}</a> <span class="mono small muted">sha256 {{ m.attachment_sha256[:16] }}…</span>{% else %}—{% endif %}</div>
+<div><b>معرّف الرسالة:</b> <span class="mono small">{{ m.internet_message_id or '—' }}</span></div>
+<div><b>ملاحظة المزود:</b> {{ m.status_detail }}</div>
+</div>
+<div class="card"><h2>النص كما أُرسل</h2><div class="email">{{ m.body_html|safe }}</div></div>
+{% endblock %}

@@ -1,0 +1,226 @@
+"""تحويل طلب المدير المكتوب بالعربية إلى إعدادات حملة قابلة للمراجعة.
+
+يستخدم Claude عند توفره، مع محلل حتمي احتياطي يعتمد على قاموس القطاعات والمدن أدناه.
+"""
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any
+
+from . import ai
+from .normalize import normalize_arabic
+
+log = logging.getLogger(__name__)
+
+CITIES = {
+    "الرياض": ["الرياض", "رياض", "riyadh"],
+    "جدة": ["جده", "جدة", "jeddah", "jedda"],
+    "الدمام": ["الدمام", "دمام", "dammam"],
+    "الخبر": ["الخبر", "khobar"],
+    "مكة المكرمة": ["مكه", "مكة", "makkah", "mecca"],
+    "المدينة المنورة": ["المدينه المنوره", "المدينة المنورة", "madinah", "medina"],
+    "الظهران": ["الظهران", "dhahran"],
+    "الجبيل": ["الجبيل", "jubail"],
+    "القصيم": ["القصيم", "بريده", "بريدة", "qassim", "buraydah"],
+    "أبها": ["ابها", "أبها", "abha"],
+    "تبوك": ["تبوك", "tabuk"],
+    "الطائف": ["الطايف", "الطائف", "taif"],
+    "حائل": ["حايل", "حائل", "hail"],
+    "جازان": ["جازان", "جيزان", "jazan"],
+    "ينبع": ["ينبع", "yanbu"],
+    "الأحساء": ["الاحساء", "الأحساء", "hofuf", "ahsa"],
+}
+CITY_EN = {"الرياض": "Riyadh", "جدة": "Jeddah", "الدمام": "Dammam", "الخبر": "Khobar",
+           "مكة المكرمة": "Makkah", "المدينة المنورة": "Madinah", "الظهران": "Dhahran", "الجبيل": "Jubail",
+           "القصيم": "Qassim", "أبها": "Abha", "تبوك": "Tabuk", "الطائف": "Taif", "حائل": "Hail",
+           "جازان": "Jazan", "ينبع": "Yanbu", "الأحساء": "Al Ahsa"}
+
+SECTORS: dict[str, dict[str, Any]] = {
+    "transport_logistics": {
+        "label": "النقل والخدمات اللوجستية",
+        "triggers": ["نقل", "لوجست", "شحن", "شاحنات", "logistics", "freight", "trucking"],
+        "keywords_ar": ["شركة نقل بضائع", "شركة خدمات لوجستية", "شركة شحن بري", "نقل ثقيل وشاحنات",
+                        "شركة نقل وتوزيع", "أسطول شاحنات"],
+        "keywords_en": ["logistics company", "freight transport company", "trucking company",
+                        "land transport company", "distribution company fleet"],
+    },
+    "refrigerated_transport": {
+        "label": "النقل المبرّد",
+        "triggers": ["مبرد", "تبريد", "مثلج", "cold chain", "refrigerat", "reefer"],
+        "keywords_ar": ["شركة نقل مبرد", "نقل الأغذية المبردة", "سلاسل التبريد", "التوزيع المبرد",
+                        "شاحنات مبردة", "نقل مجمد ومبرد"],
+        "keywords_en": ["cold chain logistics", "refrigerated trucking", "reefer transport",
+                        "temperature controlled distribution", "frozen food distribution"],
+    },
+    "delivery": {
+        "label": "التوصيل",
+        "triggers": ["توصيل", "طلبات", "مندوبي توصيل", "delivery", "courier", "last mile"],
+        "keywords_ar": ["شركة توصيل طلبات", "خدمات توصيل", "توصيل الميل الأخير", "شركة توصيل شحنات",
+                        "مندوبي توصيل"],
+        "keywords_en": ["delivery company", "courier company", "last mile delivery", "parcel delivery"],
+    },
+    "car_rental": {
+        "label": "تأجير السيارات",
+        "triggers": ["تأجير السيارات", "تاجير السيارات", "تأجير سيارات", "تاجير سيارات", "ايجار سيارات",
+                     "car rental", "leasing", "rent a car"],
+        "keywords_ar": ["شركة تأجير سيارات", "تأجير سيارات للشركات", "تأجير سيارات طويل الأجل",
+                        "تأجير أساطيل"],
+        "keywords_en": ["car rental company", "fleet leasing", "corporate car rental", "rent a car"],
+    },
+    "staff_transport": {
+        "label": "نقل الموظفين والطلاب",
+        "triggers": ["نقل الموظفين", "نقل الطلاب", "نقل مدرسي", "حافلات", "staff transport", "bus"],
+        "keywords_ar": ["شركة نقل موظفين", "نقل طلاب", "تأجير حافلات", "نقل جماعي"],
+        "keywords_en": ["staff transportation company", "bus rental company", "school transport"],
+    },
+    "passenger_transport": {
+        "label": "نقل الركاب والليموزين",
+        "triggers": ["ليموزين", "أجرة", "تاكسي", "نقل الركاب", "limousine", "taxi"],
+        "keywords_ar": ["شركة ليموزين", "نقل ركاب", "سيارات أجرة"],
+        "keywords_en": ["limousine company", "taxi company", "passenger transport"],
+    },
+    "construction_fleet": {
+        "label": "المقاولات والمعدات الثقيلة",
+        "triggers": ["مقاولات", "معدات ثقيلة", "construction", "heavy equipment"],
+        "keywords_ar": ["شركة مقاولات أسطول معدات", "تأجير معدات ثقيلة"],
+        "keywords_en": ["construction company fleet", "heavy equipment rental"],
+    },
+}
+
+EXCLUSION_HINTS = {
+    "brokers": (["وسيط", "وسطاء", "broker"], ["وسطاء الشحن والنقل", "منصات الحجز والمقارنة",
+                                               "freight broker", "marketplace / aggregator"]),
+}
+
+PRIORITY_HINTS = {
+    "fleet": (["اسطول", "أسطول", "fleet"], "تدير أسطول مركبات"),
+}
+
+_AR_NUM = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+
+def _find_cities(t: str) -> list[str]:
+    found = []
+    for city, variants in CITIES.items():
+        if any(normalize_arabic(v).lower() in t for v in variants):
+            found.append(city)
+    return found
+
+
+def _find_sectors(t: str) -> list[str]:
+    found = []
+    for key, s in SECTORS.items():
+        if any(normalize_arabic(tr).lower() in t for tr in s["triggers"]):
+            found.append(key)
+    # "النقل المبرد" يحتوي كلمة "نقل" — لا نضيف النقل العام إلا إذا ذُكر صراحةً بشكل مستقل
+    if "refrigerated_transport" in found and "transport_logistics" in found:
+        plain = re.sub(r"نقل\s*(ال)?(اغذيه\s*ال)?مبرد", "", t)
+        if not any(normalize_arabic(tr).lower() in plain for tr in SECTORS["transport_logistics"]["triggers"]):
+            found.remove("transport_logistics")
+    return found
+
+
+def _find_quotas(text: str, sectors: list[str]) -> dict[str, int]:
+    t = normalize_arabic(text.translate(_AR_NUM)).lower()
+    quotas: dict[str, int] = {}
+    for m in re.finditer(r"(\d{1,4})\s*(?:شركه|شركات|منشاه|منشآت)?\s*([^\d،,.؛]{2,60})", t):
+        n, tail = int(m.group(1)), m.group(2)
+        for key in sectors:
+            if key in quotas:
+                continue
+            if any(normalize_arabic(tr).lower() in tail for tr in SECTORS[key]["triggers"]):
+                quotas[key] = n
+                break
+    return quotas
+
+
+def parse_request_rules(text: str, daily_target: int = 400) -> dict[str, Any]:
+    """محلل حتمي احتياطي."""
+    t = normalize_arabic(text).lower()
+    cities = _find_cities(t) or ["الرياض"]
+    sectors = _find_sectors(t) or ["transport_logistics"]
+    exclusions: list[str] = []
+    for _, (triggers, labels) in EXCLUSION_HINTS.items():
+        if any(normalize_arabic(tr) in t for tr in triggers):
+            exclusions.extend(labels)
+    t_plain = re.sub(r"[«»\"'“”]", "", t)
+    exclude_existing = any(k in t_plain for k in ["عملاء سياره اب", "عملائنا الحاليين", "العملاء الحاليين",
+                                             "existing customers"])
+    signals = [label for _, (trs, label) in PRIORITY_HINTS.items() if any(normalize_arabic(x) in t for x in trs)]
+    quotas = _find_quotas(text, sectors)
+    m = re.search(r"(\d{2,5})\s*شركه\s*(جديده)?\s*يوميا", normalize_arabic(text.translate(_AR_NUM)))
+    if m and not quotas:
+        daily_target = int(m.group(1))
+    if quotas:
+        daily_target = sum(quotas.values()) if len(quotas) == len(sectors) else daily_target
+    # الحصص المتبقية توزع بالتساوي
+    remaining = max(daily_target - sum(quotas.values()), 0)
+    missing = [s for s in sectors if s not in quotas]
+    for i, s in enumerate(missing):
+        quotas[s] = remaining // len(missing) + (1 if i < remaining % len(missing) else 0)
+    cats = []
+    for i, key in enumerate(sectors):
+        s = SECTORS[key]
+        cats.append({
+            "sector_key": key, "label": s["label"], "cities": cities,
+            "keywords_ar": s["keywords_ar"], "keywords_en": s["keywords_en"],
+            "priority": i + 1, "priority_signals": signals, "quota": quotas.get(key, 0),
+        })
+    return {
+        "name": "حملة " + " و".join(SECTORS[k]["label"] for k in sectors) + " — " + "، ".join(cities),
+        "daily_target": sum(c["quota"] for c in cats),
+        "exclusions": exclusions,
+        "exclude_existing_customers": exclude_existing,
+        "categories": cats,
+        "parser": "rules",
+    }
+
+
+TARGETING_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["name", "daily_target", "exclusions", "exclude_existing_customers", "categories"],
+    "properties": {
+        "name": {"type": "string"},
+        "daily_target": {"type": "integer"},
+        "exclusions": {"type": "array", "items": {"type": "string"}},
+        "exclude_existing_customers": {"type": "boolean"},
+        "categories": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False,
+            "required": ["sector_key", "label", "cities", "keywords_ar", "keywords_en", "priority",
+                         "priority_signals", "quota"],
+            "properties": {
+                "sector_key": {"type": "string"},
+                "label": {"type": "string"},
+                "cities": {"type": "array", "items": {"type": "string"}},
+                "keywords_ar": {"type": "array", "items": {"type": "string"}},
+                "keywords_en": {"type": "array", "items": {"type": "string"}},
+                "priority": {"type": "integer"},
+                "priority_signals": {"type": "array", "items": {"type": "string"}},
+                "quota": {"type": "integer"},
+            }}},
+    },
+}
+
+_SYSTEM = """أنت محلل استهداف مبيعات لشركة «سيارة اب» السعودية (حلول إدارة أساطيل المركبات).
+حوّل طلب المدير إلى إعدادات حملة. القواعد:
+- استخدم مفاتيح القطاعات المعرّفة إن طابقت: {keys}. يمكنك إنشاء مفتاح جديد بالإنجليزية بصيغة snake_case إن لم يطابق أي منها.
+- المدن بأسمائها العربية الرسمية (الرياض، جدة، الدمام...).
+- لكل فئة اكتب 4-8 عبارات بحث عربية و3-6 إنجليزية تشمل المرادفات والأنشطة القريبة (مثال: النقل المبرد يشمل نقل الأغذية المبردة وسلاسل التبريد والتوزيع المبرد).
+- الحصص: إن ذكر المدير أرقامًا لكل فئة فالتزم بها، وإلا وزّع الهدف اليومي ({target}) حسب الأولوية. مجموع الحصص = الهدف اليومي.
+- exclusions: الأنشطة المستبعدة بوضوح (مثل الوسطاء ومنصات الحجز).
+- priority 1 هي الأعلى."""
+
+
+def parse_request(text: str, daily_target: int = 400) -> dict[str, Any]:
+    if ai.settings.ai_enabled:
+        try:
+            out = ai.ai_json(_SYSTEM.format(keys=", ".join(SECTORS), target=daily_target),
+                             f"طلب المدير:\n{text}", TARGETING_SCHEMA, note="targeting")
+            out["parser"] = "ai"
+            out["daily_target"] = sum(int(c.get("quota") or 0) for c in out["categories"]) or daily_target
+            return out
+        except ai.AIUnavailable as e:
+            log.warning("AI targeting failed, using rules: %s", e)
+    return parse_request_rules(text, daily_target)

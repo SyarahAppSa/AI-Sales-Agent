@@ -1,0 +1,76 @@
+# Render Blueprint: خادم الواجهة + عامل الجدولة + قاعدة PostgreSQL دائمة
+envVarGroups:
+  - name: mandoob-secrets
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-opus-5-5
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: MS_TENANT_ID
+        sync: false
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_AGENT_ID
+        sync: false
+      - key: ELEVENLABS_PHONE_NUMBER_ID
+        sync: false
+      - key: VOICE_WEBHOOK_SECRET
+        sync: false
+
+services:
+  - type: web
+    name: mandoob-web
+    runtime: python
+    region: frankfurt
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn mandoob.web.app:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: mandoob-db, property: connectionString}
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - fromGroup: mandoob-secrets
+
+  - type: worker
+    name: mandoob-worker
+    runtime: python
+    region: frankfurt
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m mandoob.worker
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: mandoob-db, property: connectionString}
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - fromGroup: mandoob-secrets
+
+databases:
+  - name: mandoob-db
+    region: frankfurt
+    plan: basic-256mb
+    databaseName: mandoob

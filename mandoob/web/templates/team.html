@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>الفريق والتوزيع</h1><p class="sub">لكل شركة مندوب مسؤول واحد. التوزيع حسب القطاع والمدينة ثم الأقل حملًا من الفرص المفتوحة.</p></div></div>
+<div class="card tablewrap"><table><tr><th>الاسم</th><th>الدور</th><th>القطاعات</th><th>المدن</th><th>فرص مفتوحة</th><th>مهام (متأخرة)</th><th>اجتماعات</th><th>صفقات</th><th></th></tr>
+{% for u in users %}<tr><td><b>{{ u.name }}</b><div class="small ltr muted">{{ u.email }}</div></td><td>{{ ROLE_LABELS[u.role] }}{% if not u.active %} <span class="pill">موقوف</span>{% endif %}</td>
+<td class="small">{% for k in u.sectors %}{{ SECTORS[k].label if k in SECTORS else k }}{{ '، ' if not loop.last }}{% else %}الكل{% endfor %}</td><td class="small">{{ u.cities|join('، ') or 'الكل' }}</td>
+<td>{{ perf[u.id].open }} / {{ u.max_open_leads }}</td><td>{{ perf[u.id].tasks }} {% if perf[u.id].overdue %}<span class="pill err">{{ perf[u.id].overdue }}</span>{% endif %}</td><td>{{ perf[u.id].meetings }}</td><td>{{ perf[u.id].won }}</td>
+<td><details><summary>تعديل</summary>{% with u=u %}{% include "_user_form.html" %}{% endwith %}</details></td></tr>{% endfor %}</table></div>
+<div class="card"><h2>إضافة مستخدم</h2>{% with u=None %}{% include "_user_form.html" %}{% endwith %}</div>
+{% endblock %}

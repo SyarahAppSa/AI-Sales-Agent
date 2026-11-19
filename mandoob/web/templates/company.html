@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>{{ c.name }}</h1>
+<p class="sub">{{ c.activity }} — {{ c.city }}{% if c.website %} — <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a>{% endif %}</p>
+<span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>
+<span class="pill {{ 'ok' if c.data_status=='complete' else 'warn' }}">{{ 'مكتملة البيانات' if c.data_status=='complete' else 'قيد استكمال البيانات' }}</span>
+{% if c.do_not_contact %}<span class="pill err">أوقفت التواصل</span>{% endif %}</div>
+<div class="stat" style="flex:0 0 260px"><div class="l">المندوب المسؤول</div><div style="font-weight:700">{{ c.owner.name if c.owner else 'غير مسند' }}</div>
+<div class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></div></div>
+
+<div class="grid g2">
+<div>
+<div class="card"><h2>بيانات التواصل الموثّقة</h2>
+<table><tr><th>النوع</th><th>القيمة</th><th>المصدر</th></tr>
+{% for ct in c.contacts %}<tr><td>{{ 'هاتف' if ct.kind=='phone' else 'بريد' }}{% if ct.preferred %} <span class="pill ok">مفضل</span>{% endif %}{% if not ct.verified %} <span class="pill err">مرتد/غير صالح</span>{% endif %}</td>
+<td class="ltr">{{ phone(ct.value) if ct.kind=='phone' else ct.value }}</td><td class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url[:60] }}</a><div class="muted">{{ fmt(ct.found_at, False) }}{% if ct.label %} · {{ ct.label }}{% endif %}</div></td></tr>{% endfor %}</table>
+<p class="small" style="margin-top:10px"><b>سبب الترشيح:</b> {{ c.fit_reason }} {% if c.fit_evidence_url %}<a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الدليل)</a>{% endif %}</p>
+<p class="small muted">اكتُشفت {{ fmt(c.first_found_at) }} — الحملة: {{ c.campaign.name if c.campaign else '—' }} — الفئة: {{ c.category.label if c.category else '—' }} — شوهدت {{ c.times_seen }} مرة</p>
+<details><summary>المصادر ({{ c.sources|length }})</summary><ul class="small">{% for src in c.sources %}<li>{{ SOURCE_LABELS.get(src.source_type, src.source_type) }}: <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.url[:80] }}</a> — {{ fmt(src.found_at, False) }}</li>{% endfor %}</ul></details>
+</div>
+
+<div class="card"><h2>العروض المرسلة</h2>
+{% for m in msgs %}<div style="border-bottom:1px solid var(--line);padding:8px 0">
+<a href="/messages/{{ m.id }}"><b>{{ m.subject }}</b></a> <span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err','failed':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>
+<div class="small muted">{{ {'offer':'عرض','followup':'متابعة','confirmation':'تأكيد موعد'}[m.kind] }} — {{ fmt(m.sent_at) if m.sent_at else 'لم يُرسل بعد' }} — إلى <span class="ltr">{{ m.to_address }}</span>{% if m.attachment_name %} — مرفق: {{ m.attachment_name }}{% endif %}</div>
+{% if m.bounce_reason %}<div class="small" style="color:var(--err)">{{ m.bounce_reason }}</div>{% endif %}</div>{% else %}<p class="muted">لم يُرسل أي عرض.</p>{% endfor %}
+</div>
+
+<div class="card"><h2>المهام</h2>
+{% for t in tasks %}<div class="row" style="border-bottom:1px solid var(--line);padding:6px 0;align-items:center">
+<div style="flex:3 1 200px"><b>{{ t.title }}</b><div class="small muted">{{ t.window_label or '' }} — {{ fmt(t.due_at) }} — {{ t.owner.name if t.owner else '' }}</div></div>
+<div style="flex:0 0 auto">{% if t.status=='open' %}<form method="post" action="/tasks/{{ t.id }}/done"><button class="btn sm">تم</button></form>{% else %}<span class="pill">{{ {'done':'منجزة','cancelled':'ملغاة'}[t.status] }}</span>{% endif %}</div></div>{% else %}<p class="muted">لا توجد مهام.</p>{% endfor %}
+</div>
+
+<div class="card"><h2>إجراءات</h2>
+<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="note">
+<label>ملاحظة / آخر إجراء</label><div class="row"><input name="note" required><button class="btn" style="flex:0 0 auto">إضافة</button></div></form>
+<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="task">
+<label>مهمة متابعة (بتوقيت الرياض)</label><div class="row"><input name="note" placeholder="مثال: الاتصال لتأكيد الاحتياج"><input type="datetime-local" name="when" required><button class="btn" style="flex:0 0 auto">إنشاء</button></div></form>
+<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="meeting">
+<label>حجز اجتماع (يتحقق من تقويم المندوب ويرسل التأكيد)</label><div class="row"><input type="datetime-local" name="when" required><button class="btn p" style="flex:0 0 auto">حجز</button></div></form>
+<div class="row">
+<form method="post" action="/companies/{{ c.id }}/action" class="row"><input type="hidden" name="action" value="won"><input type="number" name="value" placeholder="قيمة الصفقة"><button class="btn" style="flex:0 0 auto">صفقة رابحة</button></form>
+<form method="post" action="/companies/{{ c.id }}/action" style="flex:0 0 auto"><input type="hidden" name="action" value="lost"><button class="btn">غير مهتمة</button></form>
+<form method="post" action="/companies/{{ c.id }}/action" style="flex:0 0 auto" onsubmit="return confirm('تسجيل طلب إيقاف التواصل؟')"><input type="hidden" name="action" value="opt_out"><button class="btn d">إيقاف التواصل</button></form>
+</div>
+{% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/action" class="field" style="margin-top:10px"><input type="hidden" name="action" value="assign">
+<label>تغيير المندوب المسؤول</label><div class="row"><select name="owner_id">{% for r in reps %}<option value="{{ r.id }}" {{ 'selected' if r.id==c.owner_id }}>{{ r.name }} ({{ ROLE_LABELS[r.role] }})</option>{% endfor %}</select><button class="btn" style="flex:0 0 auto">إسناد</button></div></form>{% endif %}
+<h2 style="margin-top:14px">المساعد الصوتي</h2>
+<form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="call_consent">
+<label>تسجيل موافقة صريحة على الاتصال الآلي (مع الدليل)</label><div class="row"><input name="note" placeholder="مثال: وافق العميل في رده بتاريخ ... على اتصال المساعد"><button class="btn" style="flex:0 0 auto">تسجيل</button></div></form>
+<form method="post" action="/companies/{{ c.id }}/action"><input type="hidden" name="action" value="ai_call">
+<button class="btn {{ 'p' if call_ok }}" {{ '' if call_ok else 'disabled' }}>اتصال بالمساعد الصوتي</button> {% if not call_ok %}<span class="small muted">{{ call_why }}</span>{% endif %}</form>
+</div>
+</div>
+
+<div class="card"><h2>السجل الزمني (العروض والردود والمكالمات)</h2>
+<ul class="timeline">{% for a in timeline %}<li><div class="k">{{ fmt(a.at) }}</div><b>{{ a.title }}</b>
+{% if a.details %}<pre>{{ a.details }}</pre>{% endif %}{% if a.ref_type=='outbound' %}<a class="small" href="/messages/{{ a.ref_id }}">عرض الرسالة كما أُرسلت</a>{% endif %}</li>{% endfor %}</ul>
+{% if calls %}<h2 style="margin-top:12px">المكالمات</h2>{% for cl in calls %}<div class="small" style="border-bottom:1px solid var(--line);padding:6px 0"><b>{{ fmt(cl.created_at) }}</b> — {{ cl.status }} — {{ cl.outcome or '' }}<div>{{ cl.summary or '' }}</div><div class="muted">الخطوة التالية: {{ cl.next_step or '—' }}</div></div>{% endfor %}{% endif %}
+{% if consents %}<details style="margin-top:10px"><summary>سجل الموافقات وأساس التواصل</summary><ul class="small">{% for x in consents %}<li>{{ 'البريد' if x.channel=='email' else 'المكالمات' }} — {{ {'published_business_contact':'بريد أعمال منشور','explicit':'موافقة صريحة','opt_out':'طلب إيقاف'}.get(x.basis,x.basis) }} — {{ 'مسموح' if x.granted else 'غير مسموح' }} — {{ x.evidence }} — {{ fmt(x.created_at, False) }}</li>{% endfor %}</ul></details>{% endif %}
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>سجل التشغيل</h1><p class="sub">كل تشغيل يومي مع نقطة التوقف لكل مصدر، والأعطال، والعجز وسببه.</p></div></div>
+{% for r in rows %}<div class="card">
+<div class="top" style="margin:0"><h2>{{ fmt_date(r.run_date) }} — حملة #{{ r.campaign_id }}</h2>
+<span class="pill {{ {'done':'ok','partial':'warn','running':'info','failed':'err'}[r.status] }}" style="flex:0 0 auto">{{ {'running':'قيد التشغيل','done':'اكتمل الهدف','partial':'جزئي','failed':'فشل'}[r.status] }}</span></div>
+<div class="grid g4 small"><div>مكتملة: <b>{{ r.complete_count }}</b> / {{ r.target }}</div><div>قيد الاستكمال: {{ r.incomplete_count }}</div><div>مكررة: {{ r.duplicate_count }}</div><div>مستبعدة: {{ r.rejected_count }}</div></div>
+{% if r.shortfall %}<p class="small" style="color:var(--warn);white-space:pre-line">العجز: {{ r.shortfall }}\n{{ r.shortfall_reason }}</p>{% endif %}
+{% if r.per_source %}<table class="small"><tr><th>المصدر</th><th>مرشحون</th><th>مكتملة</th><th>قيد الاستكمال</th><th>مكررة</th><th>مستبعدة</th></tr>{% for k,v in r.per_source.items() %}<tr><td>{{ SOURCE_LABELS.get(k,k) }}</td><td>{{ v.candidates or 0 }}</td><td>{{ v.complete_count or 0 }}</td><td>{{ v.incomplete_count or 0 }}</td><td>{{ v.duplicate_count or 0 }}</td><td>{{ v.rejected_count or 0 }}</td></tr>{% endfor %}</table>{% endif %}
+{% if r.source_errors %}<p class="small" style="color:var(--err)">{% for k,v in r.source_errors.items() %}{{ SOURCE_LABELS.get(k,k) }}: {{ v }}<br>{% endfor %}</p>{% endif %}
+<details><summary>السجل التفصيلي</summary><pre class="small" style="white-space:pre-wrap">{{ (r.log or [])|join('\n') }}</pre></details>
+</div>{% else %}<p class="muted">لا يوجد تشغيل بعد.</p>{% endfor %}
+{% endblock %}

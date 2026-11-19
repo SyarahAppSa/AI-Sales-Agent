@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}مندوب سيارة اب الذكي{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% if user %}
+<div class="layout">
+<aside class="side">
+  <div class="brand"><span class="dot">س</span>مندوب سيارة اب الذكي</div>
+  <nav class="nav">
+    <a href="/" class="{{ 'on' if path == '/' }}">الرئيسية</a>
+    <a href="/followups" class="key {{ 'on' if path.startswith('/followups') }}">تحتاج متابعة اليوم</a>
+    <a href="/offers-report" class="key {{ 'on' if path.startswith('/offers-report') }}">الشركات التي أُرسلت إليها عروض</a>
+    <a href="/companies" class="{{ 'on' if path.startswith('/companies') }}">الشركات</a>
+    <a href="/notifications" class="{{ 'on' if path.startswith('/notifications') }}">التنبيهات {% if unread %}<span class="pill err">{{ unread }}</span>{% endif %}</a>
+    {% if user.role in ('admin','manager') %}
+    <div class="sep"></div>
+    <a href="/targets" class="{{ 'on' if path.startswith('/targets') }}">الفئات المستهدفة</a>
+    <a href="/offers" class="{{ 'on' if path.startswith('/offers') and not path.startswith('/offers-report') }}">العروض والمرفقات</a>
+    <a href="/daily-report" class="{{ 'on' if path.startswith('/daily-report') }}">التقرير اليومي</a>
+    <a href="/runs" class="{{ 'on' if path.startswith('/runs') }}">سجل التشغيل</a>
+    <a href="/team" class="{{ 'on' if path.startswith('/team') }}">الفريق والتوزيع</a>
+    <a href="/mail" class="{{ 'on' if path.startswith('/mail') }}">ربط بريد الشركة</a>
+    <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">الإعدادات والمكالمات</a>
+    <a href="/sandbox" class="{{ 'on' if path.startswith('/sandbox') }}">صندوق التجربة</a>
+    {% endif %}
+    <div class="sep"></div>
+    <a href="/logout">خروج ({{ user.name }} — {{ ROLE_LABELS[user.role] }})</a>
+  </nav>
+</aside>
+<main class="main">
+{% if flash %}<div class="flash {{ flash.kind }}">{{ flash.msg }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</div>
+{% else %}
+{% if flash %}<div class="flash {{ flash.kind }}" style="max-width:380px;margin:20px auto 0">{{ flash.msg }}</div>{% endif %}
+{% block public %}{% endblock %}
+{% endif %}
+</body></html>
