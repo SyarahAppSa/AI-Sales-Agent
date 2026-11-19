@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% from "_vehicle.html" import vind %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
 {% if t.running %}<meta http-equiv="refresh" content="20">{% endif %}
 <div class="top"><div><h1>عملاء اليوم</h1><p class="sub" style="margin:0">{{ fmt_date(t.day) }}{% if t.running %} — <b style="color:var(--brand)">البحث يعمل الآن، تتحدث الصفحة تلقائيًا</b>{% endif %}</p></div>
 <div class="row"><a class="btn" href="/today.xlsx?{{ qs }}">تصدير إلى Excel</a>{% if user.role in ('admin','manager') %}<a class="btn p" href="/prospecting">البحث عن العملاء</a>{% endif %}</div></div>
@@ -21,12 +21,13 @@
 <tr>
 <td style="min-width:160px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>
   <div>{% if r.complete %}<span class="pill ok">مكتمل</span>{% elif r.branch %}<span class="pill">فرع</span>{% else %}<span class="pill warn">قيد الاستكمال</span>{% endif %}</div>
+  {% if c.entity_type %}<div class="small muted">{{ ENTITY_TYPES.get(c.entity_type, c.entity_type) }}{% if c.category %} — {{ c.category.label }}{% endif %}</div>{% endif %}
   {% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
 <td class="small" style="min-width:120px">{{ c.activity }}<div class="muted">{{ c.city }}</div></td>
 <td class="small" style="min-width:130px">{% if r.phone %}<span class="ltr">{{ phone(r.phone.value) }}</span><div><a href="{{ r.phone.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.phone.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td class="small" style="min-width:150px">{% if r.email %}<span class="ltr">{{ r.email.value }}</span><div><a href="{{ r.email.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.email.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td class="small" style="min-width:220px;max-width:380px">{{ c.fit_reason }}{% if c.fit_phrase %}<div class="muted">«{{ c.fit_phrase[:140] }}»</div>{% endif %}
-  <div class="muted">{{ OPERATOR_LABELS.get(c.operator_status, '') }}</div></td>
+  <div class="muted">{{ OPERATOR_LABELS.get(c.operator_status, '') }}</div>{{ vind(c) }}</td>
 <td class="small" style="min-width:160px">{% for u in r.links %}<div><a href="{{ u }}" target="_blank" rel="noopener" class="ltr">{{ u.split('//')[-1][:38] }}</a></div>{% endfor %}</td>
 <td class="small" style="min-width:90px">{{ fmt(c.first_found_at) }}{% if c.owner %}<div class="muted">مسند: {{ c.owner.name }}</div>{% endif %}</td>
 </tr>{% else %}<tr><td colspan="7" class="muted">لا يوجد عملاء جدد لهذا اليوم بعد.</td></tr>{% endfor %}

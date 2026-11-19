@@ -93,6 +93,15 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
     def batch_full(s) -> bool:
         return max_new is not None and sum(_count_today(s, cid, day) for cid, *_ in cats) - baseline >= max_new
 
+    # دفعة محدودة على عدة قطاعات: تتوزع بينها بدل أن يستهلكها القطاع الأول
+    per_cat_cap = -(-max_new // len(cats)) if max_new and len(cats) > 1 else None
+    with session_scope() as s:
+        cat_base = {cid: _count_today(s, cid, day) for cid, *_ in cats}
+
+    def cat_full(s, cat_id: int, quota: int) -> bool:
+        have = _count_today(s, cat_id, day)
+        return have >= quota or (per_cat_cap is not None and have - cat_base[cat_id] >= per_cat_cap)
+
     def process_category(cat_id: int, quota: int, cities: list[str], queries: list[str]) -> None:
         budget = quota * max_candidates_factor
         seen_candidates = 0
@@ -100,11 +109,12 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             for city in cities:
                 for qi, query in enumerate(queries):
                     with session_scope() as s:
-                        if _count_today(s, cat_id, day) >= quota or batch_full(s):
+                        if cat_full(s, cat_id, quota) or batch_full(s):
                             return
                     if src_name in disabled or src_name not in sources:
                         break
-                    key = f"{cat_id}|{src_name}|{city}|{qi}"
+                    import hashlib
+                    key = f"{cat_id}|{src_name}|{city}|{qi}|{hashlib.md5(query.encode()).hexdigest()[:6]}"
                     with session_scope() as s:
                         run = s.get(DiscoveryRun, run_id)
                         state = dict((run.checkpoint or {}).get(key, {}))
@@ -122,7 +132,7 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                                 cp = dict(run.checkpoint or {})
                                 cp[key] = dict(state)
                                 run.checkpoint = cp
-                                if _count_today(s, cat_id, day) >= quota or batch_full(s):
+                                if cat_full(s, cat_id, quota) or batch_full(s):
                                     stop = True
                             if stop and not whole_call:
                                 return
@@ -176,8 +186,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                 if gap <= 0:
                     break
 
-    # إعادة محاولة استكمال السجلات الناقصة
-    enrich_incomplete(crawler=crawler, limit=int(__import__("os").environ.get("ENRICH_LIMIT", "15")))
+    # إعادة محاولة استكمال السجلات الناقصة — في التشغيل اليومي فقط، لا في الدفعات اليدوية (أسرع وأوضح تكلفة)
+    if max_new is None:
+        enrich_incomplete(crawler=crawler, limit=int(__import__("os").environ.get("ENRICH_LIMIT", "15")))
 
     with session_scope() as s:
         run = s.get(DiscoveryRun, run_id)
@@ -282,7 +293,8 @@ def _prequalified_fit(cand: Candidate, site, cat: Category, exclusions: list[str
                                                "evidence": "", "url": None}
     if op["status"] == "unknown" and cand.operator_status in ("self", "contracted"):
         op = {"status": cand.operator_status, "carrier": None, "evidence": cand.phrase or "", "url": cand.evidence_url}
-    return FitResult(True, cand.fit_hint, cand.evidence_url or cand.source_url, 0.75 if cand.phrase else 0.6,
+    score = 0.75 if cand.phrase else (0.4 if getattr(cand, "vehicle_indicator", None) == "unconfirmed" else 0.6)
+    return FitResult(True, cand.fit_hint, cand.evidence_url or cand.source_url, score,
                      cand.activity or cat.label, phrase=cand.phrase, operator=op,
                      signals=detect_signals(pages) if pages else [],
                      decision_unit=SECTORS.get(cat.sector_key, {}).get("decision_unit"))

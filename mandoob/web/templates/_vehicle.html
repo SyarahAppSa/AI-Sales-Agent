@@ -1,0 +1,5 @@
+{% macro vind(c) -%}
+<div class="small" style="margin-top:4px">مؤشر استخدام المركبات:
+{% if c.vehicle_indicator == 'confirmed' or (not c.vehicle_indicator and c.fit_phrase) %}<span class="pill ok">مؤكد</span>{% if c.fit_evidence_url %} <a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">المصدر</a>{% endif %}
+{% else %}<span class="pill warn">غير مؤكد</span>{% endif %}</div>
+{%- endmacro %}

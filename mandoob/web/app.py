@@ -54,6 +54,8 @@ templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.globals.update(fmt=fmt, fmt_date=fmt_date, STATUS_LABELS=STATUS_LABELS, STAGE_LABELS=STAGE_LABELS,
                              SECTORS=SECTORS, CITIES=list(CITIES), REGIONS=REGIONS, OPERATOR_LABELS=OPERATOR_LABELS, ROLE_LABELS=ROLE_LABELS,
                              INTENT_LABELS=INTENT_LABELS, SOURCE_LABELS=SOURCE_LABELS, phone=format_phone_display)
+from ..activities import ENTITY_TYPES, VEHICLE_INDICATOR  # noqa: E402
+templates.env.globals.update(ENTITY_TYPES=ENTITY_TYPES, VEHICLE_INDICATOR=VEHICLE_INDICATOR)
 
 
 def _startup() -> None:
@@ -483,7 +485,8 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
 def prospecting_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospecting as P
     st = P.status(s)
-    return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, MAIN_CITIES=P.MAIN_CITIES,
+    return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, DIR_SECTORS=P.SECTORS,
+                  MAIN_CITIES=P.MAIN_CITIES,
                   REGIONS=list(P.REGIONS.keys()), ai_ready=settings.ai_enabled,
                   sources={"وكيل البحث (Claude: بحث الويب وقراءة الصفحات)": settings.ai_enabled,
                            "خرائط Google (GOOGLE_PLACES_API_KEY)": bool(settings.google_places_api_key),
@@ -497,7 +500,7 @@ async def prospecting_save(request: Request, user: User = Depends(require_manage
     form = await request.form()
     extra = [c.strip() for c in (form.get("extra_cities") or "").replace("،", ",").split(",") if c.strip()]
     camp = P.save_config(s, cities=list(form.getlist("cities")) + extra, regions=list(form.getlist("regions")),
-                         activities=list(form.getlist("activities")),
+                         activities=list(form.getlist("activities")), all_activities=bool(form.get("all_activities")),
                          daily_target=int(form.get("daily_target") or 400), scheduled=bool(form.get("scheduled")),
                          time=(form.get("time") or "06:00")[:5], user_id=user.id)
     audit(s, user, "prospecting_config", user, after=P.get_config(s))
@@ -1525,14 +1528,15 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
     ws = wb.active
     ws.title = "عملائي"
     ws.sheet_view.rightToLeft = True
-    head = ["الشركة", "النشاط", "المدينة", "الحالة", "تاريخ إرسال العرض (المسجّل)"] + \
+    head = ["الشركة", "النشاط", "المدينة", "الحالة", "تاريخ إرسال العرض (المسجّل)", "مؤشر استخدام المركبات"] + \
         (["الهاتف", "مصدر الهاتف"] if can(user, "see_phone") else []) + \
         (["البريد", "مصدر البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
         (["آخر رد", "نوع الرد"] if can(user, "see_replies") else []) + ["المتابعة القادمة", "موعدها"]
     ws.append(head)
     for r in _portal_rows(s, user, q):
         c = r["c"]
-        row = [c.name, c.activity, c.city, STAGE_LABELS.get(c.stage, c.stage), fmt(c.offer_sent_at) if c.offer_sent_at else ""] + \
+        row = [c.name, c.activity, c.city, STAGE_LABELS.get(c.stage, c.stage), fmt(c.offer_sent_at) if c.offer_sent_at else "",
+               "مؤكد" if c.vehicle_indicator == "confirmed" or (not c.vehicle_indicator and c.fit_phrase) else "غير مؤكد"] + \
             ([r["phone"] or "", r["phone_src"] or ""] if can(user, "see_phone") else []) + \
             ([r["email"] or "", r["email_src"] or ""] if can(user, "see_email") else [])
         if can(user, "see_offers"):

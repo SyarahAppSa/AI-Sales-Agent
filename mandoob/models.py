@@ -188,6 +188,8 @@ class Company(Base):
     owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     # new / contacted / replied / interested / meeting / won / lost / do_not_contact
     stage: Mapped[str] = mapped_column(String(30), default="new")
+    entity_type: Mapped[Optional[str]] = mapped_column(String(30))  # شركة / مؤسسة فردية / جمعية ...
+    vehicle_indicator: Mapped[Optional[str]] = mapped_column(String(20))  # confirmed / unconfirmed
     # التواصل اليدوي من الفريق: ما سجّله الموظف بنفسه (من ومتى) — مصدر تقرير العروض في المرحلة الحالية
     contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     contacted_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))

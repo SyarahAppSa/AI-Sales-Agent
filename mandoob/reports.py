@@ -447,10 +447,12 @@ def export_today_xlsx(t: dict) -> bytes:
                f"قيد الاستكمال: {t['incomplete']}", f"مكررات مستبعدة: {t['duplicates']}"])
     ws.append([])
     ws.append(["اسم العميل", "نوع النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
-               "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر", "تاريخ الجمع", "المسؤول"])
+               "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر", "تاريخ الجمع", "المسؤول",
+               "مؤشر استخدام المركبات", "نوع الجهة", "القطاع"])
     for cell in ws[3]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="6941C6")
+    from .activities import ENTITY_TYPES
     from .companies import OPERATOR_LABELS
     for r in t["rows"]:
         c = r["c"]
@@ -459,8 +461,10 @@ def export_today_xlsx(t: dict) -> bytes:
                    r["email"].source_url if r["email"] else "", c.fit_reason, c.fit_evidence_url or "",
                    OPERATOR_LABELS.get(c.operator_status, ""), "مكتمل" if r["complete"] else
                    ("فرع" if r["branch"] else "قيد الاستكمال"), "\n".join(r["links"]),
-                   fmt(c.first_found_at), c.owner.name if c.owner else ""])
-    for col, w in zip("ABCDEFGHIJKLMN", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60, 20, 16]):
+                   fmt(c.first_found_at), c.owner.name if c.owner else "",
+                   "مؤكد" if c.vehicle_indicator == "confirmed" or (not c.vehicle_indicator and c.fit_phrase) else "غير مؤكد",
+                   ENTITY_TYPES.get(c.entity_type or "", c.entity_type or ""), c.category.label if c.category else ""])
+    for col, w in zip("ABCDEFGHIJKLMNOPQ", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60, 20, 16, 16, 16, 22]):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=4):
         for cell in row:

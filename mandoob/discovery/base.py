@@ -34,6 +34,7 @@ class Candidate:
     phrase: str | None = None
     operator_status: str | None = None
     entity_type: str | None = None
+    vehicle_indicator: str | None = None  # confirmed / unconfirmed
 
 
 class SourceError(RuntimeError):

@@ -100,6 +100,11 @@ for _k, _v in USAGE_SEGMENTS.items():
     SECTORS[_k] = {**_v, "kind": "usage"}
 for _k, _v in SECTOR_OVERRIDES.items():
     SECTORS[_k] = {**SECTORS.get(_k, {}), **_v, "kind": "usage"}
+# قطاعات دليل الأنشطة (أداة «البحث عن العملاء») — للعرض والتصفية والتقارير
+from .activities import SECTORS as _DIR_SECTORS  # noqa: E402
+for _k, _v in _DIR_SECTORS.items():
+    SECTORS.setdefault(_k, {"label": _v["label"], "triggers": [], "keywords_ar": [], "keywords_en": [],
+                            "operational": [], "decision_unit": "الإدارة العامة / المشتريات", "kind": "directory"})
 for _k, _v in SECTORS.items():
     # المحلل يقارن بنص موحّد (بدون همزات/تاء مربوطة)
     _v["triggers"] = [normalize_arabic(x).lower() for x in _v["triggers"]]

@@ -22,39 +22,20 @@ MAIN_CITIES = ["الرياض", "جدة", "مكة المكرمة", "المدين�
                "الطائف", "بريدة", "عنيزة", "تبوك", "أبها", "خميس مشيط", "حائل", "جازان", "نجران", "ينبع", "الخرج",
                "حفر الباطن", "الباحة", "سكاكا", "عرعر"]
 
-# الأنشطة المستهدفة: منشآت داخل السعودية تملك مركبات أو تشغّلها
-ACTIVITIES: dict[str, dict] = {
-    "transport": {"label": "شركات النقل والشحن", "sector": "transport_logistics",
-                  "q": ["شركة نقل بضائع", "شركة شحن بري", "نقليات وشاحنات", "شركة خدمات لوجستية", "نقل ثقيل"]},
-    "delivery": {"label": "التوصيل", "sector": "delivery",
-                 "q": ["شركة توصيل طلبات", "خدمات توصيل للشركات", "توصيل الميل الأخير", "مندوبين توصيل"]},
-    "contracting": {"label": "المقاولات", "sector": "contractors_operators",
-                    "q": ["شركة مقاولات عامة", "مقاولات طرق وبنية تحتية", "تأجير معدات ثقيلة مع النقل",
-                          "مقاول تشغيل وصيانة"]},
-    "factories": {"label": "المصانع", "sector": "distribution_supply",
-                  "q": ["مصنع مواد غذائية توزيع", "مصنع مياه معبأة توصيل", "مصنع بلاستيك", "مصنع حديد",
-                        "مصنع منظفات توزيع", "مصنع أثاث توصيل وتركيب"]},
-    "field_services": {"label": "مؤسسات الخدمات الميدانية", "sector": "field_services",
-                       "q": ["صيانة تكييف ميدانية", "مكافحة حشرات", "صيانة مصاعد", "أنظمة أمن وسلامة وإطفاء",
-                             "نظافة وإدارة مرافق", "صيانة متنقلة"]},
-    "distribution": {"label": "التوزيع والتوريد", "sector": "distribution_supply",
-                     "q": ["شركة توزيع مواد غذائية", "موزع معتمد", "توريد مواد بناء", "شركة توريدات"]},
-    "cold_chain": {"label": "النقل المبرّد", "sector": "refrigerated_transport",
-                   "q": ["نقل مبرد ومجمد", "شاحنات مبردة", "توزيع مبرد"]},
-    "staff_transport": {"label": "نقل الموظفين والطلاب", "sector": "staff_transport",
-                        "q": ["نقل موظفين", "نقل طلاب", "تأجير حافلات بعقود شهرية"]},
-    "car_rental": {"label": "تأجير السيارات والمعدات", "sector": "car_rental",
-                   "q": ["تأجير سيارات للشركات", "تأجير شاحنات ونقل", "تأجير سيارات طويل الأجل"]},
-}
-DEFAULT_ACTIVITIES = ["transport", "delivery", "contracting", "factories", "field_services"]
-DEFAULT = {"cities": ["الرياض", "جدة", "الدمام"], "regions": [], "activities": DEFAULT_ACTIVITIES,
+# الأنشطة: من دليل الأنشطة (mandoob/activities.py) — قطاعات كاملة أو أنشطة محددة أو «جميع الأنشطة في السعودية»
+from .activities import ACTIVITIES, DEFAULT_ACTIVITIES, SECTORS, activity_hints, by_sector, normalize_selection, \
+    sector_queries  # noqa: E402
+
+DEFAULT = {"cities": ["الرياض", "جدة", "الدمام"], "regions": [], "activities": DEFAULT_ACTIVITIES, "all": False,
            "daily_target": 400, "scheduled": False, "time": "06:00", "campaign_id": None}
 
 
 def get_config(s) -> dict:
     from .models import Setting
     row = s.get(Setting, SETTING)
-    return {**DEFAULT, **(dict(row.value) if row else {})}
+    cfg = {**DEFAULT, **(dict(row.value) if row else {})}
+    cfg["activities"] = list(ACTIVITIES) if cfg.get("all") else (normalize_selection(cfg["activities"]) or DEFAULT_ACTIVITIES)
+    return cfg
 
 
 def _put(s, key: str, value: dict) -> None:
@@ -79,10 +60,12 @@ def split_quota(total: int, n: int) -> list[int]:
 
 
 def save_config(s, *, cities: list[str], regions: list[str], activities: list[str], daily_target: int,
-                scheduled: bool, time: str, user_id: int | None = None) -> Campaign:
-    """يحفظ الإعداد ويحدّث حملة البحث: فئة لكل نشاط، والحصة اليومية موزعة بالتساوي على الأنشطة."""
+                scheduled: bool, time: str, user_id: int | None = None, all_activities: bool = False) -> Campaign:
+    """يحفظ الإعداد ويحدّث حملة البحث: فئة لكل قطاع (بعبارات أنشطته المختارة)، والهدف اليومي موزع بالتساوي على القطاعات."""
     cfg = get_config(s)
-    activities = [a for a in activities if a in ACTIVITIES] or DEFAULT_ACTIVITIES
+    all_activities = all_activities or "__all__" in (activities or [])
+    activities = list(ACTIVITIES) if all_activities else (normalize_selection(activities) or DEFAULT_ACTIVITIES)
+    groups = by_sector(activities)
     all_cities = resolve_cities(cities, regions) or DEFAULT["cities"]
     daily_target = max(1, min(int(daily_target or 400), 2000))
     camp = s.get(Campaign, cfg["campaign_id"]) if cfg.get("campaign_id") else None
@@ -91,27 +74,28 @@ def save_config(s, *, cities: list[str], regions: list[str], activities: list[st
                         created_by=user_id, approved_at=now_utc())
         s.add(camp)
         s.flush()
-    camp.request_text = (f"منشآت داخل السعودية تملك أو تشغّل مركبات — "
-                         f"{'، '.join(ACTIVITIES[a]['label'] for a in activities)} — في {'، '.join(all_cities[:12])}")
+    what = "جميع الأنشطة في السعودية" if all_activities else "، ".join(SECTORS[k]["label"] for k in groups)
+    camp.request_text = f"منشآت داخل السعودية — {what} — في {'، '.join(all_cities[:12])}"
     camp.daily_target, camp.send_enabled = daily_target, False
     camp.status = "active" if scheduled else "paused"
-    existing = {c.sector_key + "|" + c.label: c for c in camp.categories}
-    quotas = split_quota(daily_target, len(activities))
+    existing = {c.sector_key: c for c in camp.categories}
+    quotas = split_quota(daily_target, len(groups))
     keep = set()
-    for a, q in zip(activities, quotas):
-        spec = ACTIVITIES[a]
-        key = spec["sector"] + "|" + spec["label"]
-        cat = existing.get(key)
+    for (sector, keys), q in zip(groups.items(), quotas):
+        cat = existing.get(sector)
         if cat is None:
-            cat = Category(campaign_id=camp.id, sector_key=spec["sector"], label=spec["label"], cities=[],
+            cat = Category(campaign_id=camp.id, sector_key=sector, label=SECTORS[sector]["label"], cities=[],
                            keywords_ar=[], keywords_en=[], quota=0)
             s.add(cat)
-        cat.cities, cat.keywords_ar, cat.quota, cat.active = all_cities, list(spec["q"]), q, True
-        keep.add(key)
+        cat.label = SECTORS[sector]["label"]
+        cat.cities, cat.keywords_ar, cat.quota, cat.active = all_cities, sector_queries(keys), q, True
+        cat.priority_signals = [activity_hints(keys)]
+        keep.add(sector)
     for key, cat in existing.items():
         if key not in keep:
             cat.active, cat.quota = False, 0
-    new_cfg = {"cities": cities, "regions": regions, "activities": activities, "daily_target": daily_target,
+    new_cfg = {"cities": cities, "regions": regions, "activities": activities, "all": bool(all_activities),
+               "daily_target": daily_target,
                "scheduled": bool(scheduled), "time": time or "06:00", "campaign_id": camp.id}
     _put(s, SETTING, new_cfg)
     # وقت التشغيل اليومي (بتوقيت الرياض) يقرؤه العامل على الخادم
@@ -168,10 +152,25 @@ def status(s) -> dict:
         incomplete_today = s.scalar(select(func.count(Company.id)).where(
             Company.campaign_id == camp.id, Company.data_status == "incomplete",
             Company.first_found_at >= a, Company.first_found_at < b)) or 0
+    sectors = []
+    if camp:
+        from .timeutil import riyadh_day_bounds_utc
+        a, b = riyadh_day_bounds_utc(today)
+        for cat in sorted([c for c in camp.categories if c.active], key=lambda c: c.id):
+            base = select(func.count(Company.id)).where(Company.category_id == cat.id)
+            sectors.append({"label": cat.label, "quota": cat.quota,
+                            "complete": s.scalar(base.where(Company.counted_on == today,
+                                                            Company.data_status == "complete")) or 0,
+                            "incomplete": s.scalar(base.where(Company.data_status == "incomplete",
+                                                              Company.first_found_at >= a,
+                                                              Company.first_found_at < b)) or 0,
+                            "confirmed": s.scalar(base.where(Company.counted_on == today,
+                                                             Company.vehicle_indicator == "confirmed")) or 0,
+                            "activities": len([k for k in cfg["activities"] if ACTIVITIES[k]["sector"] == cat.sector_key])})
     total_complete = s.scalar(select(func.count(Company.id)).where(
         Company.is_test.is_(False), Company.lead_source == "discovery", Company.data_status == "complete")) or 0
     cpc = history_cost_per_complete(s)
-    return {"cfg": cfg, "camp": camp, "run": run, "runs": runs, "done_today": done_today or 0,
+    return {"cfg": cfg, "camp": camp, "run": run, "runs": runs, "done_today": done_today or 0, "sectors": sectors,
             "incomplete_today": incomplete_today, "total_complete": total_complete,
             "request": pending_request(s), "cost_per_complete": cpc,
             "est_cost_target": round(cpc * cfg["daily_target"], 0) if cpc else None,

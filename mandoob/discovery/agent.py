@@ -92,11 +92,12 @@ AGENT_SCHEMA = {
         "properties": {
             "name": {"type": "string"},
             "entity_type": {"type": "string", "enum": ["company", "establishment", "factory", "sole_proprietor",
-                                                       "private_individual"]},
+                                                       "association", "private_individual"]},
             "activity": {"type": "string"},
             "city": {"type": "string"},
             "website": {"type": "string"},
-            "vehicle_evidence": {"type": "string", "description": "جملة عربية تشرح لماذا يستخدم مركبات"},
+            "vehicle_evidence": {"type": "string",
+                                 "description": "جملة عربية تشرح لماذا يستخدم مركبات — فارغ إن لم يوجد دليل منشور"},
             "evidence_url": {"type": "string"},
             "evidence_quote": {"type": "string", "description": "اقتباس حرفي قصير من الصفحة"},
             "operator_status": {"type": "string", "enum": ["self", "contracted", "unknown"]},
@@ -110,8 +111,11 @@ AGENT_SCHEMA = {
 }
 
 AGENT_SYSTEM = """أنت باحث مبيعات ميداني لشركة «سيارة آب» (حلول إدارة المركبات والوقود) في السعودية.
-مهمتك اكتشاف منشآت وأصحاب أنشطة يملكون مركبات أو يشغّلونها أو يتحملون مصاريفها — ولو مركبة واحدة — وجمع بيانات التواصل
-المنشورة لأعمالهم. القواعد الصارمة:
+مهمتك اكتشاف منشآت داخل السعودية ضمن النشاط المطلوب — صغيرة أو كبيرة: من محل واحد لديه سيارة توصيل إلى شركة بمئات
+المركبات — وجمع بيانات التواصل المنشورة لأعمالهم. الأولوية لمن تعلن أسطولًا أو توصيلًا أو فرقًا ميدانية أو نقلًا أو زيارات
+للمواقع؛ وإن لم تجد دليلًا منشورًا على استخدام المركبات فأدرج المنشأة ضمن نشاطها واترك vehicle_evidence و evidence_quote
+فارغين (تُسجّل «غير مؤكد» ويتحقق منها الفريق). entity_type نوع الجهة: company شركة، establishment مؤسسة فردية،
+association جمعية أو جهة غير ربحية، factory مصنع، sole_proprietor صاحب نشاط حر. القواعد الصارمة:
 - استخدم البحث ثم افتح الصفحات فعلًا (الموقع الرسمي، صفحة «اتصل بنا»، صفحات الفروع، صفحة النشاط في دليل أعمال).
 - لا تكتب هاتفًا أو بريدًا إلا إذا رأيته منشورًا نصًا في صفحة فتحتها، واكتب رابط تلك الصفحة نفسها في source_url.
   ممنوع تخمين بريد (مثل info@النطاق) أو تكوين رقم. إن لم تجد البريد فاترك الاتصال ناقصًا.
@@ -249,7 +253,11 @@ def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
             else:
                 res.rejected_values.append({"name": p["name"], "kind": ct["kind"], "value": ct["value"],
                                             "why": "لم يظهر في الصفحات التي قرأها الوكيل"})
-        evidence_ok = quote_on_pages(p["evidence_quote"], p["evidence_url"], pages)
+        evidence_ok = bool(p["vehicle_evidence"].strip()) and quote_on_pages(p["evidence_quote"], p["evidence_url"], pages)
+        if p["vehicle_evidence"].strip():
+            hint = p["vehicle_evidence"] if evidence_ok else p["vehicle_evidence"] + " (الاقتباس لم يُتحقق منه نصًا)"
+        else:
+            hint = f"منشأة ضمن نشاط «{p['activity'] or query}» — لم يُعثر على دليل منشور لاستخدام المركبات (غير مؤكد)"
         website = p["website"] if p["website"].startswith("http") else (f"https://{p['website']}" if p["website"] else "")
         from .sources import is_company_site, _site_root
         cand = Candidate(
@@ -258,12 +266,13 @@ def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
             city=_saudi_or_raw(p["city"] or city), activity=p["activity"],
             website=_site_root(website) if website and is_company_site(website) else None,
             snippet=f"اكتُشف عبر: {p['discovered_via']} — عبارة البحث: {query}",
-            fit_hint=p["vehicle_evidence"] if evidence_ok else (p["vehicle_evidence"] + " (الاقتباس لم يُتحقق منه نصًا)"),
+            fit_hint=hint,
             evidence_url=p["evidence_url"] or None, contacts=contacts)
         cand.prequalified = True
         cand.phrase = p["evidence_quote"][:300] if evidence_ok else None
         cand.operator_status = p["operator_status"]
         cand.entity_type = p["entity_type"]
+        cand.vehicle_indicator = "confirmed" if evidence_ok else "unconfirmed"
         res.candidates.append(cand)
     return res
 
@@ -287,7 +296,8 @@ class AgentSource:
         q = query.replace("{city}", city)
         known = ", ".join(self.known_fn()[:200])
         prompt = (f"المدينة: {city}\nعبارة البحث: «{q}»\n"
-                  f"اعثر على حتى {self.per_call} منشأة أو صاحب نشاط في {city} يستخدم مركبات في عمله، "
+                  f"اعثر على حتى {self.per_call} منشأة في {city} تمارس هذا النشاط فعليًا داخل السعودية، "
+                  "وقدّم من تعلن أسطولًا أو توصيلًا أو فرقًا ميدانية أو نقلًا. "
                   "الأولوية لمن له هاتف سعودي وبريد إلكتروني منشوران معًا؛ ابحث عن البريد في صفحة «اتصل بنا» وتذييل "
                   "الموقع و«من نحن» وصفحة النشاط في الأدلة ومنصات التواصل. افتح الصفحات وانقل البيانات حرفيًا مع رابطها.\n"
                   f"أسماء ونطاقات لدينا مسبقًا (تجنّبها): {known or 'لا يوجد'}")

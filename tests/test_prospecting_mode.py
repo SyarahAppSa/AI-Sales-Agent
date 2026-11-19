@@ -92,8 +92,11 @@ def test_2_prospecting_tool_saves_target_and_runs_on_the_worker(monkeypatch):
         otp_login(c, ADMIN, "admin")
         r = c.get("/prospecting")
         assert r.status_code == 200 and "البحث عن العملاء" in r.text and "الهدف اليومي" in r.text
-        r = c.post("/prospecting", data={"activities": ["transport", "delivery", "contracting", "factories",
-                                                        "field_services"],
+        assert "جميع الأنشطة في السعودية" in r.text and "ابحث عن نشاط" in r.text and "مدارس أهلية" in r.text
+        # قطاع كامل (التعليم) + نشاط محدد (المغاسل) + قطاعان آخران
+        r = c.post("/prospecting", data={"activities": ["sector:education", "community.laundries",
+                                                        "industry.food_factories", "field_services.hvac",
+                                                        "food.restaurants"],
                                          "cities": ["الرياض", "جدة"], "regions": ["المنطقة الشرقية"],
                                          "daily_target": "400", "scheduled": "1", "time": "05:30"},
                    follow_redirects=False)
@@ -103,6 +106,10 @@ def test_2_prospecting_tool_saves_target_and_runs_on_the_worker(monkeypatch):
         camp = s.get(Campaign, cfg["campaign_id"])
         cats = [x for x in camp.categories if x.active]
         assert camp.daily_target == 400 and sum(x.quota for x in cats) == 400 and len(cats) == 5
+        edu = next(x for x in cats if x.sector_key == "education")
+        assert "مدارس أهلية" in edu.keywords_ar and "حضانة أطفال" in edu.keywords_ar  # القطاع كاملًا
+        com = next(x for x in cats if x.sector_key == "community")
+        assert com.keywords_ar[0].startswith("مغسلة") and not any("خيرية" in q for q in com.keywords_ar)  # نشاط وحده
         assert camp.status == "active" and camp.send_enabled is False
         assert "الدمام" in cats[0].cities and "الجبيل" in cats[0].cities and "الرياض" in cats[0].cities
         assert jobs.get_setting("schedule")["discovery_time"] == "05:30"
@@ -127,6 +134,16 @@ def test_2_prospecting_tool_saves_target_and_runs_on_the_worker(monkeypatch):
                                      "time": "06:00"})
     with session_scope() as s:
         assert s.get(Campaign, cid).status == "paused"
+    # «جميع الأنشطة في السعودية»: كل القطاعات، والهدف موزع عليها
+    with TestClient(app) as c:
+        otp_login(c, ADMIN, "admin")
+        c.post("/prospecting", data={"all_activities": "1", "cities": ["الرياض"], "daily_target": "400", "time": "06:00"})
+    with session_scope() as s:
+        from mandoob.activities import ACTIVITIES, SECTORS
+        cfg = prospecting.get_config(s)
+        cats = [x for x in s.get(Campaign, cid).categories if x.active]
+        assert cfg["all"] and len(cfg["activities"]) == len(ACTIVITIES) and len(cats) == len(SECTORS)
+        assert sum(x.quota for x in cats) == 400 and max(x.quota for x in cats) - min(x.quota for x in cats) <= 1
 
 
 def test_3_bulk_assign_portal_copy_export_status_and_offers_report():

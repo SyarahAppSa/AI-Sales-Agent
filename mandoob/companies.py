@@ -390,6 +390,8 @@ def upsert_candidate(s: Session, cand: Candidate, site: SiteResult | None, categ
         fit_evidence_url=fit.evidence_url, fit_score=fit.score, campaign_id=category.campaign_id,
         category_id=category.id, first_found_at=now, last_seen_at=now,
         fit_phrase=(fit.phrase or None) and fit.phrase[:300], operator_status=fit.operator.get("status") or "unknown",
+        entity_type=getattr(cand, "entity_type", None),
+        vehicle_indicator=getattr(cand, "vehicle_indicator", None) or ("confirmed" if fit.phrase else None),
         operator_evidence=fit.operator.get("evidence") or None, operator_evidence_url=fit.operator.get("url"),
         decision_unit=fit.decision_unit or SECTORS.get(category.sector_key, {}).get("decision_unit"),
         parent_id=hq.id if hq else None, lead_source=cand.lead_source or "discovery",

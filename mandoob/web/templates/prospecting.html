@@ -2,7 +2,7 @@
 {% set cfg = st.cfg %}{% set run = st.run %}{% set req = st.request %}
 {% if req.state in ('pending','running') or (run and run.status == 'running') %}<meta http-equiv="refresh" content="30">{% endif %}
 <div class="top"><div><h1>البحث عن العملاء</h1>
-<p class="sub" style="margin:0">مهمة المنصة الآن: إيجاد منشآت داخل السعودية تملك أو تشغّل مركبات، وجمع بياناتها مع مصدر كل معلومة. التواصل يتولاه فريقك بنفسه.</p></div>
+<p class="sub" style="margin:0">مهمة المنصة الآن: إيجاد منشآت داخل السعودية — من محل بسيارة توصيل واحدة إلى شركة بمئات المركبات، وجمع بياناتها مع مصدر كل معلومة. التواصل يتولاه فريقك بنفسه.</p></div>
 <div class="row" style="flex:0 0 auto"><a class="btn" href="/today{{ '?campaign=%d' % st.camp.id if st.camp else '' }}">عملاء اليوم</a><a class="btn" href="/companies?status=complete&kind=real&owner=none">إسناد للموظفين</a></div></div>
 {% if not ai_ready %}<div class="flash err">البحث يحتاج مفتاح Claude على الخادم (MANDOOB_ANTHROPIC_API_KEY).</div>{% endif %}
 
@@ -19,8 +19,34 @@
 
 <form class="card" method="post" action="/prospecting">
 <h2>ماذا نبحث عنه؟</h2>
-<div class="field"><label>الأنشطة المستهدفة (منشآت تملك أو تشغّل مركبات)</label><div class="chips">
-{% for k, a in ACTIVITIES.items() %}<label><input type="checkbox" name="activities" value="{{ k }}" {{ 'checked' if k in cfg.activities }}> {{ a.label }}</label>{% endfor %}</div></div>
+<div class="field"><label>الأنشطة المستهدفة</label>
+<label class="chips" style="font-weight:700;margin-bottom:8px"><input type="checkbox" name="all_activities" value="1" id="allact" {{ 'checked' if cfg.all }} onchange="allToggle(this)"> جميع الأنشطة في السعودية <span class="small muted" style="font-weight:400">— كل القطاعات ({{ ACTIVITIES|length }} نشاطًا) داخل المدن والمناطق المختارة</span></label>
+<div class="row" style="align-items:end;margin-bottom:8px">
+  <div><input id="actq" placeholder="ابحث عن نشاط… مثل: مدارس أهلية، مغسلة، مصنع" oninput="filterActs()"></div>
+  <div style="flex:0 0 auto"><button type="button" class="btn sm" onclick="selVisible(true)">تحديد الكل</button> <button type="button" class="btn sm" onclick="selVisible(false)">إلغاء التحديد</button></div>
+  <div style="flex:0 0 auto" class="small muted">المحدد: <b id="actcnt">0</b> نشاطًا</div>
+</div>
+<div id="actbox" class="grid g2" style="gap:10px">
+{% for sk, sec in DIR_SECTORS.items() %}<div class="sector" style="border:1px solid var(--line);border-radius:12px;padding:10px 12px">
+  <label class="chips" style="font-weight:700"><input type="checkbox" class="secchk" data-sec="{{ sk }}" onchange="secToggle(this)"> {{ sec.label }} <span class="small muted" style="font-weight:400">ISIC {{ sec.isic }}</span></label>
+  <div class="chips" style="margin-top:6px">{% for ak in sec.activities %}{% set a = ACTIVITIES[ak] %}<label class="act" data-sec="{{ sk }}" data-text="{{ sec.label }} {{ a.label }} {{ a.q|join(' ') }}" title="{{ a.vehicle }}"><input type="checkbox" name="activities" value="{{ ak }}" {{ 'checked' if ak in cfg.activities }} onchange="sync()"> {{ a.label }}</label>{% endfor %}</div>
+</div>{% endfor %}
+</div>
+<p class="small muted" style="margin:6px 0 0">نوع الجهة (شركة، مؤسسة فردية، جمعية…) يُسجّل لكل منشأة منفصلًا عن نشاطها. المنشأة التي تظهر تحت أكثر من نشاط تُحتسب مرة واحدة.</p>
+</div>
+<script>
+function norm(t){return (t||'').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').toLowerCase()}
+function acts(){return [...document.querySelectorAll('#actbox input[name=activities]')]}
+function sync(){const all=acts();const on=all.filter(x=>x.checked).length;document.getElementById('actcnt').textContent=on;
+ document.querySelectorAll('.secchk').forEach(c=>{const a=all.filter(x=>x.closest('.act').dataset.sec==c.dataset.sec);const n=a.filter(x=>x.checked).length;c.checked=n==a.length;c.indeterminate=n>0&&n<a.length});
+ document.getElementById('allact').checked=on==all.length}
+function secToggle(c){acts().filter(x=>x.closest('.act').dataset.sec==c.dataset.sec).forEach(x=>x.checked=c.checked);sync()}
+function allToggle(c){acts().forEach(x=>x.checked=c.checked);sync()}
+function filterActs(){const q=norm(document.getElementById('actq').value.trim());document.querySelectorAll('#actbox .act').forEach(l=>{l.style.display=!q||norm(l.dataset.text).includes(q)?'':'none'});
+ document.querySelectorAll('#actbox .sector').forEach(b=>{b.style.display=[...b.querySelectorAll('.act')].some(l=>l.style.display!='none')?'':'none'})}
+function selVisible(v){document.querySelectorAll('#actbox .act').forEach(l=>{if(l.style.display!='none')l.querySelector('input').checked=v});sync()}
+sync();
+</script>
 <div class="field"><label>المدن</label><div class="chips">
 {% for c in MAIN_CITIES %}<label><input type="checkbox" name="cities" value="{{ c }}" {{ 'checked' if c in cfg.cities }}> {{ c }}</label>{% endfor %}</div>
 <input name="extra_cities" placeholder="مدن أخرى أو مدن صناعية، مفصولة بفواصل" value="{{ (cfg.cities | reject('in', MAIN_CITIES) | list) | join('، ') }}" style="margin-top:6px"></div>
@@ -40,9 +66,13 @@
 <p class="small muted" style="margin:10px 0 0">البحث يعمل على الخادم: يكمل ولو أغلقت هذه الصفحة. المنشأة تُحتسب مرة واحدة عبر كل الدفعات، ويُستبعد عملاء سيارة آب الحاليون والبيانات التجريبية. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
 </form>
 
+{% if st.sectors %}<div class="card"><h2>اليوم حسب القطاع</h2><div class="tablewrap"><table>
+<tr><th>القطاع</th><th>الأنشطة المختارة</th><th>منشآت جديدة مكتملة / حصته</th><th>منها بمؤشر مركبات مؤكد</th><th>قيد الاستكمال</th></tr>
+{% for r in st.sectors %}<tr><td><b>{{ r.label }}</b></td><td>{{ r.activities }}</td><td>{{ r.complete }} / {{ r.quota }}</td><td>{{ r.confirmed }}</td><td>{{ r.incomplete }}</td></tr>{% endfor %}
+</table></div></div>{% endif %}
 <div class="grid g2">
 <div class="card"><h2>شروط احتساب المنشأة «مكتملة»</h2><ul class="small" style="margin:0;padding-inline-start:18px;line-height:1.9">
-<li>الاسم والنشاط ومدينة سعودية، ودليل من صفحة المنشأة على أنها تستخدم مركبات.</li>
+<li>الاسم والنشاط ومدينة سعودية. «مؤشر استخدام المركبات» يُسجّل مؤكدًا بدليل من صفحتها، أو «غير مؤكد» ليتحقق الفريق — والأولوية للمؤكد.</li>
 <li>هاتف سعودي <b>من موقع المنشأة نفسها</b>، مع رابط الصفحة التي نُشر فيها.</li>
 <li>بريد على نطاق المنشأة، أو بريد مجاني منشور في موقعها، مع رابط الصفحة. لا يُقبل بريد مطوّر الموقع ولا هاتف منشأة أخرى.</li>
 <li>القيمة يجب أن تظهر نصًا في الصفحة التي قرأها الوكيل فعلًا؛ وإلا تُرفض.</li>

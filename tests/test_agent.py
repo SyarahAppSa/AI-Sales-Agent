@@ -188,3 +188,53 @@ def test_contact_must_belong_to_same_entity():
     em.source_url = "https://almtngl-ksa.com/"
     ph.source_url = "https://alfahscenter.com/page"  # هاتف من موقع منشأة أخرى
     assert not is_complete(c)
+
+
+def test_batch_spreads_across_sectors_and_records_vehicle_indicator(monkeypatch):
+    """دفعة على عدة قطاعات تتوزع بينها؛ المنشأة بلا دليل مركبات تبقى ضمن نشاطها بمؤشر «غير مؤكد»."""
+    pages = {"https://alnoor-school.example/contact": "مدارس النور الأهلية — هاتف 0114441122 — info@alnoor-school.example",
+             "https://clean-laundry.example/": "مغسلة النقاء: نستلم الملابس ونوصلها بسياراتنا. 0503332211 "
+                                               "care@clean-laundry.example"}
+    seen = []
+
+    def agent(system, prompt, schema, **kw):
+        seen.append(prompt)
+        if "مدارس" in prompt:
+            url = "https://alnoor-school.example/contact"
+            p = {"name": "مدارس النور الأهلية", "entity_type": "company", "activity": "مدرسة أهلية", "city": "الرياض",
+                 "website": "https://alnoor-school.example", "vehicle_evidence": "", "evidence_url": "",
+                 "evidence_quote": "", "operator_status": "unknown", "discovered_via": "بحث",
+                 "contacts": [{"kind": "phone", "value": "0114441122", "source_url": url},
+                              {"kind": "email", "value": "info@alnoor-school.example", "source_url": url}]}
+        else:
+            url = "https://clean-laundry.example/"
+            p = {"name": "مغسلة النقاء", "entity_type": "establishment", "activity": "مغسلة ملابس", "city": "الرياض",
+                 "website": "https://clean-laundry.example", "vehicle_evidence": "تستلم الملابس وتوصلها بسياراتها",
+                 "evidence_url": url, "evidence_quote": "نستلم الملابس ونوصلها بسياراتنا", "operator_status": "self",
+                 "discovered_via": "بحث",
+                 "contacts": [{"kind": "phone", "value": "0503332211", "source_url": url},
+                              {"kind": "email", "value": "care@clean-laundry.example", "source_url": url}]}
+        b = NS(type="web_fetch_tool_result", content=NS(type="web_fetch_result", url=url, content=NS(
+            type="document", source=NS(type="text", data=pages[url]))))
+        return {"prospects": [p]}, [b], 2
+
+    monkeypatch.setattr(ai, "ai_agent", agent)
+    init_db()
+    with session_scope() as s:
+        camp = Campaign(name="البحث عن العملاء — اختبار القطاعات", status="paused", daily_target=400, send_enabled=False)
+        s.add(camp)
+        s.flush()
+        s.add(Category(campaign_id=camp.id, sector_key="education", label="التعليم والتدريب", cities=["الرياض"],
+                       keywords_ar=["مدارس أهلية"], quota=200))
+        s.add(Category(campaign_id=camp.id, sector_key="community", label="الخدمات المحلية", cities=["الرياض"],
+                       keywords_ar=["مغسلة ملابس توصيل"], quota=200))
+        cid = camp.id
+    run_campaign_discovery(cid, sources={"ai_agent": AgentSource()}, crawler=NoCrawl(), max_new=2, force=True)
+    assert len(seen) == 2 and "مدارس" in seen[0] and "مغسلة" in seen[1]  # القطاع الأول لم يستهلك الدفعة كلها
+    with session_scope() as s:
+        got = {c.name: c for c in s.scalars(select(Company).where(Company.campaign_id == cid))}
+        school, laundry = got["مدارس النور الأهلية"], got["مغسلة النقاء"]
+        assert school.data_status == "complete" and school.vehicle_indicator == "unconfirmed"
+        assert school.entity_type == "company" and "غير مؤكد" in school.fit_reason
+        assert laundry.vehicle_indicator == "confirmed" and laundry.entity_type == "establishment"
+        assert laundry.fit_score > school.fit_score  # الأولوية لمن يعلن التوصيل أو الأسطول
