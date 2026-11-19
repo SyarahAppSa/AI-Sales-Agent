@@ -44,6 +44,7 @@ batch, city, acts = int(sys.argv[1]), sys.argv[2], sys.argv[3:]
 with session_scope() as s:
     camp = P.save_config(s, cities=[city], regions=[], activities=acts, daily_target=400, scheduled=False, time="06:00")
     s.flush()
+    s.expire(camp)
     cid = camp.id
     print("SEC categories", [(c.label, c.quota, c.keywords_ar) for c in camp.categories if c.active], flush=True)
     req = P.request_run(s, cid, batch, None)

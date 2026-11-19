@@ -90,11 +90,17 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
     with session_scope() as s:
         baseline = sum(_count_today(s, cid, day) for cid, *_ in cats)
 
+    # دفعة محدودة على عدة قطاعات: لكل قطاع نصيبه، فلا يستهلكها القطاع الأول وحده
+    per_cat_cap = -(-max_new // len(cats)) if max_new and len(cats) > 1 else None
+    if per_cat_cap is not None and hasattr(sources.get("ai_agent"), "per_call"):
+        # نداء الوكيل يُحفظ كاملًا؛ نصغّره على قدر نصيب القطاع حتى لا تتجاوز الدفعة حدها كثيرًا
+        sources["ai_agent"].per_call = min(sources["ai_agent"].per_call, max(per_cat_cap + 1, 3))
+
     def batch_full(s) -> bool:
+        if per_cat_cap is not None:
+            return False  # نصيب كل قطاع هو الحد
         return max_new is not None and sum(_count_today(s, cid, day) for cid, *_ in cats) - baseline >= max_new
 
-    # دفعة محدودة على عدة قطاعات: تتوزع بينها بدل أن يستهلكها القطاع الأول
-    per_cat_cap = -(-max_new // len(cats)) if max_new and len(cats) > 1 else None
     with session_scope() as s:
         cat_base = {cid: _count_today(s, cid, day) for cid, *_ in cats}
 
