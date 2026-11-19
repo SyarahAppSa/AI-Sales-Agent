@@ -485,7 +485,9 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
 def prospecting_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospecting as P
     st = P.status(s)
+    from .. import geo
     return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, DIR_SECTORS=P.SECTORS,
+                  GEO=geo, GEO_REGIONS=geo.REGIONS, GEO_PLACES=geo.PLACES,
                   MAIN_CITIES=P.MAIN_CITIES,
                   REGIONS=list(P.REGIONS.keys()), ai_ready=settings.ai_enabled,
                   sources={"وكيل البحث (Claude: بحث الويب وقراءة الصفحات)": settings.ai_enabled,
@@ -493,16 +495,52 @@ def prospecting_page(request: Request, user: User = Depends(require_manager), s=
                            "بحث Brave (BRAVE_SEARCH_API_KEY)": bool(settings.brave_search_api_key)})
 
 
+def _scope_from_form(form) -> dict:
+    """النطاق من النموذج: «جميع مناطق المملكة»، أو مناطق كاملة (مع استثناءات) + مدن محددة + أسماء مكتوبة من الدليل."""
+    from .. import geo
+    from ..prospecting import ScopeError
+    if form.get("scope_mode") == "all":
+        return {"all": True, "regions": [], "places": [], "exclude": []}
+    regions = [r for r in form.getlist("regions") if r in geo.REGIONS]
+    checked = {p for p in form.getlist("places") if p in geo.PLACES}
+    # منطقة محددة كاملة؛ وإن أُرسلت بعض مدنها فقط فالبقية استثناء («اختيار جزئي»)
+    exclude = [p for r in regions if any(x in checked for x in geo.REGIONS[r]["places"])
+               for p in geo.REGIONS[r]["places"] if p not in checked]
+    places = [p for p in checked if geo.PLACES[p]["region"] not in regions]
+    for raw in (form.get("extra_cities") or "").replace("،", ",").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        name, _, reg = raw.partition(" — ")
+        hits = geo.matches(name)
+        if reg:
+            hits = [h for h in hits if geo.REGIONS[geo.PLACES[h]["region"]]["ar"] == reg.strip()]
+        if not hits:
+            raise ScopeError(f"«{raw}» غير موجود في دليل الأماكن — اختره من القائمة المقترحة")
+        if len(set(hits)) > 1:
+            raise ScopeError(f"«{name}» يطابق أكثر من مكان: " + "، ".join(geo.label(h, True) for h in hits) +
+                             " — اختر المقصود من القائمة")
+        if hits[0] not in places and geo.PLACES[hits[0]]["region"] not in regions:
+            places.append(hits[0])
+        if hits[0] in exclude:
+            exclude.remove(hits[0])
+    return {"all": False, "regions": regions, "places": places, "exclude": exclude}
+
+
 @app.post("/prospecting")
 async def prospecting_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospecting as P
     from ..auth import audit
     form = await request.form()
-    extra = [c.strip() for c in (form.get("extra_cities") or "").replace("،", ",").split(",") if c.strip()]
-    camp = P.save_config(s, cities=list(form.getlist("cities")) + extra, regions=list(form.getlist("regions")),
-                         activities=list(form.getlist("activities")), all_activities=bool(form.get("all_activities")),
-                         daily_target=int(form.get("daily_target") or 400), scheduled=bool(form.get("scheduled")),
-                         time=(form.get("time") or "06:00")[:5], user_id=user.id)
+    try:
+        scope = _scope_from_form(form)
+        camp = P.save_config(s, scope=scope, activities=list(form.getlist("activities")),
+                             all_activities=bool(form.get("all_activities")),
+                             daily_target=int(form.get("daily_target") or 400), scheduled=bool(form.get("scheduled")),
+                             time=(form.get("time") or "06:00")[:5], user_id=user.id)
+    except P.ScopeError as e:
+        flash(request, str(e), "err")
+        return back("/prospecting")
     audit(s, user, "prospecting_config", user, after=P.get_config(s))
     msg = f"حُفظ الإعداد: الهدف {camp.daily_target} منشأة يوميًا. "
     msg += (f"التشغيل اليومي مفعّل الساعة {P.get_config(s)['time']} بتوقيت الرياض ويعمل على الخادم ولو أُغلقت اللوحة."

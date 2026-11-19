@@ -35,7 +35,17 @@ def get_config(s) -> dict:
     row = s.get(Setting, SETTING)
     cfg = {**DEFAULT, **(dict(row.value) if row else {})}
     cfg["activities"] = list(ACTIVITIES) if cfg.get("all") else (normalize_selection(cfg["activities"]) or DEFAULT_ACTIVITIES)
+    from . import geo
+    if not cfg.get("scope"):
+        # إعداد سابق بأسماء مدن ومناطق: يُحوَّل بنفس معناه (مدينة وحدها تبقى وحدها)
+        cfg["scope"] = geo.legacy_scope(cfg.get("cities") or [], cfg.get("regions") or [])
+    cfg["scope"] = geo.normalize_scope(cfg["scope"])
+    cfg["scope_summary"] = geo.scope_summary(cfg["scope"])
     return cfg
+
+
+class ScopeError(ValueError):
+    """نطاق فارغ أو اسم غامض يحتاج اختيارًا صريحًا."""
 
 
 def _put(s, key: str, value: dict) -> None:
@@ -59,14 +69,20 @@ def split_quota(total: int, n: int) -> list[int]:
     return [base + (1 if i < extra else 0) for i in range(n)]
 
 
-def save_config(s, *, cities: list[str], regions: list[str], activities: list[str], daily_target: int,
-                scheduled: bool, time: str, user_id: int | None = None, all_activities: bool = False) -> Campaign:
+def save_config(s, *, activities: list[str], daily_target: int, scheduled: bool, time: str,
+                cities: list[str] | None = None, regions: list[str] | None = None, scope: dict | None = None,
+                user_id: int | None = None, all_activities: bool = False) -> Campaign:
     """يحفظ الإعداد ويحدّث حملة البحث: فئة لكل قطاع (بعبارات أنشطته المختارة)، والهدف اليومي موزع بالتساوي على القطاعات."""
     cfg = get_config(s)
     all_activities = all_activities or "__all__" in (activities or [])
     activities = list(ACTIVITIES) if all_activities else (normalize_selection(activities) or DEFAULT_ACTIVITIES)
     groups = by_sector(activities)
-    all_cities = resolve_cities(cities, regions) or DEFAULT["cities"]
+    from . import geo
+    scope = geo.normalize_scope(scope if scope is not None else geo.legacy_scope(cities or [], regions or []))
+    places = geo.scope_places(scope)
+    if not places:
+        raise ScopeError("حدد نطاق البحث: «جميع مناطق المملكة» أو مناطق ومدن بعينها")
+    all_cities = [geo.PLACES[p]["ar"] for p in places]
     daily_target = max(1, min(int(daily_target or 400), 2000))
     camp = s.get(Campaign, cfg["campaign_id"]) if cfg.get("campaign_id") else None
     if camp is None:
@@ -75,7 +91,8 @@ def save_config(s, *, cities: list[str], regions: list[str], activities: list[st
         s.add(camp)
         s.flush()
     what = "جميع الأنشطة في السعودية" if all_activities else "، ".join(SECTORS[k]["label"] for k in groups)
-    camp.request_text = f"منشآت داخل السعودية — {what} — في {'، '.join(all_cities[:12])}"
+    camp.request_text = f"منشآت داخل السعودية — {what} — النطاق: {geo.scope_summary(scope)}"
+    camp.geo_scope = scope
     camp.daily_target, camp.send_enabled = daily_target, False
     camp.status = "active" if scheduled else "paused"
     existing = {c.sector_key: c for c in camp.categories}
@@ -94,7 +111,7 @@ def save_config(s, *, cities: list[str], regions: list[str], activities: list[st
     for key, cat in existing.items():
         if key not in keep:
             cat.active, cat.quota = False, 0
-    new_cfg = {"cities": cities, "regions": regions, "activities": activities, "all": bool(all_activities),
+    new_cfg = {"scope": scope, "activities": activities, "all": bool(all_activities),
                "daily_target": daily_target,
                "scheduled": bool(scheduled), "time": time or "06:00", "campaign_id": camp.id}
     _put(s, SETTING, new_cfg)
@@ -167,12 +184,58 @@ def status(s) -> dict:
                             "confirmed": s.scalar(base.where(Company.counted_on == today,
                                                              Company.vehicle_indicator == "confirmed")) or 0,
                             "activities": len([k for k in cfg["activities"] if ACTIVITIES[k]["sector"] == cat.sector_key])})
+    regions = region_table(s, camp, cfg, run) if camp else []
+    nexts = []
+    if camp and camp.geo_scope:
+        from . import geo
+        pl = geo.scope_places(camp.geo_scope)
+        for cat in sorted([c for c in camp.categories if c.active], key=lambda c: c.id):
+            qs = list(cat.keywords_ar) + list(cat.keywords_en)
+            n = len(pl) * len(qs)
+            if n:
+                i = (cat.cursor or 0) % n
+                pid, q = pl[i % len(pl)], qs[i // len(pl)]
+                nexts.append({"label": cat.label, "place": geo.label(pid, True), "query": q, "pos": i + 1, "of": n})
     total_complete = s.scalar(select(func.count(Company.id)).where(
         Company.is_test.is_(False), Company.lead_source == "discovery", Company.data_status == "complete")) or 0
     cpc = history_cost_per_complete(s)
     return {"cfg": cfg, "camp": camp, "run": run, "runs": runs, "done_today": done_today or 0, "sectors": sectors,
+            "regions": regions, "nexts": nexts,
             "incomplete_today": incomplete_today, "total_complete": total_complete,
             "request": pending_request(s), "cost_per_complete": cpc,
             "est_cost_target": round(cpc * cfg["daily_target"], 0) if cpc else None,
             "cost_today": round(float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0))
                                                .where(CostEntry.day == today)) or 0), 2)}
+
+
+def region_table(s, camp, cfg, run) -> list[dict]:
+    """«نتائج البحث حسب المنطقة» لليوم بتوقيت الرياض. المكتملة تُنسب لموقع أول احتساب، فمجموعها = إجمالي اليوم."""
+    from . import geo
+    from .timeutil import riyadh_day_bounds_utc
+    today = riyadh_today()
+    a, b = riyadh_day_bounds_utc(today)
+    comp = dict(s.execute(select(Company.region_id, func.count(Company.id)).where(
+        Company.campaign_id == camp.id, Company.counted_on == today, Company.data_status == "complete")
+        .group_by(Company.region_id)).all())
+    inc = dict(s.execute(select(Company.region_id, func.count(Company.id)).where(
+        Company.campaign_id == camp.id, Company.data_status == "incomplete", Company.first_found_at >= a,
+        Company.first_found_at < b).group_by(Company.region_id)).all())
+    pr = (run.per_region or {}) if run else {}
+    in_scope = set(geo.scope_regions(cfg["scope"]))
+    rows = []
+    for rid, r in geo.REGIONS.items():
+        st = pr.get(rid, {})
+        searched = st.get("searched", 0)
+        c, i = comp.get(rid, 0), inc.get(rid, 0)
+        if rid not in in_scope and not (searched or c or i):
+            continue
+        status = ("خارج النطاق" if rid not in in_scope and not searched else
+                  "لم يبدأ البحث" if not searched else
+                  "اكتمل البحث دون نتائج" if not (c or i) else "وُجدت نتائج")
+        rows.append({"id": rid, "label": r["ar"], "status": status, "searched": searched, "complete": c,
+                     "incomplete": i, "dup": st.get("dup", 0), "out": st.get("out", 0), "last": st.get("last", "")})
+    other_c, other_i = comp.get(None, 0), inc.get(None, 0)
+    if other_c or other_i:
+        rows.append({"id": "-", "label": "غير محدد (سجلات قبل دليل المواقع)", "status": "—", "searched": 0,
+                     "complete": other_c, "incomplete": other_i, "dup": 0, "out": 0, "last": ""})
+    return rows

@@ -80,13 +80,34 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             run.status = "running"
             _log(run, "استئناف من نقطة التوقف")
         run_id = run.id
-        cats = [(c.id, c.label, c.quota, list(c.cities), list(c.keywords_ar) + list(c.keywords_en))
+        # النطاق الجغرافي (أداة «البحث عن العملاء»): المواقع من دليل الأماكن بالتناوب بين المناطق
+        from ..geo import PLACES, REGIONS, normalize_scope, scope_places
+        scope = normalize_scope(camp.geo_scope) if camp.geo_scope else None
+        scope_ids = scope_places(scope) if scope else []
+        loc_label = {pid: f"{PLACES[pid]['ar']}، {REGIONS[PLACES[pid]['region']]['ar']}" for pid in scope_ids}
+        label_pid = {v: k for k, v in loc_label.items()}
+        cats = [(c.id, c.label, c.quota, [loc_label[p] for p in scope_ids] if scope else list(c.cities),
+                 list(c.keywords_ar) + list(c.keywords_en))
                 for c in camp.categories if c.active and c.quota > 0]
         allow_backfill = camp.allow_backfill
         total_target = sum(q for _, _, q, _, _ in cats)
 
     disabled: dict[str, str] = {}
     exhausted: dict[int, bool] = {}
+    if scope and max_new and hasattr(sources.get("ai_agent"), "per_call"):
+        # دفعة صغيرة على نطاق جغرافي: نداءات أصغر تمتد على عدة مواقع بدل موقع واحد
+        sources["ai_agent"].per_call = min(sources["ai_agent"].per_call, max(2, -(-max_new // 3)))
+
+    def _region_stat(region: str, key: str, n: int = 1, last: str | None = None) -> None:
+        with session_scope() as s:
+            run = s.get(DiscoveryRun, run_id)
+            pr = dict(run.per_region or {})
+            e = dict(pr.get(region, {}))
+            e[key] = e.get(key, 0) + n
+            if last:
+                e["last"] = last
+            pr[region] = e
+            run.per_region = pr
     with session_scope() as s:
         baseline = sum(_count_today(s, cid, day) for cid, *_ in cats)
 
@@ -111,9 +132,17 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
     def process_category(cat_id: int, quota: int, cities: list[str], queries: list[str]) -> None:
         budget = quota * max_candidates_factor
         seen_candidates = 0
+        if scope:
+            # (موقع × عبارة): عبارة واحدة على كل مواقع النطاق ثم التالية، ويبدأ من حيث توقفت الدفعة السابقة
+            pairs = [(city, qi, q) for qi, q in enumerate(queries) for city in cities]
+            with session_scope() as s:
+                start = (s.get(Category, cat_id).cursor or 0) % max(len(pairs), 1)
+            pairs = pairs[start:] + pairs[:start]
+        else:
+            pairs = [(city, qi, q) for city in cities for qi, q in enumerate(queries)]
         for src_name in SOURCE_ORDER:
-            for city in cities:
-                for qi, query in enumerate(queries):
+            for pi, (city, qi, query) in enumerate(pairs):
+                if True:
                     with session_scope() as s:
                         if cat_full(s, cat_id, quota) or batch_full(s):
                             return
@@ -130,9 +159,11 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                         # نتائج نداء الوكيل الواحد دُفع ثمنها مسبقًا: تُحفظ كلها حتى لو اكتملت الدفعة في منتصفها
                         whole_call = src_name == "ai_agent"
                         stop = False
+                        searched_pid = label_pid.get(city)
                         for cand in sources[src_name].search(query, city, state):
                             seen_candidates += 1
-                            _handle_candidate(run_id, cat_id, cand, crawler, day)
+                            _handle_candidate(run_id, cat_id, cand, crawler, day,
+                                              scope_ids=set(scope_ids) if scope else None, searched_pid=searched_pid)
                             with session_scope() as s:
                                 run = s.get(DiscoveryRun, run_id)
                                 cp = dict(run.checkpoint or {})
@@ -144,9 +175,14 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
                                 return
                             if seen_candidates >= budget and not whole_call:
                                 return
+                        state["done"] = True
+                        if scope and searched_pid:
+                            _region_stat(PLACES[searched_pid]["region"], "searched", 1, last=f"{city} — «{query}»")
+                            with session_scope() as s:  # الموضع التالي يُحفظ للدفعة القادمة (ولو في يوم آخر)
+                                cat_row = s.get(Category, cat_id)
+                                cat_row.cursor = (start + pi + 1) % max(len(pairs), 1)
                         if stop or seen_candidates >= budget:
                             return
-                        state["done"] = True
                     except SourceUnavailable as e:
                         disabled[src_name] = str(e)
                     except SourceError as e:
@@ -239,7 +275,33 @@ def _bump(run: DiscoveryRun, field: str, src: str) -> None:
     run.per_source = ps
 
 
-def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawler, day: date | None = None) -> str:
+def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawler, day: date | None = None,
+                      scope_ids: set | None = None, searched_pid: str | None = None) -> str:
+    from ..geo import PLACES, resolve_city
+    if scope_ids is not None:
+        # الموقع يجب أن يثبت بعنوان منشور داخل النطاق (لا عبارة «نوصّل لكل المناطق»)
+        pid = resolve_city(cand.address or "") or resolve_city(cand.city or "")
+        why = None
+        if pid is None:
+            why = "الموقع غير سعودي أو غير معروف في دليل الأماكن"
+        elif not getattr(cand, "location_verified", True):
+            why = "لم يثبت عنوان منشور للمنشأة في هذا الموقع"
+        elif pid not in scope_ids:
+            why = f"خارج النطاق المختار ({PLACES[pid]['ar']})"
+        if why:
+            with session_scope() as s:
+                run = s.get(DiscoveryRun, run_id)
+                _bump(run, "rejected_count", cand.source_type)
+                pr = dict(run.per_region or {})
+                reg = PLACES[searched_pid]["region"] if searched_pid else "-"
+                e = dict(pr.get(reg, {}))
+                e["out"] = e.get("out", 0) + 1
+                pr[reg] = e
+                run.per_region = pr
+                _log(run, f"استُبعد «{cand.name}»: {why}")
+            return "rejected"
+        cand.place_id = pid
+        cand.city = PLACES[pid]["ar"]
     with session_scope() as s:
         run = s.get(DiscoveryRun, run_id)
         cat = s.get(Category, cat_id)
@@ -265,6 +327,23 @@ def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawle
         if cand.signals:
             fit.signals = list(fit.signals or []) + list(cand.signals)
         res = upsert_candidate(s, cand, site, cat, fit, run_id=run_id, day=day)
+        pid = getattr(cand, "place_id", None)
+        if res.company is not None and pid:
+            if res.outcome in ("new_complete", "new_incomplete") and not res.company.place_id:
+                res.company.place_id, res.company.region_id = pid, PLACES[pid]["region"]
+            elif res.company.place_id and res.company.place_id != pid:
+                # فرع موثّق في موقع آخر: يُحفظ للفريق ولا تُحتسب المنشأة مرة ثانية
+                br = list(res.company.branches or [])
+                if pid not in {b.get("place_id") for b in br}:
+                    br.append({"place_id": pid, "city": PLACES[pid]["ar"], "address": cand.address or "",
+                               "url": cand.source_url})
+                    res.company.branches = br
+        if res.outcome in ("duplicate", "branch") and pid:
+            pr = dict(run.per_region or {})
+            e = dict(pr.get(PLACES[pid]["region"], {}))
+            e["dup"] = e.get("dup", 0) + 1
+            pr[PLACES[pid]["region"]] = e
+            run.per_region = pr
         src = cand.source_type
         ps = dict(run.per_source or {})
         e = dict(ps.get(src, {}))

@@ -87,14 +87,16 @@ AGENT_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["prospects"],
     "properties": {"prospects": {"type": "array", "items": {
         "type": "object", "additionalProperties": False,
-        "required": ["name", "entity_type", "activity", "city", "website", "vehicle_evidence", "evidence_url",
-                     "evidence_quote", "operator_status", "contacts", "discovered_via"],
+        "required": ["name", "entity_type", "activity", "city", "address", "address_url", "website", "vehicle_evidence",
+                     "evidence_url", "evidence_quote", "operator_status", "contacts", "discovered_via"],
         "properties": {
             "name": {"type": "string"},
             "entity_type": {"type": "string", "enum": ["company", "establishment", "factory", "sole_proprietor",
                                                        "association", "private_individual"]},
             "activity": {"type": "string"},
-            "city": {"type": "string"},
+            "city": {"type": "string", "description": "مدينة عنوان المنشأة أو فرعها المنشور — لا مدن التغطية"},
+            "address": {"type": "string", "description": "العنوان المنشور حرفيًا (الحي والمدينة) أو فارغ"},
+            "address_url": {"type": "string", "description": "رابط الصفحة التي نُشر فيها العنوان"},
             "website": {"type": "string"},
             "vehicle_evidence": {"type": "string",
                                  "description": "جملة عربية تشرح لماذا يستخدم مركبات — فارغ إن لم يوجد دليل منشور"},
@@ -125,6 +127,8 @@ association جمعية أو جهة غير ربحية، factory مصنع، sole_p
 - لا تجمع بيانات أفراد بسياراتهم الخاصة؛ إن صادفت ذلك فصنّفه private_individual ولن يُستخدم.
 - vehicle_evidence جملة محددة مستندة إلى الصفحة (مثل «تذكر في موقعها أنها توزّع منتجاتها بأسطول مبرد في المنطقة الغربية»)
   مع evidence_url واقتباس حرفي evidence_quote. إن أعلنت التوصيل دون توضيح من يشغّل المركبات فـ operator_status = unknown.
+- city و address: موقع المنشأة أو فرعها كما نشرته (حي، شارع، مدينة)، مع رابط الصفحة. عبارة مثل «نوصّل إلى جميع مناطق
+  المملكة» ليست عنوانًا ولا تجعل المنشأة في تلك المدينة. لا تخلط بين المدن المتشابهة (ضباء في تبوك ليست دبي).
 - تجنّب الأسماء والنطاقات المعروفة لدينا المذكورة في الطلب، وتجنب الأدلة نفسها والمنصات والوسطاء كعملاء."""
 
 
@@ -234,6 +238,25 @@ def same_entity(url: str, name: str, website: str | None, pages: list[FetchedPag
     return False
 
 
+def _location_on_pages(p: dict, pages: list[FetchedPage]) -> bool:
+    """هل موقع المنشأة منشور فعلًا؟ العنوان ظهر نصًا في صفحة قرأها الوكيل، أو اسم المدينة ظهر في صفحة من موقعها."""
+    addr = (p.get("address") or "").strip()
+    if addr and quote_on_pages(addr, p.get("address_url") or p.get("website") or "", pages):
+        return True
+    from ..geo import PLACES, resolve_city
+    pid = resolve_city(addr) or resolve_city(p.get("city") or "")
+    if not pid:
+        return False
+    names = [PLACES[pid]["ar"], PLACES[pid]["en"], *PLACES[pid]["syn"]]
+    site = domain_of(p["website"]) if p.get("website") else None
+    for pg in pages:
+        if site and domain_of(pg.url) == site or pg.url == p.get("address_url"):
+            t = normalize_arabic(pg.text).lower()
+            if any(normalize_arabic(n).lower() in t for n in names):
+                return True
+    return False
+
+
 def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
     pages, extra = _collect_pages(blocks)
     res = AgentResult(pages_read=len(pages))
@@ -273,6 +296,8 @@ def parse_agent_output(out: dict, blocks, query: str, city: str) -> AgentResult:
         cand.operator_status = p["operator_status"]
         cand.entity_type = p["entity_type"]
         cand.vehicle_indicator = "confirmed" if evidence_ok else "unconfirmed"
+        cand.address = (p.get("address") or "").strip()[:300] or None
+        cand.location_verified = _location_on_pages(p, pages)
         res.candidates.append(cand)
     return res
 

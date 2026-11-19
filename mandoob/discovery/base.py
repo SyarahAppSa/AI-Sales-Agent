@@ -35,6 +35,9 @@ class Candidate:
     operator_status: str | None = None
     entity_type: str | None = None
     vehicle_indicator: str | None = None  # confirmed / unconfirmed
+    address: str | None = None            # العنوان المنشور للمنشأة أو فرعها
+    location_verified: bool = False       # العنوان/المدينة ظهرا نصًا في صفحة قرأها الوكيل
+    place_id: str | None = None           # بعد التحقق: معرّف المكان في دليل الأماكن
 
 
 class SourceError(RuntimeError):

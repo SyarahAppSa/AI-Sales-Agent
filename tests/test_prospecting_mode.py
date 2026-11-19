@@ -97,7 +97,7 @@ def test_2_prospecting_tool_saves_target_and_runs_on_the_worker(monkeypatch):
         r = c.post("/prospecting", data={"activities": ["sector:education", "community.laundries",
                                                         "industry.food_factories", "field_services.hvac",
                                                         "food.restaurants"],
-                                         "cities": ["الرياض", "جدة"], "regions": ["المنطقة الشرقية"],
+                                         "scope_mode": "custom", "places": ["SA-01/riyadh", "SA-02/jeddah"], "regions": ["SA-04"],
                                          "daily_target": "400", "scheduled": "1", "time": "05:30"},
                    follow_redirects=False)
         assert r.status_code == 303
@@ -130,14 +130,15 @@ def test_2_prospecting_tool_saves_target_and_runs_on_the_worker(monkeypatch):
     assert jobs.discovery_request_tick() is False  # لا يُعاد تشغيل الطلب نفسه
     with TestClient(app) as c:  # إيقاف الجدولة حتى لا تؤثر على بقية الاختبارات
         otp_login(c, ADMIN, "admin")
-        c.post("/prospecting", data={"activities": ["transport"], "cities": ["الرياض"], "daily_target": "400",
+        c.post("/prospecting", data={"activities": ["transport"], "scope_mode": "custom", "places": ["SA-01/riyadh"], "daily_target": "400",
                                      "time": "06:00"})
     with session_scope() as s:
         assert s.get(Campaign, cid).status == "paused"
     # «جميع الأنشطة في السعودية»: كل القطاعات، والهدف موزع عليها
     with TestClient(app) as c:
         otp_login(c, ADMIN, "admin")
-        c.post("/prospecting", data={"all_activities": "1", "cities": ["الرياض"], "daily_target": "400", "time": "06:00"})
+        c.post("/prospecting", data={"all_activities": "1", "scope_mode": "custom", "places": ["SA-01/riyadh"],
+                                     "daily_target": "400", "time": "06:00"})
     with session_scope() as s:
         from mandoob.activities import ACTIVITIES, SECTORS
         cfg = prospecting.get_config(s)
@@ -220,3 +221,22 @@ def test_4_display_hides_contacts_that_do_not_belong_to_the_company():
                                   verified=True, preferred=True))
         s.flush()
         assert c.primary("email").value == "info@masar-trans.example"
+
+
+def test_5_interrupted_request_resumes_after_worker_restart():
+    from mandoob import jobs, prospecting
+    from mandoob.models import JobLock
+    from mandoob.timeutil import now_utc
+    from datetime import timedelta as td
+    with session_scope() as s:
+        prospecting._put(s, prospecting.REQUEST, {"state": "running", "campaign_id": 1, "max_new": 5})
+        lk = s.get(JobLock, "discovery")
+        if lk is None:
+            s.add(JobLock(name="discovery", locked_until=now_utc() + td(hours=9), holder="old-worker:1"))
+        else:
+            lk.locked_until, lk.holder = now_utc() + td(hours=9), "old-worker:1"
+    assert jobs.recover_on_start() is True
+    with session_scope() as s:
+        assert prospecting.pending_request(s)["state"] == "pending"
+        assert s.get(JobLock, "discovery").locked_until < now_utc()
+        prospecting._put(s, prospecting.REQUEST, {"state": "done"})

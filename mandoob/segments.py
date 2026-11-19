@@ -316,6 +316,10 @@ def saudi_city(city: str | None) -> str | None:
                 best = (canon, len(nv))
     if best:
         return best[0]
+    from .geo import PLACES, resolve_city
+    pid = resolve_city(city)  # دليل الأماكن الكامل (١٣ منطقة ومحافظاتها)
+    if pid:
+        return PLACES[pid]["ar"]
     if "saudi" in t or "السعوديه" in t or "المملكه" in t:
         return None  # الدولة وحدها لا تكفي: نحتاج المدينة
     return None

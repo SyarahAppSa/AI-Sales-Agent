@@ -121,6 +121,8 @@ class Campaign(Base):
     request_text: Mapped[str] = mapped_column(Text, default="")  # طلب المدير بالعربية كما كتبه
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft / active / paused
     daily_target: Mapped[int] = mapped_column(Integer, default=400)
+    # النطاق الجغرافي بمعرّفات دليل الأماكن (أداة «البحث عن العملاء»): {"all", "regions", "places", "exclude"}
+    geo_scope: Mapped[Optional[dict]] = mapped_column(JSON)
     allow_backfill: Mapped[bool] = mapped_column(Boolean, default=False)
     exclusions: Mapped[list] = mapped_column(JSON, default=list)  # أنشطة مستبعدة (وسطاء...)
     exclude_existing_customers: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -154,6 +156,7 @@ class Category(Base):
     quota: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_experiment: Mapped[bool] = mapped_column(Boolean, default=False)  # ضمن حصة اختبار الشرائح الجديدة
+    cursor: Mapped[int] = mapped_column(Integer, default=0)  # موضع (الموقع × عبارة البحث) التالي — يستأنف منه البحث
     offer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("offers.id"))
     campaign: Mapped[Campaign] = relationship(back_populates="categories")
     offer: Mapped[Optional[Offer]] = relationship()
@@ -188,6 +191,9 @@ class Company(Base):
     owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     # new / contacted / replied / interested / meeting / won / lost / do_not_contact
     stage: Mapped[str] = mapped_column(String(30), default="new")
+    place_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)  # الموقع الموثّق لأول احتساب
+    region_id: Mapped[Optional[str]] = mapped_column(String(10), index=True)
+    branches: Mapped[Optional[list]] = mapped_column(JSON)  # فروع موثّقة أخرى [{place_id, city, url}]
     entity_type: Mapped[Optional[str]] = mapped_column(String(30))  # شركة / مؤسسة فردية / جمعية ...
     vehicle_indicator: Mapped[Optional[str]] = mapped_column(String(20))  # confirmed / unconfirmed
     # التواصل اليدوي من الفريق: ما سجّله الموظف بنفسه (من ومتى) — مصدر تقرير العروض في المرحلة الحالية
@@ -377,6 +383,7 @@ class DiscoveryRun(Base):
     checkpoint: Mapped[dict] = mapped_column(JSON, default=dict)
     per_category: Mapped[dict] = mapped_column(JSON, default=dict)
     per_source: Mapped[dict] = mapped_column(JSON, default=dict)
+    per_region: Mapped[dict] = mapped_column(JSON, default=dict)  # {رمز المنطقة: {searched, dup, out, last}}
     source_errors: Mapped[dict] = mapped_column(JSON, default=dict)
     shortfall: Mapped[int] = mapped_column(Integer, default=0)
     shortfall_reason: Mapped[str] = mapped_column(Text, default="")

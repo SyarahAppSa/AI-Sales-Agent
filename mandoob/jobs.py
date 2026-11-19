@@ -97,6 +97,22 @@ def discovery_tick(force: bool = False) -> list[int]:
     return run_ids
 
 
+def recover_on_start() -> bool:
+    """عند تشغيل العامل (بعد تحديث أو إعادة تشغيل): طلب «ابحث الآن» الذي انقطع يعود «بانتظار الخادم» فيُستأنف
+    من نقطة توقفه دون تكرار، ويُحرَّر قفل الاكتشاف الذي تركه العامل السابق."""
+    from .prospecting import REQUEST
+    req = get_setting(REQUEST)
+    with session_scope() as s:
+        lock = s.get(JobLock, "discovery")
+        if lock is not None and lock.holder != HOLDER:
+            lock.locked_until = now_utc() - timedelta(seconds=1)
+    if req.get("state") == "running":
+        req.update(state="pending", resumed_after_restart=now_utc().isoformat(timespec="seconds"))
+        put_setting(REQUEST, req)
+        return True
+    return False
+
+
 def discovery_request_tick() -> bool:
     """يلتقط طلب «ابحث الآن» من لوحة الإدارة ويشغّله على العامل (يكمل ولو أُغلقت اللوحة)."""
     from .prospecting import REQUEST

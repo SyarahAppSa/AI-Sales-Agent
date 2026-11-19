@@ -47,17 +47,46 @@ function filterActs(){const q=norm(document.getElementById('actq').value.trim())
 function selVisible(v){document.querySelectorAll('#actbox .act').forEach(l=>{if(l.style.display!='none')l.querySelector('input').checked=v});sync()}
 sync();
 </script>
-<div class="field"><label>المدن</label><div class="chips">
-{% for c in MAIN_CITIES %}<label><input type="checkbox" name="cities" value="{{ c }}" {{ 'checked' if c in cfg.cities }}> {{ c }}</label>{% endfor %}</div>
-<input name="extra_cities" placeholder="مدن أخرى أو مدن صناعية، مفصولة بفواصل" value="{{ (cfg.cities | reject('in', MAIN_CITIES) | list) | join('، ') }}" style="margin-top:6px"></div>
-<div class="field"><label>المناطق (تضيف مدنها ومدنها الصناعية)</label><div class="chips">
-{% for r in REGIONS %}<label><input type="checkbox" name="regions" value="{{ r }}" {{ 'checked' if r in cfg.regions }}> {{ r }}</label>{% endfor %}</div></div>
+{% set sc = cfg.scope %}{% set chosen = GEO.scope_places(sc) %}
+<div class="field" id="geo"><label>أين نبحث؟</label>
+<div class="chips" style="margin-bottom:8px">
+  <label style="font-weight:700"><input type="radio" name="scope_mode" value="all" {{ 'checked' if sc.all }} onchange="geoMode()"> جميع مناطق المملكة (١٣)</label>
+  <label style="font-weight:700"><input type="radio" name="scope_mode" value="custom" {{ '' if sc.all else 'checked' }} onchange="geoMode()"> اختيار مناطق أو مدن محددة</label>
+</div>
+<div id="geocustom">
+<div class="row" style="align-items:end;margin-bottom:8px"><div><input id="geoq" placeholder="ابحث عن منطقة أو محافظة أو مدينة… مثل: الخرج، الجوف، ضباء" oninput="geoFilter()"></div>
+<div style="flex:0 0 auto" class="small muted">المواقع المختارة: <b id="geocnt">0</b></div></div>
+<div class="grid g2" style="gap:10px">
+{% for rid, r in GEO_REGIONS.items() %}{% set full = rid in sc.regions or sc.all %}
+<details class="region" data-rid="{{ rid }}" style="border:1px solid var(--line);border-radius:12px;padding:8px 12px" {{ 'open' if (rid in sc.regions and sc.exclude|select('in', r.places)|list) else '' }}>
+<summary style="cursor:pointer"><label class="chips" style="display:inline-flex;font-weight:700" onclick="event.stopPropagation()"><input type="checkbox" class="regchk" name="regions" value="{{ rid }}" {{ 'checked' if full }} onchange="regToggle(this)"> {{ r.ar }} كاملة</label>
+<span class="small muted">— المقر: {{ r.capital }} · {{ r.places|length }} موقعًا <span class="partial" style="color:var(--warn)"></span></span></summary>
+<div class="chips" style="margin-top:6px">{% for pid in r.places %}{% set p = GEO_PLACES[pid] %}
+<label class="plc" data-text="{{ p.ar }} {{ p.en }} {{ p.syn|join(' ') }} {{ r.ar }}" title="{{ GEO.TYPE_LABELS[p.type] }}"><input type="checkbox" name="places" value="{{ pid }}" data-rid="{{ rid }}" {{ 'checked' if pid in chosen }} onchange="geoSync()"> {{ p.ar }}{% if p.ar == r.capital %} <span class="small muted">(مدينة)</span>{% endif %}{% if p.type == 'industrial' %} <span class="small muted">صناعية</span>{% endif %}</label>{% endfor %}</div>
+</details>{% endfor %}
+</div>
+<input name="extra_cities" list="geolist" placeholder="أضف مدينة أو مدينة صناعية بالاسم (من الدليل)، مفصولة بفواصل" style="margin-top:8px">
+<datalist id="geolist">{% for pid, p in GEO_PLACES.items() %}<option value="{{ p.ar }} — {{ GEO_REGIONS[p.region].ar }}">{% endfor %}</datalist>
+<p class="small muted" style="margin:6px 0 0">«منطقة كاملة» تشمل كل محافظاتها ومدنها الصناعية (مثل الخرج في منطقة الرياض). لاختيار مدينة وحدها اترك المنطقة غير محددة وحدد المدينة. إلغاء مدينة داخل منطقة كاملة يجعلها «اختيارًا جزئيًا» ويُحفظ الاستثناء.</p>
+</div></div>
+<script>
+function geoMode(){const all=document.querySelector('input[name=scope_mode]:checked').value=='all';document.getElementById('geocustom').style.display=all?'none':'';geoSync()}
+function regToggle(c){document.querySelectorAll('input[name=places][data-rid="'+c.value+'"]').forEach(x=>x.checked=c.checked);geoSync()}
+function geoSync(){let n=0;const all=document.querySelector('input[name=scope_mode]:checked').value=='all';
+ document.querySelectorAll('.region').forEach(d=>{const rc=d.querySelector('.regchk');const ps=[...d.querySelectorAll('input[name=places]')];const on=ps.filter(x=>x.checked).length;
+  if(on==0)rc.checked=false;const part=rc.checked&&on<ps.length;d.querySelector('.partial').textContent=part?'— اختيار جزئي ('+(ps.length-on)+' مستثنى)':(!rc.checked&&on?'— '+on+' موقع محدد':'');rc.indeterminate=part;n+=on});
+ document.getElementById('geocnt').textContent=all?'{{ GEO_PLACES|length }} (المملكة كاملة)':n;
+ const sm=document.getElementById('scopesum');if(sm)sm.textContent=all?'جميع مناطق المملكة (١٣)':(n?n+' موقعًا محددًا':'لم يُحدد نطاق — اختر مناطق أو مدنًا');}
+function geoFilter(){const q=norm(document.getElementById('geoq').value.trim());document.querySelectorAll('.region').forEach(d=>{let any=false;d.querySelectorAll('.plc').forEach(l=>{const ok=!q||norm(l.dataset.text).includes(q);l.style.display=ok?'':'none';any=any||ok});d.style.display=any?'':'none';if(q&&any)d.open=true})}
+document.addEventListener('DOMContentLoaded',geoMode);
+</script>
 <div class="row">
   <div style="flex:0 0 200px"><label>الهدف اليومي (منشأة جديدة مكتملة)</label><input type="number" name="daily_target" value="{{ cfg.daily_target }}" min="1" max="2000"></div>
   <div style="flex:0 0 170px"><label>وقت التشغيل اليومي (الرياض)</label><input type="time" name="time" value="{{ cfg.time }}"></div>
   <div class="chips" style="flex:0 0 auto;align-self:end"><label><input type="checkbox" name="scheduled" value="1" {{ 'checked' if cfg.scheduled }}> تشغيل يومي مجدول</label></div>
 </div>
 {% if st.est_cost_target %}<p class="small muted">التقدير بحسب التكلفة الفعلية الأخيرة: نحو ${{ st.est_cost_target|int }} يوميًا لهدف {{ cfg.daily_target }} منشأة مكتملة.</p>{% endif %}
+<p class="small" style="margin:8px 0 0">النطاق المحفوظ: <b>{{ cfg.scope_summary or '—' }}</b> · المختار الآن: <b id="scopesum"></b></p>
 <div class="row" style="margin-top:8px">
   <div style="flex:0 0 auto"><button class="btn">حفظ</button></div>
   <div style="flex:0 0 auto"><button class="btn p" name="run_now" value="1">حفظ وابحث الآن</button></div>
@@ -70,6 +99,14 @@ sync();
 <tr><th>القطاع</th><th>الأنشطة المختارة</th><th>منشآت جديدة مكتملة / حصته</th><th>منها بمؤشر مركبات مؤكد</th><th>قيد الاستكمال</th></tr>
 {% for r in st.sectors %}<tr><td><b>{{ r.label }}</b></td><td>{{ r.activities }}</td><td>{{ r.complete }} / {{ r.quota }}</td><td>{{ r.confirmed }}</td><td>{{ r.incomplete }}</td></tr>{% endfor %}
 </table></div></div>{% endif %}
+{% if st.regions %}<div class="card"><h2>نتائج البحث حسب المنطقة — اليوم</h2><div class="tablewrap"><table>
+<tr><th>المنطقة</th><th>الحالة</th><th>عمليات البحث</th><th>منشآت جديدة مكتملة</th><th>قيد الاستكمال</th><th>مكررة</th><th>مستبعدة (خارج النطاق)</th><th>آخر موقع بُحث</th></tr>
+{% for r in st.regions %}<tr><td><b>{{ r.label }}</b></td><td><span class="pill {{ 'ok' if r.status=='وُجدت نتائج' else ('warn' if r.status=='اكتمل البحث دون نتائج' else '') }}">{{ r.status }}</span></td><td>{{ r.searched }}</td><td>{{ r.complete }}</td><td>{{ r.incomplete }}</td><td>{{ r.dup }}</td><td>{{ r.out }}</td><td class="small">{{ r.last or '—' }}</td></tr>{% endfor %}
+<tr><td><b>المجموع</b></td><td></td><td>{{ st.regions|sum(attribute='searched') }}</td><td><b>{{ st.regions|sum(attribute='complete') }}</b></td><td>{{ st.regions|sum(attribute='incomplete') }}</td><td>{{ st.regions|sum(attribute='dup') }}</td><td>{{ st.regions|sum(attribute='out') }}</td><td></td></tr>
+</table></div>
+{% if st.nexts %}<h2 style="margin-top:12px">أين يكمل البحث في الدفعة القادمة</h2><table><tr><th>القطاع</th><th>الموقع التالي</th><th>عبارة البحث</th><th>الموضع</th></tr>
+{% for n in st.nexts %}<tr><td>{{ n.label }}</td><td>{{ n.place }}</td><td>«{{ n.query }}»</td><td class="small">{{ n.pos }} من {{ n.of }}</td></tr>{% endfor %}</table>{% endif %}
+</div>{% endif %}
 <div class="grid g2">
 <div class="card"><h2>شروط احتساب المنشأة «مكتملة»</h2><ul class="small" style="margin:0;padding-inline-start:18px;line-height:1.9">
 <li>الاسم والنشاط ومدينة سعودية. «مؤشر استخدام المركبات» يُسجّل مؤكدًا بدليل من صفحتها، أو «غير مؤكد» ليتحقق الفريق — والأولوية للمؤكد.</li>
