@@ -197,7 +197,11 @@ def staff_login_page(request: Request, s=Depends(get_db)):
 
 
 def _request_code(request: Request, portal: str, email: str, s):
-    from ..auth import OTPError, request_code, send_code_email
+    from ..auth import OTPError, account_problem, request_code, send_code_email
+    problem = account_problem(s, email, portal)
+    if problem:
+        flash(request, problem, "err")
+        return
     try:
         user, code = request_code(s, email, portal, _ip(request))
     except OTPError as e:
@@ -206,10 +210,10 @@ def _request_code(request: Request, portal: str, email: str, s):
     if user is not None and not send_code_email(s, user, code, portal):
         log.error("login code email failed for user %s", user.id)
         s.rollback()
-        flash(request, "تعذر إرسال الرمز لأن بريد الشركة غير مربوط بالمنصة. تواصل مع الإدارة.", "err")
+        flash(request, "تعذر إرسال الكود لأن بريد الشركة غير مربوط بالمنصة بعد. تواصل مع الإدارة.", "err")
         return
     request.session[f"otp_{portal}"] = email.strip().lower()
-    flash(request, "إذا كان البريد مسجلًا ونشطًا فسيصله رمز من ٦ أرقام صالح لمدة ٥ دقائق.")
+    flash(request, "أُرسل كود الدخول إلى بريدك. صالح لمدة ٥ دقائق ولمرة واحدة.")
 
 
 def _verify_code(request: Request, portal: str, code: str, s):

@@ -208,3 +208,17 @@ def test_6_bootstrap_password_only_without_mail():
         assert r.headers["location"] == "/admin/login"
         assert c.get("/", follow_redirects=False).headers["location"] == "/admin/login"
         assert "دخول تأسيسي" not in c.get("/admin/login").text
+
+
+def test_7_email_is_username_clear_messages():
+    with TestClient(app) as c:
+        r = c.post("/portal/login/request", data={"email": "nobody@syarahapp.test"})
+        assert "غير مسجّل" in r.text and 'name="code"' not in r.text
+        r = c.post("/portal/login/request", data={"email": ADMIN})
+        assert "بوابة الإدارة" in r.text
+        r = c.post("/portal/login/request", data={"email": E2})  # منى موقوفة
+        assert "موقوف" in r.text
+        with session_scope() as s:
+            s.query(LoginCode).delete()  # الاختبار السابق استنفد حد الطلبات عمدًا
+        r = c.post("/portal/login/request", data={"email": E1.upper()})  # البريد لا يتأثر بحالة الأحرف
+        assert "أُرسل كود الدخول" in r.text and 'name="code"' in r.text and "password" not in r.text

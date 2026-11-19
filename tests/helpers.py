@@ -18,7 +18,7 @@ def last_code_for(email: str) -> str | None:
     files = sorted((ROOT / "outbox").glob("*.eml"), key=lambda p: p.stat().st_mtime_ns)
     for f in reversed(files):
         m = message_from_bytes(f.read_bytes(), policy=policy.default)
-        if str(m["To"]).strip().lower() == email.lower() and "رمز الدخول" in str(m["Subject"]):
+        if str(m["To"]).strip().lower() == email.lower() and "كود الدخول" in str(m["Subject"]):
             return re.search(r"(\d{6})", str(m["Subject"])).group(1)
     return None
 

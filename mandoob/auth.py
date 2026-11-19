@@ -84,6 +84,20 @@ class OTPError(Exception):
     pass
 
 
+def account_problem(s, email: str, portal: str) -> str | None:
+    """يتحقق أن البريد (اسم المستخدم) مسجّل ومفعّل ولهذه البوابة. يعيد رسالة المشكلة أو None."""
+    email = (email or "").strip().lower()
+    user = s.scalar(select(User).where(User.email == email))
+    if user is None:
+        return "هذا البريد غير مسجّل في المنصة. تواصل مع الإدارة لإضافتك."
+    if not user.active:
+        return "هذا الحساب موقوف. تواصل مع الإدارة."
+    if portal_of(user) != portal:
+        return ("هذا البريد لحساب إدارة — ادخل من بوابة الإدارة." if portal == "staff"
+                else "هذا البريد لحساب موظف — ادخل من بوابة الموظفين.")
+    return None
+
+
 def request_code(s, email: str, portal: str, ip_hash: str | None = None) -> tuple[User | None, str | None]:
     """يُنشئ رمزًا جديدًا (ويلغي السابق). يعيد (المستخدم، الرمز) أو (None، None) إن لم يكن الحساب مؤهلًا.
     الواجهة تعرض رسالة عامة واحدة في الحالتين حتى لا يُكشف وجود الحساب."""
@@ -146,13 +160,13 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
     if acct is None:
         return False
     link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
-    text = (f"مرحبًا {user.name}،\n\nرمز الدخول إلى {'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين'} "
+    text = (f"مرحبًا {user.name}،\n\nكود الدخول إلى {'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين'} "
             f"في مندوب سيارة آب الذكي:\n\n{code}\n\nصالح لمدة ٥ دقائق ولمرة واحدة. إن لم تطلبه فتجاهل هذه الرسالة.\n{link}")
-    html = (f"<div dir='rtl' style='font-family:Tahoma'><p>مرحبًا {user.name}،</p><p>رمز الدخول:</p>"
+    html = (f"<div dir='rtl' style='font-family:Tahoma'><p>مرحبًا {user.name}،</p><p>كود الدخول:</p>"
             f"<p style='font-size:28px;font-weight:bold;letter-spacing:6px'>{code}</p>"
             "<p>صالح لمدة ٥ دقائق ولمرة واحدة. إن لم تطلبه فتجاهل هذه الرسالة.</p></div>")
     res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "مندوب سيارة آب الذكي", user.email,
-                                                f"رمز الدخول: {code}", text, html))
+                                                f"كود الدخول: {code}", text, html))
     return bool(res and res.accepted)
 
 
@@ -165,7 +179,7 @@ def send_invite_email(s, user: User) -> bool:
         return False
     link = settings.public_base_url.rstrip("/") + "/portal/login"
     text = (f"مرحبًا {user.name}،\n\nأُضيف حسابك إلى بوابة الموظفين في «مندوب سيارة آب الذكي».\n"
-            f"ادخل من الرابط التالي ببريدك الوظيفي، وسيصلك رمز دخول على هذا البريد:\n{link}")
+            f"ادخل من الرابط التالي ببريدك الوظيفي، وسيصلك كود دخول على هذا البريد — بلا كلمة مرور:\n{link}")
     html = (f"<div dir='rtl' style='font-family:Tahoma'><p>مرحبًا {user.name}،</p><p>أُضيف حسابك إلى بوابة الموظفين في "
             f"«مندوب سيارة آب الذكي».</p><p><a href='{link}'>الدخول إلى البوابة</a></p>"
             "<p>ادخل ببريدك الوظيفي، وسيصلك رمز دخول على هذا البريد.</p></div>")
