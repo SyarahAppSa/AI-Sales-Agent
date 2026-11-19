@@ -29,11 +29,14 @@ CITIES = ["الرياض", "جدة", "الدمام"]
 
 
 def zero():
+    """المكالمات والرسائل على الشركات الحقيقية (السجلات التدريبية الوهمية فيها مكالمات ورسائل مصطنعة للشرح فقط)."""
+    real = select(Company.id).where(Company.is_test.is_(False))
     with session_scope() as s:
-        print("E2E zero calls_total", s.scalar(select(func.count(Call.id))),
-              "| marketing_emails_sent_total", s.scalar(select(func.count(OutboundMessage.id)).where(
-                  OutboundMessage.sent_at.isnot(None), OutboundMessage.kind.in_(["offer", "followup"]))),
+        print("E2E zero real_calls", s.scalar(select(func.count(Call.id)).where(Call.company_id.in_(real))),
+              "| real_marketing_emails_sent", s.scalar(select(func.count(OutboundMessage.id)).where(
+                  OutboundMessage.company_id.in_(real), OutboundMessage.sent_at.isnot(None))),
               "| queued_now", s.scalar(select(func.count(OutboundMessage.id)).where(OutboundMessage.status == "queued")),
+              "| training_demo_calls", s.scalar(select(func.count(Call.id)).where(Call.company_id.notin_(real))),
               "| flags voice", settings.voice_calls_enabled, "outreach", settings.auto_outreach_enabled, flush=True)
 
 
