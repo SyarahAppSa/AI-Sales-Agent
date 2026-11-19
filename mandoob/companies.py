@@ -257,23 +257,64 @@ def _refresh_preferred(company: Company) -> None:
         phones[0].preferred = True
 
 
+FREE_MAIL_DOMAINS = {"gmail.com", "hotmail.com", "outlook.com", "outlook.sa", "yahoo.com", "icloud.com", "live.com",
+                     "msn.com", "me.com", "hotmail.sa"}
+
+
+def _host(u: str | None) -> str:
+    from urllib.parse import urlparse
+    if not u:
+        return ""
+    h = urlparse(u if "//" in u else "//" + u).hostname or ""
+    return h.lower().removeprefix("www.")
+
+
+def _same_domain(a: str, b: str) -> bool:
+    return bool(a and b) and (a == b or a.endswith("." + b) or b.endswith("." + a))
+
+
+def contact_belongs(company: Company, c) -> bool:
+    """هل وسيلة التواصل تخص المنشأة نفسها؟ (تدقيق المصادر أظهر بريدًا لنطاق مطوّر الموقع وهاتفًا من موقع منشأة أخرى)
+    - البريد: نطاقه نطاق موقع المنشأة، أو بريد مجاني منشور على موقع المنشأة نفسها. بريد بنطاق آخر مرفوض.
+    - الهاتف: إن كان للمنشأة موقع فمصدره يجب أن يكون موقعها.
+    القاعدة على ما جمعه البحث الآلي فقط؛ الإدخال اليدوي والاستيراد يبقيان كما هما."""
+    if company.is_test or company.lead_source not in ("discovery", None, ""):
+        return True
+    site, src = _host(company.website), _host(c.source_url)
+    if c.kind == "email":
+        ed = c.value.split("@")[-1].lower()
+        if ed in FREE_MAIL_DOMAINS:
+            return _same_domain(src, site) if site else True
+        return _same_domain(ed, site) if site else _same_domain(ed, src)
+    if c.kind == "phone" and site:
+        return _same_domain(src, site)
+    return True
+
+
+def _good_phone(company: Company, c) -> bool:
+    return (c.kind == "phone" and c.verified and bool(c.source_url) and (company.is_test or c.value.startswith("+966"))
+            and contact_belongs(company, c))
+
+
+def _good_email(company: Company, c) -> bool:
+    return (c.kind == "email" and c.verified and bool(c.source_url) and is_offer_suitable_email(c.value)
+            and contact_belongs(company, c))
+
+
 def is_complete(company: Company) -> bool:
-    """قاعدة الاحتساب: الاسم والنشاط ومدينة سعودية وهاتف عمل وبريد، ولكل وسيلة رابط مصدرها."""
+    """قاعدة الاحتساب: الاسم والنشاط ومدينة سعودية وهاتف عمل وبريد، ولكل وسيلة رابط مصدرها، وكلاهما يخص المنشأة نفسها."""
     from .segments import saudi_city
-    has_phone = any(c.kind == "phone" and c.verified and c.source_url and (company.is_test or c.value.startswith("+966"))
-                    for c in company.contacts)
-    has_email = any(c.kind == "email" and c.verified and c.source_url and is_offer_suitable_email(c.value)
-                    for c in company.contacts)
-    return bool(has_phone and has_email and company.name and company.activity and
+    return bool(any(_good_phone(company, c) for c in company.contacts) and
+                any(_good_email(company, c) for c in company.contacts) and company.name and company.activity and
                 (company.is_test or saudi_city(company.city)))
 
 
 def missing_fields(company: Company) -> list[str]:
     out = []
-    if not any(c.kind == "phone" and c.verified and (company.is_test or c.value.startswith("+966")) for c in company.contacts):
-        out.append("هاتف عمل سعودي")
-    if not any(c.kind == "email" and c.verified and is_offer_suitable_email(c.value) for c in company.contacts):
-        out.append("البريد الإلكتروني")
+    if not any(_good_phone(company, c) for c in company.contacts):
+        out.append("هاتف عمل سعودي من موقع المنشأة نفسها")
+    if not any(_good_email(company, c) for c in company.contacts):
+        out.append("بريد يخص المنشأة نفسها")
     from .segments import saudi_city
     if not company.is_test and not saudi_city(company.city):
         out.append("مدينة سعودية")

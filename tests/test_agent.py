@@ -167,3 +167,24 @@ def test_saudi_city_and_same_entity_rules():
     assert same_entity("https://facebook.example/najdhvac", "نجد للتكييف", "https://najd-hvac.example", pages)
     assert same_entity("https://najd-hvac.example/contact", "نجد للتكييف", "https://najd-hvac.example", pages)
     assert not same_entity("https://other.example/list", "نجد للتكييف", "https://najd-hvac.example", pages)
+
+
+def test_contact_must_belong_to_same_entity():
+    """من تدقيق المصادر: بريد بنطاق مطوّر الموقع، وهاتف من موقع منشأة أخرى، لا يحتسبان."""
+    from mandoob.companies import contact_belongs, is_complete
+    from mandoob.models import Company, Contact
+    c = Company(name="شركة المتنقل للخدمات", activity="ورشة متنقلة", city="الرياض", website="https://almtngl-ksa.com",
+                lead_source="discovery", is_test=False)
+    ph = Contact(kind="phone", value="+966561115652", source_url="https://almtngl-ksa.com/contact-us/", verified=True)
+    em = Contact(kind="email", value="info@tahalufapp.com", source_url="https://almtngl-ksa.com/contact-us/", verified=True)
+    c.contacts = [ph, em]
+    assert contact_belongs(c, ph) and not contact_belongs(c, em) and not is_complete(c)
+    em.value = "info@almtngl-ksa.com"
+    assert is_complete(c)
+    em.value = "owner123@gmail.com"  # مجاني منشور على موقعها: مقبول
+    assert is_complete(c)
+    em.source_url = "https://some-directory.com/x"  # مجاني من موقع آخر: مرفوض
+    assert not is_complete(c)
+    em.source_url = "https://almtngl-ksa.com/"
+    ph.source_url = "https://alfahscenter.com/page"  # هاتف من موقع منشأة أخرى
+    assert not is_complete(c)
