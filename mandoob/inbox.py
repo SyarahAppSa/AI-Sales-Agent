@@ -29,6 +29,9 @@ def sync_all() -> dict:
     for aid in accounts:
         with session_scope() as s:
             acct = s.get(MailAccount, aid)
+            from .auth import provider_configured
+            if not provider_configured(acct):
+                continue  # مفاتيح البريد غير مضبوطة على الخادم بعد: لا داعي لتكرار الخطأ في السجل
             try:
                 items, cursor = get_provider(acct).fetch_new(acct.sync_cursor or {})
             except Exception as e:
