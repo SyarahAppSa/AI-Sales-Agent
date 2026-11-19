@@ -243,7 +243,9 @@ class AgentSource:
     """مصدر «البحث الآلي»: نداء وكيل لكل (عبارة بحث × مدينة)."""
     name = "ai_agent"
 
-    def __init__(self, known_fn=None, per_call: int = 10, max_searches: int = 8, max_fetches: int = 20):
+    def __init__(self, known_fn=None, per_call: int = 10, max_searches: int | None = None, max_fetches: int | None = None):
+        max_searches = max_searches or settings.ai_agent_searches
+        max_fetches = max_fetches or settings.ai_agent_fetches
         self.known_fn = known_fn or (lambda: [])
         self.per_call, self.max_searches, self.max_fetches = per_call, max_searches, max_fetches
         self.last: AgentResult | None = None

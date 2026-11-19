@@ -41,6 +41,10 @@ class Settings:
     ai_search_tool: str = field(default_factory=lambda: _env("AI_SEARCH_TOOL", "web_search_20260209"))
     ai_model: str = field(default_factory=lambda: _env("AI_MODEL", "claude-opus-5-5"))
     ai_effort: str = field(default_factory=lambda: _env("AI_EFFORT", "low"))
+    # البحث الآلي العميق: مستوى تفكير أعلى وعدد أكبر من عمليات البحث والصفحات لكل عبارة
+    ai_agent_effort: str = field(default_factory=lambda: _env("AI_AGENT_EFFORT", "high"))
+    ai_agent_searches: int = field(default_factory=lambda: int(_env("AI_AGENT_SEARCHES", "12")))
+    ai_agent_fetches: int = field(default_factory=lambda: int(_env("AI_AGENT_FETCHES", "30")))
 
     # مصادر البحث
     google_places_api_key: str = field(default_factory=lambda: _env("GOOGLE_PLACES_API_KEY"))

@@ -134,7 +134,7 @@ def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, m
         try:
             with c.beta.messages.stream(
                 model=model, max_tokens=32000, system=system, messages=messages, tools=tools,
-                output_config={"effort": settings.ai_effort, "format": {"type": "json_schema", "schema": schema}},
+                output_config={"effort": settings.ai_agent_effort, "format": {"type": "json_schema", "schema": schema}},
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             ) as stream:
                 resp = stream.get_final_message()
