@@ -21,6 +21,7 @@ def main() -> None:
     ap.add_argument("--text", default="المنشآت وأصحاب الأنشطة الذين يستخدمون سيارات في عملهم")
     ap.add_argument("--batch", type=int, default=20)
     ap.add_argument("--batches", type=int, default=2)
+    ap.add_argument("--keep-active", action="store_true")
     args = ap.parse_args()
 
     from sqlalchemy import func, select
@@ -67,6 +68,11 @@ def main() -> None:
             run = s.scalar(select(DiscoveryRun).where(DiscoveryRun.campaign_id == cid))
             cost = s.scalar(select(func.sum(CostEntry.cost_usd)).where(CostEntry.day == riyadh_today())) or 0
             print(f"\nمكررات مستبعدة حتى الآن: {run.duplicate_count} — التكلفة التقديرية اليوم: ${cost:.2f}")
+    # الحملة تُوقف بعد الاختبار حتى لا يشغّلها الخادم يوميًا دون قرار صريح من الإدارة
+    if not args.keep_active:
+        with session_scope() as s:
+            s.get(Campaign, cid).status = "paused"
+        print("\nأُوقفت حملة الاختبار (لن تعمل يوميًا حتى تُفعَّل من «الفئات المستهدفة»).")
 
 
 if __name__ == "__main__":
