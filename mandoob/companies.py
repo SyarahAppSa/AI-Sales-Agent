@@ -54,13 +54,13 @@ def find_existing(s: Session, cand: Candidate, contacts: list[FoundContact]) -> 
                 return c
     nn = normalize_name(cand.name)
     if nn:
-        q = select(Company).where(Company.name_norm == nn)
+        q = select(Company).where(Company.name_norm == nn, Company.is_test.is_(False))
         for c in s.scalars(q):
             if not cand.city or not c.city or c.city == cand.city:
                 return c
         # تطابق تقريبي داخل المدينة نفسها
         first = nn.split()[0]
-        for c in s.scalars(select(Company).where(Company.name_norm.like(f"%{first}%"),
+        for c in s.scalars(select(Company).where(Company.name_norm.like(f"%{first}%"), Company.is_test.is_(False),
                                                  Company.city == cand.city).limit(50)):
             if names_similar(c.name, cand.name):
                 return c
@@ -414,7 +414,8 @@ def find_hq(s: Session, name: str, city: str, hq_name: str | None = None) -> Opt
         if not b or len(b) < 3:
             continue
         first = b.split()[0]
-        for c in s.scalars(select(Company).where(Company.name_norm.like(f"%{first}%"), Company.parent_id.is_(None))
+        for c in s.scalars(select(Company).where(Company.name_norm.like(f"%{first}%"), Company.parent_id.is_(None),
+                                                 Company.is_test.is_(False))
                            .limit(50)):
             if base_name(c.name) == b and (c.city != city or nm == hq_name):
                 return c

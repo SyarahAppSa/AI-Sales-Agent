@@ -5,7 +5,7 @@
 <div class="card tablewrap"><table>
 <tr><th>العميل</th>{% if can('see_phone') or can('see_email') %}<th>التواصل</th>{% endif %}{% if can('see_offers') %}<th>آخر عرض</th>{% endif %}{% if can('see_replies') %}<th>رده</th>{% endif %}<th>المتابعة القادمة</th></tr>
 {% for r in rows %}{% set c = r.c %}<tr>
-<td style="min-width:160px"><a href="/portal/companies/{{ c.id }}"><b>{{ c.name }}</b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div><span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></td>
+<td style="min-width:160px"><a href="/portal/companies/{{ c.id }}"><b>{{ c.name }}</b></a>{% if c.is_test %} <span class="pill warn">بيانات تجريبية</span>{% endif %}<div class="small muted">{{ c.activity }} — {{ c.city }}</div><span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></td>
 {% if can('see_phone') or can('see_email') %}<td class="small">{% if r.phone %}<div class="ltr">{{ r.phone }}</div>{% endif %}{% if r.email %}<div class="ltr">{{ r.email }}</div>{% endif %}</td>{% endif %}
 {% if can('see_offers') %}<td class="small">{% if r.offer %}<a href="/portal/messages/{{ r.offer.id }}">{{ r.offer.offer.service_name if r.offer.offer else r.offer.subject }}</a><div class="muted">{{ fmt(r.offer.sent_at, False) }} — {{ STATUS_LABELS.get(r.offer.status) }}</div>{% else %}—{% endif %}</td>{% endif %}
 {% if can('see_replies') %}<td class="small" style="max-width:260px">{% if r.reply %}<span class="pill info">{{ r.reply.intent_label }}</span> «{{ mask(r.reply.body_text[:120]) }}»{% else %}—{% endif %}</td>{% endif %}

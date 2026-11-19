@@ -3,7 +3,7 @@
 <p class="sub">{{ c.activity }} — {{ c.city }}{% if c.website %} — <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a>{% endif %}</p>
 <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>
 <span class="pill {{ 'ok' if c.data_status=='complete' else 'warn' }}">{{ 'مكتملة البيانات' if c.data_status=='complete' else 'قيد استكمال البيانات' }}</span>
-{% if c.do_not_contact %}<span class="pill err">أوقفت التواصل</span>{% endif %}</div>
+{% if c.do_not_contact %}<span class="pill err">أوقفت التواصل</span>{% endif %}{% if c.is_test %}<span class="pill warn">بيانات تجريبية — لا إرسال ولا اتصال</span>{% endif %}</div>
 <div class="stat" style="flex:0 0 260px"><div class="l">المندوب المسؤول</div><div style="font-weight:700">{{ c.owner.name if c.owner else 'غير مسند' }}</div>
 <div class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></div></div>
 

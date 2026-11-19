@@ -44,6 +44,8 @@ def suggest_slots(provider, cal: str, around: datetime, duration: int = 30, n: i
 
 def book_meeting(s: Session, company: Company, owner: User, start_utc: datetime, *, duration: int = 30,
                  attendee_email: str | None = None, booked_by: User | None = None) -> Meeting:
+    if company.is_test:
+        raise RuntimeError("بيانات تجريبية — لا تُرسل لها دعوات اجتماع")
     acct = active_account(s)
     if acct is None:
         raise RuntimeError("اربط بريد الشركة أولًا")

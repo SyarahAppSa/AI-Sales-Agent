@@ -471,10 +471,18 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
 
 @app.get("/companies", response_class=HTMLResponse)
 def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
-              page: int = 1, source: str = "", operator: str = "", signals: str = "",
-              user: User = Depends(current_user), s=Depends(get_db)):
+              page: int = 1, source: str = "", operator: str = "", signals: str = "", kind: str = "",
+              owner: str = "", user: User = Depends(current_user), s=Depends(get_db)):
     from ..models import CompanySignal
     qq = scope_companies(select(Company), user).where(Company.data_status == status)
+    if kind == "test":
+        qq = qq.where(Company.is_test.is_(True))
+    elif kind == "real":
+        qq = qq.where(Company.is_test.is_(False))
+    if owner == "none":
+        qq = qq.where(Company.owner_id.is_(None))
+    elif owner.isdigit():
+        qq = qq.where(Company.owner_id == int(owner))
     if source:
         qq = qq.where(Company.lead_source.like(f"{source}%"))
     if operator:
@@ -482,7 +490,9 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
     if signals:
         qq = qq.where(Company.id.in_(select(CompanySignal.company_id)))
     if q:
-        qq = qq.where(Company.name.like(f"%{q}%") | Company.domain.like(f"%{q}%"))
+        from ..models import Contact as _Ct
+        qq = qq.where(Company.name.like(f"%{q}%") | Company.domain.like(f"%{q}%") | Company.activity.like(f"%{q}%") |
+                      Company.id.in_(select(_Ct.company_id).where(_Ct.value.like(f"%{q.strip().lower()}%"))))
     if city:
         qq = qq.where(Company.city == city)
     if sector:
@@ -498,7 +508,9 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
                                           .group_by(CompanySignal.company_id))}
     return render(request, "companies.html", user, s, rows=rows, status=status, q=q, city=city, sector=sector,
                   total=total, page=page, counts=counts, missing_fields=missing_fields, source=source,
-                  operator=operator, signals=signals, sig=sig, source_label=source_label)
+                  operator=operator, signals=signals, sig=sig, source_label=source_label, kind=kind, owner=owner,
+                  staff=list(s.scalars(select(User).where(User.role == "rep").order_by(User.name))),
+                  test_total=s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0)
 
 
 @app.get("/companies/{cid}", response_class=HTMLResponse)
@@ -918,7 +930,8 @@ def settings_page(request: Request, user: User = Depends(require_manager), s=Dep
         "Google Workspace": bool(settings.google_client_id),
         "ElevenLabs (المكالمات)": bool(settings.elevenlabs_api_key),
     }
-    return render(request, "settings.html", user, s, voice=voice, integrations=integrations,
+    from ..seed_test import verify as _verify_test
+    return render(request, "settings.html", user, s, voice=voice, integrations=integrations, test_check=_verify_test(s),
                   customers=s.scalar(select(func.count(ExistingCustomer.id))),
                   suppressions=list(s.scalars(select(Suppression).order_by(Suppression.id.desc()).limit(50))))
 
@@ -976,6 +989,20 @@ async def import_directory(request: Request, file: UploadFile = File(...), campa
         outcomes[o] = outcomes.get(o, 0) + 1
     flash(request, "نتيجة الاستيراد: " + "، ".join(f"{k}: {v}" for k, v in outcomes.items()))
     return back("/companies")
+
+
+@app.post("/settings/seed-test")
+def settings_seed_test(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    from ..seed_test import seed, verify
+    res = seed(s)
+    v = verify(s)
+    audit(s, user, "seed_test_data", None, added=res["added"], total=v["test_customers"])
+    flash(request, f"أُضيف {res['added']} سجل تجريبي — الإجمالي {v['test_customers']} (مسند {v['assigned']}، بانتظار التوزيع {v['unassigned']}"
+                   + ("، لا يوجد موظفون بعد — أضفهم ثم اضغط الزر مرة أخرى لإسناد جزء منها" if not res["staff"] else "")
+                   + f"). رسائل مرسلة: {v['messages_sent']}، "
+                   f"مجدولة: {v['messages_queued']}، مكالمات: {v['calls']}.")
+    return back("/companies?kind=test")
 
 
 @app.post("/settings/suppress")

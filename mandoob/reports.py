@@ -16,7 +16,7 @@ from .timeutil import fmt, riyadh_day_bounds_utc, riyadh_today
 
 STATUS_LABELS = {"queued": "بانتظار الإرسال", "sending": "قيد الإرسال", "sent": "أُرسل", "delivered": "تم التسليم",
                  "bounced": "مرتد", "failed": "فشل الإرسال", "skipped": "أُلغي"}
-STAGE_LABELS = {"new": "جديدة", "contacted": "أُرسل عرض", "replied": "ردّت", "interested": "مهتمة",
+STAGE_LABELS = {"new": "لم يتم التواصل", "contacted": "أُرسل عرض", "replied": "ردّت", "interested": "مهتمة",
                 "meeting": "اجتماع محجوز", "won": "صفقة رابحة", "lost": "غير مهتمة",
                 "do_not_contact": "أوقفت التواصل"}
 
@@ -184,7 +184,8 @@ def company_timeline(s: Session, company_id: int) -> list[Activity]:
 def dashboard(s: Session, user: User, day: date | None = None) -> dict:
     day = day or riyadh_today()
     start, end = riyadh_day_bounds_utc(day)
-    cq = lambda *w: s.scalar(scope_companies(select(func.count(Company.id)), user).where(*w)) or 0  # noqa: E731
+    cq = lambda *w: s.scalar(scope_companies(select(func.count(Company.id)), user)  # noqa: E731
+                             .where(Company.is_test.is_(False), *w)) or 0
     target = s.scalar(select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")) or 0
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.run_date == day)))
     complete_today = cq(Company.counted_on == day, Company.data_status == "complete")
@@ -350,7 +351,7 @@ def todays_customers(s: Session, user: User, day: date | None = None, campaign_i
     start, end = riyadh_day_bounds_utc(day)
     q = scope_companies(select(Company), user).where(
         ((Company.first_found_at >= start) & (Company.first_found_at < end)) | (Company.counted_on == day),
-        Company.data_status.in_(["complete", "incomplete"]))
+        Company.data_status.in_(["complete", "incomplete"]), Company.is_test.is_(False))
     if campaign_id:
         q = q.where(Company.campaign_id == campaign_id)
     rows = []

@@ -11,6 +11,14 @@
 <div class="card"><h2>استيراد من دليل أعمال مرخّص</h2><p class="small">CSV بالأعمدة: name, city, activity, website, phone, phone_source_url, email, email_source_url, source_url. لا يُقبل أي هاتف أو بريد بدون رابط مصدره.</p>
 <form method="post" action="/settings/directory" enctype="multipart/form-data"><div class="row"><div><label>الحملة</label><input type="number" name="campaign_id" required placeholder="رقم الحملة"></div><div><label>اسم الدليل</label><input name="directory_name" value="directory"></div></div>
 <div class="row"><input type="file" name="file" accept=".csv" required><button class="btn" style="flex:0 0 auto">استيراد</button></div></form></div>
+<div class="card"><h2>البيانات التجريبية</h2>
+<p class="small">٥٠٠ عميل تجريبي لاختبار البحث والتصفية والتوزيع والصلاحيات. عليها علامة «بيانات تجريبية» وحالة «لم يتم التواصل»، ومستبعدة من البريد والمكالمات والمتابعات الآلية ومن هدف الـ٤٠٠ اليومي. إعادة التعبئة تُكمل الناقص فقط.</p>
+<table class="small"><tr><td>عملاء تجريبيون فريدون</td><td><b>{{ test_check.test_customers }}</b> (بريد فريد: {{ test_check.unique_emails }})</td></tr>
+<tr><td>مسندون / بانتظار التوزيع</td><td>{{ test_check.assigned }} / {{ test_check.unassigned }}</td></tr>
+<tr><td>رسائل مرسلة</td><td><b>{{ test_check.messages_sent }}</b></td></tr><tr><td>رسائل مجدولة للإرسال</td><td><b>{{ test_check.messages_queued }}</b></td></tr>
+<tr><td>مكالمات</td><td><b>{{ test_check.calls }}</b></td></tr><tr><td>محتسبة في هدف الـ٤٠٠</td><td><b>{{ test_check.counted_in_daily_target }}</b></td></tr></table>
+<div class="row" style="margin-top:10px"><form method="post" action="/settings/seed-test"><button class="btn p">تعبئة / استكمال ٥٠٠ عميل تجريبي</button></form>
+<a class="btn" href="/companies?kind=test">عرض العملاء التجريبيين</a></div></div>
 <div class="card"><h2>قائمة إيقاف التواصل</h2>
 <form method="post" action="/settings/suppress" class="row"><input name="value" placeholder="بريد أو رقم أو نطاق" required><button class="btn" style="flex:0 0 auto">إضافة</button></form>
 <table style="margin-top:8px">{% for x in suppressions %}<tr><td class="ltr small">{{ x.value }}</td><td class="small">{{ x.kind }} / {{ x.channel }}</td><td class="small">{{ x.reason }}</td><td class="small muted">{{ fmt(x.created_at, False) }}</td></tr>{% endfor %}</table></div>

@@ -43,6 +43,8 @@ def voice_enabled(s: Session) -> bool:
 
 
 def check_call_eligibility(s: Session, company: Company) -> tuple[bool, str]:
+    if company.is_test:
+        return False, "بيانات تجريبية — لا يُتصل بها"
     if not voice_enabled(s):
         return False, "قناة الاتصال الصوتي غير مفعلة"
     if company.do_not_contact:

@@ -207,6 +207,8 @@ class Company(Base):
     lead_source: Mapped[str] = mapped_column(String(80), default="discovery")  # discovery / website_form / campaign:x / partner:x / carrier_of:x
     vehicles_estimate: Mapped[Optional[int]] = mapped_column(Integer)
     signal_boost: Mapped[float] = mapped_column(Float, default=0.0)
+    # «بيانات تجريبية»: مستبعدة من كل إرسال واتصال ومتابعة آلية ومن هدف الـ٤٠٠ اليومي
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     sources: Mapped[list["CompanySource"]] = relationship(back_populates="company", cascade="all, delete-orphan")

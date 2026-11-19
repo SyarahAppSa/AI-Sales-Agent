@@ -52,6 +52,8 @@ def ensure_email_basis(s: Session, company: Company, contact: Contact) -> None:
 
 
 def check_eligibility(s: Session, company: Company, offer: Offer) -> tuple[bool, str]:
+    if company.is_test:
+        return False, "بيانات تجريبية — لا يُرسل لها"
     if company.data_status != "complete":
         return False, "بيانات الشركة غير مكتملة"
     if company.do_not_contact or company.stage == "do_not_contact":
@@ -180,7 +182,8 @@ def queue_offers(campaign_id: int, limit: int = 500) -> dict:
             return stats
         ids = [cid for (cid,) in s.execute(
             select(Company.id).where(Company.campaign_id == campaign_id, Company.data_status == "complete",
-                                     Company.stage == "new", Company.parent_id.is_(None)).order_by(Company.fit_score.desc(), Company.id)
+                                     Company.stage == "new", Company.parent_id.is_(None),
+                                     Company.is_test.is_(False)).order_by(Company.fit_score.desc(), Company.id)
             .limit(limit * 3))]
     for cid in ids:
         if stats["queued"] >= limit:
@@ -256,6 +259,8 @@ def send_due(campaign_id: int | None = None, *, ignore_window: bool = False, max
             # إعادة التحقق لحظة الإرسال (قد يكون العميل طلب الإيقاف بعد التجهيز)
             company = msg.company
             why = is_suppressed(s, company, msg.intended_to or msg.to_address)
+            if company.is_test:
+                why = "بيانات تجريبية — لا يُرسل لها"
             if company.do_not_contact or why:
                 msg.status = "skipped"
                 msg.status_detail = why or "طلبت الشركة إيقاف التواصل"
@@ -324,7 +329,7 @@ def queue_followups() -> int:
             if now_utc() < m.sent_at + timedelta(days=camp.followup_days):
                 continue
             c = m.company
-            if c.do_not_contact or c.stage not in ("contacted",):
+            if c.is_test or c.do_not_contact or c.stage not in ("contacted",):
                 continue
             key = dedupe_key(c.id, m.offer.key if m.offer else str(m.id), "followup1")
             if s.scalar(select(OutboundMessage.id).where(OutboundMessage.dedupe_key == key)):
