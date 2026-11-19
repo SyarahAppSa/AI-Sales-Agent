@@ -21,6 +21,8 @@ SOURCE_LABELS = {"website": "موقع الشركة", "campaign": "حملة", "pa
 def source_label(source: str | None) -> str:
     if not source or source == "discovery":
         return "اكتشاف المنصة"
+    if source == "test_seed":
+        return "بيانات تجريبية"
     if source.startswith("carrier_of:"):
         return "ناقل لعميل"
     kind, _, rest = source.partition(":")
