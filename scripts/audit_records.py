@@ -25,11 +25,20 @@ SAUDI_MARKERS = ["الرياض", "جده", "جدة", "الدمام", "الممل
 _cache = {}
 
 
+def _cf_decode(html: str) -> str:
+    """فك ترميز حماية البريد في Cloudflare (data-cfemail) حتى يظهر البريد كما يراه الزائر."""
+    out = []
+    for hexs in re.findall(r'data-cfemail="([0-9a-fA-F]+)"', html) + re.findall(r"email-protection#([0-9a-fA-F]+)", html):
+        k = int(hexs[:2], 16)
+        out.append("".join(chr(int(hexs[i:i + 2], 16) ^ k) for i in range(2, len(hexs), 2)))
+    return " ".join(out)
+
+
 def page(url):
     if url not in _cache:
         try:
             r = http.get(url)
-            txt = re.sub(r"<[^>]+>", " ", r.text)
+            txt = re.sub(r"<[^>]+>", " ", r.text) + " " + _cf_decode(r.text)
             _cache[url] = (r.status_code, normalize_arabic(txt).lower(), r.text.lower())
         except Exception as e:  # noqa: BLE001
             _cache[url] = (type(e).__name__, "", "")
