@@ -223,20 +223,30 @@ def test_4_display_hides_contacts_that_do_not_belong_to_the_company():
         assert c.primary("email").value == "info@masar-trans.example"
 
 
-def test_5_interrupted_request_resumes_after_worker_restart():
+def test_5_stalled_request_resumes_but_live_one_is_left_alone(monkeypatch):
+    """عامل أُوقف أثناء التحديث: نبضه ينقطع فيُستأنف الطلب؛ أما الطلب الحي (نبض حديث) فلا يُمس."""
     from mandoob import jobs, prospecting
     from mandoob.models import JobLock
     from mandoob.timeutil import now_utc
     from datetime import timedelta as td
+    import mandoob.discovery.runner as runner
+    ran = []
+    monkeypatch.setattr(runner, "run_campaign_discovery", lambda cid, **kw: ran.append(cid) or 7)
     with session_scope() as s:
-        prospecting._put(s, prospecting.REQUEST, {"state": "running", "campaign_id": 1, "max_new": 5})
         lk = s.get(JobLock, "discovery")
         if lk is None:
             s.add(JobLock(name="discovery", locked_until=now_utc() + td(hours=9), holder="old-worker:1"))
         else:
             lk.locked_until, lk.holder = now_utc() + td(hours=9), "old-worker:1"
-    assert jobs.recover_on_start() is True
+        prospecting._put(s, prospecting.REQUEST, {"state": "running", "campaign_id": 1, "max_new": 5,
+                                                  "heartbeat": now_utc().isoformat(timespec="seconds")})
+    assert jobs.discovery_request_tick() is False and ran == []  # حي: لا يُمس
     with session_scope() as s:
-        assert prospecting.pending_request(s)["state"] == "pending"
-        assert s.get(JobLock, "discovery").locked_until < now_utc()
+        prospecting._put(s, prospecting.REQUEST, {"state": "running", "campaign_id": 1, "max_new": 5,
+                                                  "heartbeat": (now_utc() - td(minutes=10)).isoformat(timespec="seconds")})
+    assert jobs.recover_on_start() is True
+    assert jobs.discovery_request_tick() is True and ran == [1]  # متوقف: يُستأنف رغم قفل العامل السابق
+    with session_scope() as s:
+        r = prospecting.pending_request(s)
+        assert r["state"] == "done" and r.get("resumed_after_stall")
         prospecting._put(s, prospecting.REQUEST, {"state": "done"})

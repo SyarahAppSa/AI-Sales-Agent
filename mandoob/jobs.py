@@ -97,33 +97,60 @@ def discovery_tick(force: bool = False) -> list[int]:
     return run_ids
 
 
+STALL_MINUTES = 4
+
+
+def _stalled(req: dict) -> bool:
+    """طلب «يبحث الآن» توقف نبضه (العامل الذي كان يشغّله أُعيد تشغيله أو أُوقف أثناء التحديث)."""
+    from datetime import datetime
+    beat = req.get("heartbeat") or req.get("started_at")
+    if req.get("state") != "running" or not beat:
+        return False
+    return now_utc() - datetime.fromisoformat(beat) > timedelta(minutes=STALL_MINUTES)
+
+
 def recover_on_start() -> bool:
-    """عند تشغيل العامل (بعد تحديث أو إعادة تشغيل): طلب «ابحث الآن» الذي انقطع يعود «بانتظار الخادم» فيُستأنف
-    من نقطة توقفه دون تكرار، ويُحرَّر قفل الاكتشاف الذي تركه العامل السابق."""
+    """عند تشغيل العامل: لا يغيّر شيئًا بنفسه (قد يكون العامل السابق ما زال يعمل لحظة التبديل)،
+    وإنما يعتمد على النبض: الطلب المتوقف أكثر من ٤ دقائق يُستأنف تلقائيًا في discovery_request_tick."""
     from .prospecting import REQUEST
-    req = get_setting(REQUEST)
-    with session_scope() as s:
-        lock = s.get(JobLock, "discovery")
-        if lock is not None and lock.holder != HOLDER:
-            lock.locked_until = now_utc() - timedelta(seconds=1)
-    if req.get("state") == "running":
-        req.update(state="pending", resumed_after_restart=now_utc().isoformat(timespec="seconds"))
-        put_setting(REQUEST, req)
-        return True
-    return False
+    return _stalled(get_setting(REQUEST))
 
 
 def discovery_request_tick() -> bool:
-    """يلتقط طلب «ابحث الآن» من لوحة الإدارة ويشغّله على العامل (يكمل ولو أُغلقت اللوحة)."""
+    """يلتقط طلب «ابحث الآن» من لوحة الإدارة ويشغّله على العامل (يكمل ولو أُغلقت اللوحة).
+    أثناء التشغيل يُحدَّث «نبض» كل دقيقة؛ فإن انقطع (إعادة تشغيل العامل) يُستأنف الطلب من نقطة توقفه دون تكرار."""
+    import threading
     from .prospecting import REQUEST
     req = get_setting(REQUEST)
+    if _stalled(req):
+        log.warning("search request stalled — resuming from its checkpoint")
+        with session_scope() as s:
+            lock = s.get(JobLock, "discovery")
+            if lock is not None:
+                lock.locked_until = now_utc() - timedelta(seconds=1)
+        req.update(state="pending", resumed_after_stall=now_utc().isoformat(timespec="seconds"))
+        put_setting(REQUEST, req)
     if req.get("state") != "pending":
         return False
     with job_lock("discovery", minutes=600) as ok:
         if not ok:
             return False  # تشغيل آخر قائم؛ يُلتقط الطلب بعد انتهائه
-        req.update(state="running", started_at=now_utc().isoformat(timespec="seconds"))
+        req.update(state="running", started_at=now_utc().isoformat(timespec="seconds"),
+                   heartbeat=now_utc().isoformat(timespec="seconds"))
         put_setting(REQUEST, req)
+        stop = threading.Event()
+
+        def beat():
+            while not stop.wait(60):
+                try:
+                    cur = get_setting(REQUEST)
+                    if cur.get("state") == "running":
+                        cur["heartbeat"] = now_utc().isoformat(timespec="seconds")
+                        put_setting(REQUEST, cur)
+                except Exception:  # noqa: BLE001
+                    log.exception("heartbeat failed")
+        t = threading.Thread(target=beat, daemon=True)
+        t.start()
         from .discovery.runner import run_campaign_discovery
         try:
             req["run_id"] = run_campaign_discovery(int(req["campaign_id"]), max_new=req.get("max_new"), force=True)
@@ -131,7 +158,10 @@ def discovery_request_tick() -> bool:
         except Exception as e:  # noqa: BLE001
             log.exception("requested discovery failed")
             req.update(state="failed", error=str(e)[:300])
+        finally:
+            stop.set()
         req["finished_at"] = now_utc().isoformat(timespec="seconds")
+        req.pop("heartbeat", None)
         put_setting(REQUEST, req)
     return True
 
