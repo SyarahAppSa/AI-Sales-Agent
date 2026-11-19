@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_vehicle.html" import vind %}{% block content %}
+{% extends "base.html" %}{% from "_contact.html" import panel %}{% from "_vehicle.html" import vind %}{% block content %}
 <div class="top"><div><h1>{{ c.name }}</h1><p class="sub" style="margin:0">{{ c.activity }} — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></p></div>
 <div class="row"><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
 <div class="grid g2"><div>
@@ -11,6 +11,7 @@
 <p class="small" style="margin-top:8px"><b>سبب الترشيح:</b> {{ mask(c.fit_reason) }}</p>{{ vind(c) }}{% if c.entity_type %}<div class="small muted">نوع الجهة: {{ ENTITY_TYPES.get(c.entity_type, c.entity_type) }}</div>{% endif %}
 <p class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</p></div>
 {% if can('see_offers') %}<div class="card"><h2>العروض المرسلة</h2>{% for m in msgs %}<div class="small" style="border-bottom:1px solid var(--line);padding:6px 0"><a href="/portal/messages/{{ m.id }}">{{ m.subject }}</a> — {{ fmt(m.sent_at, False) if m.sent_at else '' }} <span class="pill">{{ STATUS_LABELS.get(m.status) }}</span></div>{% else %}<p class="muted small">لا يوجد.</p>{% endfor %}</div>{% endif %}
+{% if can('update_status') %}{{ panel(cs, chist, STATUSES, UPDATE_CHOICES, owners, base, user.id) }}{% else %}<div class="card"><h2>حالة التواصل</h2><p>{{ cs.label }}{% if cs.note %} — «{{ cs.note }}»{% endif %}</p></div>{% endif %}
 <div class="card"><h2>الإجراءات</h2>
 {% if can('add_note') %}<form method="post" action="/portal/companies/{{ c.id }}/note" class="field"><label>ملاحظة</label><div class="row"><input name="note" required><button class="btn" style="flex:0 0 auto">إضافة</button></div></form>{% endif %}
 {% if can('update_status') %}<form method="post" action="/portal/companies/{{ c.id }}/status">

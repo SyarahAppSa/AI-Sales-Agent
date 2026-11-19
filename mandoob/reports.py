@@ -158,7 +158,8 @@ def needs_followup_today(s: Session, user: User, day: date | None = None) -> lis
     day = day or riyadh_today()
     _, end = riyadh_day_bounds_utc(day)
     q = (select(Task).join(Company, Company.id == Task.company_id)
-         .where(Task.status == "open", Task.due_at < end, visible(s)))
+         .where(Task.status == "open", Task.due_at < end, visible(s), Company.do_not_contact.is_(False),
+                Company.contact_status != "do_not_contact"))  # من طلب عدم التواصل خارج قوائم المتابعة
     if user is not None and user.role == "rep":
         q = q.where(Task.owner_id == user.id)
     out = []
@@ -457,7 +458,7 @@ def todays_customers(s: Session, user: User, day: date | None = None, campaign_i
     return customers_in_period(s, user, day, day, campaign_id)
 
 
-def export_today_xlsx(t: dict) -> bytes:
+def export_today_xlsx(t: dict, s: Session | None = None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     wb = Workbook()
@@ -468,14 +469,16 @@ def export_today_xlsx(t: dict) -> bytes:
     ws.append([f"العملاء حسب تاريخ الجمع — {period}", f"مكتملون: {t['complete']} من {t['target']}",
                f"قيد الاستكمال: {t['incomplete']}", f"مكررات مستبعدة: {t['duplicates']}"])
     ws.append([])
+    from .xlsx import CONTACT_HEADERS
     ws.append(["اسم العميل", "نوع النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
                "سبب الاستهداف", "رابط الدليل", "مشغّل المركبات", "الحالة", "روابط المصادر", "تاريخ الجمع", "المسؤول",
-               "مؤشر استخدام المركبات", "نوع الجهة", "القطاع"])
+               "مؤشر استخدام المركبات", "نوع الجهة", "القطاع"] + (CONTACT_HEADERS if s is not None else []))
     for cell in ws[3]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="6941C6")
     from .activities import ENTITY_TYPES
     from .companies import OPERATOR_LABELS
+    from .xlsx import CONTACT_HEADERS, contact_cells
     for r in t["rows"]:
         c = r["c"]
         ws.append([c.name, c.activity, c.city, format_phone_display(r["phone"].value) if r["phone"] else "",
@@ -485,7 +488,8 @@ def export_today_xlsx(t: dict) -> bytes:
                    ("فرع" if r["branch"] else "قيد الاستكمال"), "\n".join(r["links"]),
                    fmt(c.first_found_at), c.owner.name if c.owner else "",
                    "مؤكد" if c.vehicle_indicator == "confirmed" or (not c.vehicle_indicator and c.fit_phrase) else "غير مؤكد",
-                   ENTITY_TYPES.get(c.entity_type or "", c.entity_type or ""), c.category.label if c.category else ""])
+                   ENTITY_TYPES.get(c.entity_type or "", c.entity_type or ""), c.category.label if c.category else ""]
+                  + (contact_cells(s, c) if s is not None else []))
     for col, w in zip("ABCDEFGHIJKLMNOPQ", [30, 22, 12, 18, 40, 30, 40, 60, 40, 20, 14, 60, 20, 16, 16, 16, 22]):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=4):

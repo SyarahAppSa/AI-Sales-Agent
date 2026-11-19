@@ -726,12 +726,12 @@ def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends
 
 # ---------------------------------------------------------------- الشركات
 
-@app.get("/companies", response_class=HTMLResponse)
-def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
-              page: int = 1, source: str = "", operator: str = "", signals: str = "", kind: str = "",
-              owner: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+def _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact=""):
+    """استعلام قائمة الشركات بالفلاتر — نفسه للصفحة ولملف Excel (الملف يشمل كل الصفحات)."""
     from ..models import CompanySignal
     qq = scope_companies(select(Company), user).where(Company.data_status == status)
+    if contact:
+        qq = qq.where(Company.contact_status == contact)
     if kind == "test":
         qq = qq.where(Company.is_test.is_(True))
     elif kind == "real":
@@ -754,6 +754,15 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
         qq = qq.where(Company.city == city)
     if sector:
         qq = qq.where(Company.sector_key == sector)
+    return qq
+
+
+@app.get("/companies", response_class=HTMLResponse)
+def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
+              page: int = 1, source: str = "", operator: str = "", signals: str = "", kind: str = "",
+              owner: str = "", contact: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+    from ..models import CompanySignal
+    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact)
     total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
     rows = list(s.scalars(qq.order_by(Company.first_found_at.desc()).offset((page - 1) * 50).limit(50)))
     counts = {st: s.scalar(scope_companies(select(func.count(Company.id)), user).where(Company.data_status == st)) or 0
@@ -766,8 +775,161 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
     return render(request, "companies.html", user, s, rows=rows, status=status, q=q, city=city, sector=sector,
                   total=total, page=page, counts=counts, missing_fields=missing_fields, source=source,
                   operator=operator, signals=signals, sig=sig, source_label=source_label, kind=kind, owner=owner,
+                  contact=contact, qs=str(request.query_params), csum=_csum(s, rows),
                   staff=list(s.scalars(select(User).where(User.role == "rep").order_by(User.name))),
                   test_total=s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0)
+
+
+def _contact_ctx(s, c):
+    from ..contact import STATUSES, UPDATE_CHOICES, history, summary
+    return {"cs": summary(s, c), "chist": history(s, c.id), "STATUSES": STATUSES, "UPDATE_CHOICES": UPDATE_CHOICES,
+            "owners": list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name))),
+            "base": f"/companies/{c.id}"}
+
+
+def _csum(s, companies_):
+    from ..contact import summary
+    return {c.id: summary(s, c) for c in companies_}
+
+
+def _customer_row(s, c):
+    """أعمدة العميل الأساسية + أعمدة التواصل الموحدة (لكل تقارير العملاء)."""
+    from ..reports import STAGE_LABELS as _SL
+    from ..xlsx import contact_cells
+    ph, em = c.primary("phone"), c.primary("email")
+    return ([c.name, c.activity, c.city, format_phone_display(ph.value) if ph else "", ph.source_url if ph else "",
+             em.value if em else "", em.source_url if em else "", c.decision_unit or "", c.website or "",
+             "مكتمل" if c.data_status == "complete" else "قيد الاستكمال", fmt(c.first_found_at)]
+            + contact_cells(s, c))
+
+
+CUSTOMER_HEADERS = ["المنشأة", "النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
+                    "جهة القرار (مسؤول الشركة)", "الموقع", "اكتمال البيانات", "تاريخ الجمع"]
+
+
+def _contact_start(request, s, user, c, back_to):
+    from ..contact import ContactBlocked, start_contact
+    try:
+        start_contact(s, c, user)
+        flash(request, f"بدأت التواصل مع {c.name}. يظهر للزملاء «جارٍ التواصل بواسطة {user.name}». حدّث المتابعة بعد الاتصال.")
+    except ContactBlocked as e:
+        flash(request, str(e), "err")
+    return back(back_to)
+
+
+def _contact_update(request, s, user, c, form, back_to, owner_choices):
+    from ..contact import ContactBlocked, update_followup
+    status = form.get("status") or ""
+    nxt = None
+    if form.get("next_at"):
+        try:
+            nxt = riyadh_to_utc(datetime.fromisoformat(form.get("next_at")))
+        except ValueError:
+            flash(request, "موعد المتابعة غير صحيح", "err")
+            return back(back_to)
+    owner_id = int(form.get("next_owner") or 0) or None
+    if owner_id and owner_id not in owner_choices:
+        raise HTTPException(403, "لا يمكنك إسناد المتابعة لهذا الموظف")
+    try:
+        update_followup(s, c, user, status, form.get("note") or "", nxt, owner_id)
+        flash(request, "حُفظت المتابعة وظهرت لكل الزملاء فورًا.")
+    except (ContactBlocked, ValueError) as e:
+        flash(request, str(e), "err")
+    return back(back_to)
+
+
+def _safe_back(request, default):
+    from urllib.parse import urlparse as _up
+    ref = request.headers.get("referer") or ""
+    p = _up(ref)
+    return (p.path + ("?" + p.query if p.query else "")) if p.path.startswith("/") and not p.path.startswith("//") else default
+
+
+@app.post("/companies/{cid}/contact/start")
+def company_contact_start(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    c = s.get(Company, cid) or _404()
+    return _contact_start(request, s, user, c, _safe_back(request, f"/companies/{cid}"))
+
+
+@app.post("/companies/{cid}/contact/update")
+async def company_contact_update(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    c = s.get(Company, cid) or _404()
+    form = await request.form()
+    owners = {u.id for u in s.scalars(select(User).where(User.active.is_(True)))}
+    return _contact_update(request, s, user, c, form, _safe_back(request, f"/companies/{cid}"), owners)
+
+
+@app.get("/companies.xlsx")
+def companies_xlsx(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
+                   source: str = "", operator: str = "", signals: str = "", kind: str = "", owner: str = "",
+                   contact: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+    from ..auth import audit
+    from ..xlsx import CONTACT_HEADERS, response, workbook
+    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact)
+    rows = [_customer_row(s, c) for c in s.scalars(qq.order_by(Company.first_found_at.desc()))]
+    audit(s, user, "export_download", user, kind="companies", rows=len(rows))
+    return response(workbook([("الشركات", CUSTOMER_HEADERS + CONTACT_HEADERS, rows)],
+                             {"الشركات": [["الشركات المسندة وغير المسندة حسب الفلاتر", f"{len(rows)} سجل"]]}),
+                    "companies.xlsx")
+
+
+@app.get("/followups.xlsx")
+def followups_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    from ..xlsx import CONTACT_HEADERS, response, workbook
+    items = needs_followup_today(s, user)
+    rows = [[it["task"].title, fmt(it["task"].due_at), "متأخرة" if it["overdue"] else "اليوم", it["owner"]]
+            + _customer_row(s, it["company"]) for it in items]
+    return response(workbook([("تحتاج متابعة", ["المهمة", "موعدها", "الحالة", "مسؤول المهمة"] + CUSTOMER_HEADERS
+                               + CONTACT_HEADERS, rows)]), "followups.xlsx")
+
+
+@app.get("/daily-report.xlsx")
+def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..xlsx import response, workbook
+    d = date.fromisoformat(day) if day else riyadh_today()
+    r = daily_report(s, d)
+    summary_rows = [["اليوم", str(r["day"])], ["شركات مكتملة جديدة", r["complete"]],
+                    ["التكلفة التقديرية ($)", r["total_cost"]], ["تكلفة العميل المكتمل ($)", r["cost_per_lead"] or ""]]
+    sectors = [[k, v["contacted"], v["replied"], v["meetings"], v["won"]] for k, v in r["by_sector"].items()]
+    offers = [[k, v["sent"], v["replies"], v["meetings"], v["won"]] for k, v in r["by_offer"].items()]
+    actions = [[t.company.name if t.company else "", t.title, fmt(t.due_at), t.owner.name if t.owner else ""]
+               for t in r["actions"]]
+    sources = [[k, v["candidates"], v["complete_count"], v["incomplete_count"], v["duplicate_count"], v["rejected_count"]]
+               for k, v in r["by_source"].items()]
+    return response(workbook([("الملخص", ["البند", "القيمة"], summary_rows),
+                              ("القطاعات", ["القطاع", "تم التواصل", "ردود", "اجتماعات", "صفقات"], sectors),
+                              ("العروض", ["العرض", "أُرسل", "ردود", "اجتماعات", "صفقات"], offers),
+                              ("المصادر", ["المصدر", "مرشحون", "مكتملة", "قيد الاستكمال", "مكررة", "مرفوضة"], sources),
+                              ("مهام الغد والمتأخرة", ["المنشأة", "المهمة", "الموعد", "المسؤول"], actions)]),
+                    f"daily-report-{d.isoformat()}.xlsx")
+
+
+@app.get("/weekly-report.xlsx")
+def weekly_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..reports import weekly_segments
+    from ..xlsx import response, workbook
+    d = date.fromisoformat(day) if day else riyadh_today()
+    w = weekly_segments(s, d)
+    rows = [[r["label"], "اختبار" if r["experiment"] else "", r["contacted"], r["interested"], r["interested_per_100"],
+             r["meetings"], r["meetings_per_100"], r["won"]] for _, r in w["rows"]]
+    rows.append(["الإجمالي", "", w["totals"]["contacted"], w["totals"]["interested"], "", w["totals"]["meetings"],
+                 w["totals"]["meetings_per_100"], w["totals"]["won"]])
+    return response(workbook([("الشرائح", ["الشريحة", "", "تم التواصل", "مهتمة", "مهتمة/١٠٠", "اجتماعات", "اجتماعات/١٠٠",
+                                            "صفقات"], rows)], {"الشرائح": [[f"أسبوع {w['start']} — {w['end']}"]]}),
+                    f"weekly-report-{w['start']}.xlsx")
+
+
+@app.get("/leads.xlsx")
+def leads_xlsx(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..leads import source_label
+    from ..models import InboundLead
+    from ..xlsx import response, workbook
+    rows = []
+    for r in s.scalars(select(InboundLead).order_by(InboundLead.id.desc())):
+        rows.append([fmt(r.created_at), r.company_name, r.contact_name, r.phone or "", r.email or "", r.city,
+                     r.vehicles or "", r.service_text, source_label(r.source or ""), r.notes])
+    return response(workbook([("طلبات العروض", ["التاريخ", "المنشأة", "الاسم", "الهاتف", "البريد", "المدينة",
+                                                "عدد المركبات", "الخدمة", "المصدر", "ملاحظات"], rows)]), "leads.xlsx")
 
 
 @app.post("/companies/assign")
@@ -833,7 +995,7 @@ def company_detail(cid: int, request: Request, user: User = Depends(current_user
     call_ok, call_why = check_call_eligibility(s, c)
     return render(request, "company.html", user, s, c=c, timeline=timeline, msgs=msgs, replies=replies, tasks=tasks,
                   calls=calls, meetings=meetings, consents=consents, reps=reps, call_ok=call_ok, call_why=call_why,
-                  relations=relations, signals=signals, source_label=source_label)
+                  relations=relations, signals=signals, source_label=source_label, **_contact_ctx(s, c))
 
 
 @app.post("/companies/{cid}/action")
@@ -1455,6 +1617,7 @@ def today_page(request: Request, mode: str = "day", day: str = "", date_from: st
     a, b, err = _period(mode, day, date_from, date_to)
     t = customers_in_period(s, user, a, b, campaign) if not err else None
     return render(request, "today.html", user, s, t=t, err=err, mode=mode, a=a, b=b, campaign=campaign,
+                  csum=_csum(s, [r["c"] for r in t["rows"]]) if t else {},
                   qs=str(request.query_params), camps=list(s.scalars(select(Campaign).order_by(Campaign.id.desc()))))
 
 
@@ -1470,7 +1633,7 @@ def today_xlsx(request: Request, mode: str = "day", day: str = "", date_from: st
     t = customers_in_period(s, user, a, b, campaign)
     audit(s, user, "export_download", user, kind="today", date_from=str(a), date_to=str(b), campaign=campaign,
           rows=len(t["rows"]))
-    data = export_today_xlsx(t)
+    data = export_today_xlsx(t, s)
     name = a.isoformat() if a == b else f"{a.isoformat()}_to_{b.isoformat()}"
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f"attachment; filename=customers-{name}.xlsx"})
@@ -1746,8 +1909,9 @@ def _portal_rows(s, u: User, q: str = ""):
 @app.get("/portal", response_class=HTMLResponse)
 def portal_home(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
     from ..permissions import can, describe
-    return render(request, "portal_home.html", user, s, rows=_portal_rows(s, user, q), q=q, can=lambda p: can(user, p),
-                  d=describe(user), mask=lambda t: mask_text(user, t))
+    rows = _portal_rows(s, user, q)
+    return render(request, "portal_home.html", user, s, rows=rows, q=q, can=lambda p: can(user, p),
+                  d=describe(user), mask=lambda t: mask_text(user, t), csum=_csum(s, [r["c"] for r in rows]))
 
 
 EXPORT_TTL_MIN = 10
@@ -1804,6 +1968,8 @@ def portal_export_download(token: str, request: Request, user: User = Depends(st
         (["الهاتف", "مصدر الهاتف"] if can(user, "see_phone") else []) + \
         (["البريد", "مصدر البريد"] if can(user, "see_email") else []) + (["آخر عرض", "تاريخ الإرسال"] if can(user, "see_offers") else []) + \
         (["آخر رد", "نوع الرد"] if can(user, "see_replies") else []) + ["المتابعة القادمة", "موعدها"]
+    from ..xlsx import CONTACT_HEADERS, contact_cells
+    head += CONTACT_HEADERS
     ws.append(head)
     for r in rows:
         c = r["c"]
@@ -1816,6 +1982,7 @@ def portal_export_download(token: str, request: Request, user: User = Depends(st
         if can(user, "see_replies"):
             row += [mask_text(user, r["reply"].body_text[:500]) if r["reply"] else "", r["reply"].intent_label if r["reply"] else ""]
         row += [r["next"].title if r["next"] else "", fmt(r["next"].due_at) if r["next"] else ""]
+        row += contact_cells(s, c)
         ws.append(row)
     harden_sheet(wb)
     buf = _io.BytesIO()
@@ -1825,16 +1992,6 @@ def portal_export_download(token: str, request: Request, user: User = Depends(st
           dropped_since_created=len(ef.company_ids) - len(rows))
     return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": "attachment; filename=my-customers.xlsx", "Cache-Control": "no-store"})
-
-
-@app.get("/portal/officials", response_class=HTMLResponse)
-def portal_officials(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
-    """تقرير مسؤولي الشركات: جهة القرار ووسائل التواصل المنشورة لكل منشأة مسندة للموظف فقط، بحسب صلاحياته."""
-    from ..auth import audit
-    from ..permissions import can
-    rows = _portal_rows(s, user, "")
-    audit(s, user, "officials_report_view", user, rows=len(rows))
-    return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: can(user, p))
 
 
 def _portal_company(s, user: User, cid: int) -> Company:
@@ -1861,8 +2018,14 @@ def portal_company(cid: int, request: Request, user: User = Depends(staff_user),
     tasks = list(s.scalars(select(Task).where(Task.company_id == cid, Task.status == "open").order_by(Task.due_at)))
     msgs = list(s.scalars(select(OutboundMessage).where(OutboundMessage.company_id == cid).order_by(OutboundMessage.id.desc()))) \
         if can(user, "see_offers") else []
+    from ..contact import STATUSES, UPDATE_CHOICES, history, summary
+    from ..permissions import visible_owner_ids
+    ids = visible_owner_ids(s, user)
+    owners = list(s.scalars(select(User).where(User.active.is_(True), *( [User.id.in_(ids)] if ids is not None else []))))
     return render(request, "portal_company.html", user, s, c=c, timeline=timeline, tasks=tasks, msgs=msgs,
-                  can=lambda p: can(user, p), mask=lambda t: mask_text(user, t))
+                  can=lambda p: can(user, p), mask=lambda t: mask_text(user, t), cs=summary(s, c),
+                  chist=history(s, c.id), STATUSES=STATUSES, UPDATE_CHOICES=UPDATE_CHOICES, owners=owners,
+                  base=f"/portal/companies/{c.id}")
 
 
 def _require(user: User, perm: str):
@@ -1949,6 +2112,69 @@ def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_use
     log_activity(s, cid, "note", f"أرسل {user.name} العرض يدويًا", offer.service_name, user_id=user.id)
     flash(request, "أُرسل العرض")
     return back(f"/portal/companies/{cid}")
+
+
+@app.post("/portal/companies/{cid}/contact/start")
+def portal_contact_start(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    _require(user, "update_status")
+    c = _portal_company(s, user, cid)
+    return _contact_start(request, s, user, c, _safe_back(request, f"/portal/companies/{cid}"))
+
+
+@app.post("/portal/companies/{cid}/contact/update")
+async def portal_contact_update(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..permissions import visible_owner_ids
+    _require(user, "update_status")
+    c = _portal_company(s, user, cid)
+    form = await request.form()
+    ids = visible_owner_ids(s, user)
+    owners = set(ids) if ids is not None else {u.id for u in s.scalars(select(User).where(User.active.is_(True)))}
+    return _contact_update(request, s, user, c, form, _safe_back(request, f"/portal/companies/{cid}"), owners)
+
+
+@app.get("/portal/officials", response_class=HTMLResponse)
+def portal_officials(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    """تقرير مسؤولي الشركات: جهة القرار ووسائل التواصل وحالة التواصل للمنشآت المسندة للموظف فقط."""
+    from ..auth import audit
+    from ..permissions import can
+    rows = _portal_rows(s, user, "")
+    audit(s, user, "officials_report_view", user, rows=len(rows))
+    return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: can(user, p),
+                  csum=_csum(s, [r["c"] for r in rows]))
+
+
+@app.get("/portal/officials.xlsx")
+def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..auth import audit
+    from ..permissions import can
+    from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
+    _require(user, "export")
+    rows = []
+    for r in _portal_rows(s, user, ""):
+        c = r["c"]
+        rows.append([c.name, c.activity, c.city, c.decision_unit or ""]
+                    + ([r["phone"] or ""] if can(user, "see_phone") else [])
+                    + ([r["email"] or ""] if can(user, "see_email") else []) + contact_cells(s, c))
+    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار"] + (["الهاتف"] if can(user, "see_phone") else []) + \
+        (["البريد"] if can(user, "see_email") else []) + CONTACT_HEADERS
+    audit(s, user, "export", user, kind="officials", rows=len(rows))
+    return response(workbook([("مسؤولو الشركات", head, rows)]), "company-officials.xlsx")
+
+
+@app.get("/portal/reports.xlsx")
+def portal_reports_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..contact import STATUSES
+    from ..permissions import scoped
+    from ..xlsx import response, workbook
+    _require(user, "see_reports")
+    _require(user, "export")
+    comps = list(s.scalars(scoped(select(Company), s, user)))
+    by = {}
+    for c in comps:
+        k = STATUSES.get(c.contact_status or "new", c.contact_status)
+        by[k] = by.get(k, 0) + 1
+    return response(workbook([("تقرير مبيعاتي", ["حالة التواصل", "عدد العملاء"], sorted(by.items()))]),
+                    "my-sales-report.xlsx")
 
 
 @app.get("/portal/messages/{mid}", response_class=HTMLResponse)

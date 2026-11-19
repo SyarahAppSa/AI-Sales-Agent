@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}{% from "_contact.html" import panel %}{% block content %}
 <div class="top"><div><h1>{{ c.name }}</h1>
 <p class="sub">{{ c.activity }} — {{ c.city }}{% if c.website %} — <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a>{% endif %}</p>
 <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>
@@ -54,6 +54,7 @@
 <div style="flex:0 0 auto">{% if t.status=='open' %}<form method="post" action="/tasks/{{ t.id }}/done"><button class="btn sm">تم</button></form>{% else %}<span class="pill">{{ {'done':'منجزة','cancelled':'ملغاة'}[t.status] }}</span>{% endif %}</div></div>{% else %}<p class="muted">لا توجد مهام.</p>{% endfor %}
 </div>
 
+{{ panel(cs, chist, STATUSES, UPDATE_CHOICES, owners, base, user.id) }}
 <div class="card"><h2>إجراءات</h2>
 <form method="post" action="/companies/{{ c.id }}/action" class="field"><input type="hidden" name="action" value="note">
 <label>ملاحظة / آخر إجراء</label><div class="row"><input name="note" required><button class="btn" style="flex:0 0 auto">إضافة</button></div></form>

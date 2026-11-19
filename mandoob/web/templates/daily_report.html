@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block content %}
 <div class="top"><div><h1>التقرير اليومي</h1><p class="sub">{{ fmt_date(r.day) }}</p></div>
-<form method="get" class="row" style="flex:0 0 auto"><input type="date" name="day" value="{{ r.day }}"><button class="btn" style="flex:0 0 auto">عرض</button></form></div>
+<form method="get" class="row" style="flex:0 0 auto"><input type="date" name="day" value="{{ r.day }}"><button class="btn" style="flex:0 0 auto">عرض</button><a class="btn p" style="flex:0 0 auto" href="/daily-report.xlsx?day={{ r.day }}">تنزيل Excel</a></form></div>
 <div class="grid g4" style="margin-bottom:14px">
 <div class="stat"><div class="v">{{ r.complete }}</div><div class="l">شركات مكتملة جديدة</div></div>
 <div class="stat"><div class="v">${{ r.total_cost }}</div><div class="l">التكلفة التقديرية لليوم</div></div>

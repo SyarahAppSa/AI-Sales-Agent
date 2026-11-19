@@ -202,6 +202,20 @@ class Company(Base):
     offer_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
     offer_sent_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_note: Mapped[Optional[str]] = mapped_column(String(300))
+    # حالة التواصل اليدوي — على سجل المنشأة نفسه (تظهر في كل القوائم والحملات وتبقى عند نقل العميل)
+    contact_status: Mapped[str] = mapped_column(String(30), default="new")
+    contact_status_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    contact_status_by_id: Mapped[Optional[int]] = mapped_column(Integer)
+    last_note: Mapped[Optional[str]] = mapped_column(Text)
+    last_note_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_note_by_id: Mapped[Optional[int]] = mapped_column(Integer)
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_attempt_by_id: Mapped[Optional[int]] = mapped_column(Integer)
+    attempts_count: Mapped[int] = mapped_column(Integer, default=0)
+    contact_lock_by_id: Mapped[Optional[int]] = mapped_column(Integer)  # «جارٍ التواصل بواسطة …»
+    contact_lock_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    next_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    next_followup_owner_id: Mapped[Optional[int]] = mapped_column(Integer)
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
     is_existing_customer: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -599,3 +613,18 @@ class ExportFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     downloads: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ContactLog(Base):
+    """سجل التواصل اليدوي لكل منشأة: لا يُحذف ولا يُستبدل — كل تحديث سطر جديد باسم الموظف ووقته."""
+    __tablename__ = "contact_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    user_name: Mapped[str] = mapped_column(String(120), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="update")  # start / update / release
+    status: Mapped[str] = mapped_column(String(30))
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    next_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    next_owner_name: Mapped[Optional[str]] = mapped_column(String(120))
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

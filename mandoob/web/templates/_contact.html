@@ -1,0 +1,35 @@
+{# حالة التواصل وآخر ملاحظة وأزرار «بدء التواصل» و«تحديث المتابعة» — مشتركة بين بوابتي الإدارة والموظفين #}
+{% macro badge(x) -%}
+<span class="pill {{ {'in_progress':'warn','contacted':'ok','offer_sent':'ok','no_answer':'warn','call_later':'info','not_interested':'','do_not_contact':'err'}.get(x.status, '') }}">{{ x.label }}</span>
+{%- endmacro %}
+
+{% macro inline(x, base, can_act=True) -%}
+<div class="small" style="margin-top:4px">{{ badge(x) }}
+{% if x.attempt_at %}<div class="muted">آخر محاولة: {{ fmt(x.attempt_at) }} — {{ x.attempt_by }}{% if x.attempt_today %} <b style="color:var(--warn)">(اليوم)</b>{% endif %}</div>{% endif %}
+{% if x.note %}<div title="{{ x.note }}">«{{ x.note[:90] }}{{ '…' if x.note|length > 90 }}» <span class="muted">— {{ x.note_by }}، {{ fmt(x.note_at) }}</span></div>{% endif %}
+{% if x.next_at %}<div class="muted">المتابعة القادمة: {{ fmt(x.next_at) }} — {{ x.next_owner }}</div>{% endif %}
+{% if can_act %}<div class="row" style="margin-top:4px;gap:6px">
+  {% if x.status != 'do_not_contact' %}<form method="post" action="{{ base }}/contact/start" style="flex:0 0 auto"><button class="btn sm" {{ 'disabled' if x.locked }}>بدء التواصل</button></form>{% endif %}
+  <a class="btn sm" href="{{ base }}#followup" style="flex:0 0 auto">تحديث المتابعة</a></div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro panel(cs, chist, STATUSES, UPDATE_CHOICES, owners, base, me) -%}
+<div class="card" id="followup"><h2>حالة التواصل</h2>
+<p>{{ badge(cs) }}{% if cs.by %} <span class="small muted">آخر تحديث: {{ cs.by }} — {{ fmt(cs.at) }}</span>{% endif %}</p>
+{% if cs.attempt_at %}<p class="small">آخر محاولة: <b>{{ fmt(cs.attempt_at) }}</b> بواسطة {{ cs.attempt_by }} — عدد المحاولات: {{ cs.attempts }}{% if cs.attempt_today %} — <b style="color:var(--warn)">تمت محاولة اليوم، لا تكرر الاتصال اليوم</b>{% endif %}</p>{% endif %}
+{% if cs.status != 'do_not_contact' %}
+<form method="post" action="{{ base }}/contact/start" style="margin-bottom:10px"><button class="btn p" {{ 'disabled' if cs.locked and cs.locked_by_id != me }}>بدء التواصل</button>
+<span class="small muted">اضغطه قبل الاتصال اليدوي — حتى عند العمل من ملف Excel — فيرى زملاؤك «جارٍ التواصل بواسطتك».</span></form>
+{% else %}<p class="flash err">طلب العميل عدم التواصل — مستبعد من قوائم المتابعة.</p>{% endif %}
+<form method="post" action="{{ base }}/contact/update">
+  <div class="row"><div><label>تحديث المتابعة — الحالة</label><select name="status" required>{% for k in UPDATE_CHOICES %}<option value="{{ k }}">{{ STATUSES[k] }}</option>{% endfor %}</select></div>
+  <div><label>موعد المتابعة القادمة (الرياض)</label><input type="datetime-local" name="next_at"></div>
+  <div><label>المسؤول عن المتابعة</label><select name="next_owner"><option value="">أنا</option>{% for u in owners if u.id != me %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select></div></div>
+  <div class="field"><label>ملاحظة</label><textarea name="note" rows="2" placeholder="مثل: تحدثت مع مدير الأسطول وطلب العرض يوم الأحد"></textarea></div>
+  <button class="btn p">حفظ المتابعة</button>
+</form>
+<h2 style="margin-top:14px">سجل التواصل</h2>
+<ul class="timeline">{% for h in chist %}<li><div class="k">{{ fmt(h.at) }} — {{ h.user_name }}</div><b>{{ 'بدء التواصل' if h.kind == 'start' else STATUSES.get(h.status, h.status) }}</b>{% if h.note %}<pre>{{ h.note }}</pre>{% endif %}{% if h.next_at %}<div class="small muted">المتابعة: {{ fmt(h.next_at) }}{% if h.next_owner_name %} — {{ h.next_owner_name }}{% endif %}</div>{% endif %}</li>{% else %}<li class="muted">لا يوجد تواصل مسجل بعد.</li>{% endfor %}</ul>
+</div>
+{%- endmacro %}
