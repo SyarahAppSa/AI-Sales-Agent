@@ -59,7 +59,10 @@
     <a class="round" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
     <span class="flag" title="المملكة العربية السعودية"><i></i></span>
   </div>
-{% if flash %}<div class="flash {{ flash.kind }}" style="margin-top:70px">{{ flash.msg }}</div>{% endif %}
+{% if demo_on and user.role in ('admin','manager') %}<div class="flash" style="margin-top:70px;background:var(--warn-soft);color:var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+<span>وضع العرض التدريبي مفعّل — الأرقام تشمل بيانات تجريبية للشرح. لا يُرسل لها أي بريد ولا يُجرى أي اتصال.</span>
+<form method="post" action="/demo-view"><button class="btn sm">إطفاء وعرض البيانات الحقيقية فقط</button></form></div>{% endif %}
+{% if flash %}<div class="flash {{ flash.kind }}" style="margin-top:{{ '0' if demo_on and user.role in ('admin','manager') else '70px' }}">{{ flash.msg }}</div>{% endif %}
 {% block content %}{% endblock %}
 </main>
 </div>

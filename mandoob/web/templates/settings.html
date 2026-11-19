@@ -17,6 +17,11 @@
 <tr><td>مسندون / بانتظار التوزيع</td><td>{{ test_check.assigned }} / {{ test_check.unassigned }}</td></tr>
 <tr><td>رسائل مرسلة</td><td><b>{{ test_check.messages_sent }}</b></td></tr><tr><td>رسائل مجدولة للإرسال</td><td><b>{{ test_check.messages_queued }}</b></td></tr>
 <tr><td>مكالمات</td><td><b>{{ test_check.calls }}</b></td></tr><tr><td>محتسبة في هدف الـ٤٠٠</td><td><b>{{ test_check.counted_in_daily_target }}</b></td></tr></table>
+<h2 style="margin-top:16px">البيانات التدريبية (لشرح المنصة للموظفين)</h2>
+<p class="small">تملأ كل الشاشات بـ١٠٠ شركة وهمية: عروض مرسلة ومسلّمة ومرتدة، وردود، ومهام اليوم، واجتماعات، وصفقات، ومكالمات، وإشارات توقيت، وطلبات واردة. كلها سجلات مُدخلة مباشرة — لا بريد ولا اتصال.</p>
+<div class="row"><form method="post" action="/settings/training"><input type="hidden" name="action" value="create"><button class="btn p">إنشاء البيانات التدريبية</button></form>
+<form method="post" action="/settings/training" onsubmit="return confirm('حذف البيانات التدريبية كلها؟')"><input type="hidden" name="action" value="remove"><button class="btn d">حذف البيانات التدريبية</button></form>
+<form method="post" action="/demo-view"><input type="hidden" name="on" value="{{ '' if demo_on else '1' }}"><button class="btn">{{ 'إطفاء' if demo_on else 'تفعيل' }} وضع العرض التدريبي</button></form></div>
 <div class="row" style="margin-top:10px"><form method="post" action="/settings/seed-test"><button class="btn p">تعبئة / استكمال ٥٠٠ عميل تجريبي</button></form>
 <a class="btn" href="/companies?kind=test">عرض العملاء التجريبيين</a></div></div>
 <div class="card"><h2>قائمة إيقاف التواصل</h2>

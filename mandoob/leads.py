@@ -23,6 +23,8 @@ def source_label(source: str | None) -> str:
         return "اكتشاف المنصة"
     if source == "test_seed":
         return "بيانات تجريبية"
+    if source == "training_demo":
+        return "بيانات تدريبية"
     if source.startswith("carrier_of:"):
         return "ناقل لعميل"
     kind, _, rest = source.partition(":")

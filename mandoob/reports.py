@@ -21,6 +21,22 @@ STAGE_LABELS = {"new": "لم يتم التواصل", "contacted": "أُرسل ع
                 "do_not_contact": "أوقفت التواصل"}
 
 
+def demo_view(s) -> bool:
+    """«وضع العرض التدريبي»: حين يكون مفعّلًا تدخل البيانات التجريبية في الإحصائيات والتقارير (للشرح للموظفين)."""
+    from .models import Setting
+    row = s.get(Setting, "demo_view")
+    return bool(row and (row.value or {}).get("on"))
+
+
+def visible(s):
+    """شرط الشركات المحتسبة في الإحصائيات: الحقيقية فقط، أو معها التجريبية في وضع العرض التدريبي."""
+    return true() if demo_view(s) else Company.is_test.is_(False)
+
+
+def visible_ids(s):
+    return select(Company.id).where(visible(s))
+
+
 def scope_companies(q, user: User):
     """المندوب يرى شركاته فقط؛ المدير ومدير المبيعات يريان الكل."""
     if user is not None and user.role == "rep":
@@ -65,7 +81,7 @@ def offers_report(s: Session, user: User, f: OfferFilters) -> OffersReport:
     q = (select(OutboundMessage).join(Company, Company.id == OutboundMessage.company_id)
          .where(OutboundMessage.kind == "offer",
                 OutboundMessage.status.in_(["sent", "delivered", "bounced"])))
-    q = scope_companies(q, user)
+    q = scope_companies(q, user).where(visible(s))
     if f.date_from:
         q = q.where(OutboundMessage.sent_at >= riyadh_day_bounds_utc(f.date_from)[0])
     if f.date_to:
@@ -115,7 +131,7 @@ def needs_followup_today(s: Session, user: User, day: date | None = None) -> lis
     day = day or riyadh_today()
     _, end = riyadh_day_bounds_utc(day)
     q = (select(Task).join(Company, Company.id == Task.company_id)
-         .where(Task.status == "open", Task.due_at < end))
+         .where(Task.status == "open", Task.due_at < end, visible(s)))
     if user is not None and user.role == "rep":
         q = q.where(Task.owner_id == user.id)
     out = []
@@ -185,23 +201,23 @@ def dashboard(s: Session, user: User, day: date | None = None) -> dict:
     day = day or riyadh_today()
     start, end = riyadh_day_bounds_utc(day)
     cq = lambda *w: s.scalar(scope_companies(select(func.count(Company.id)), user)  # noqa: E731
-                             .where(Company.is_test.is_(False), *w)) or 0
+                             .where(visible(s), *w)) or 0
     target = s.scalar(select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")) or 0
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.run_date == day)))
     complete_today = cq(Company.counted_on == day, Company.data_status == "complete")
     msgs = lambda *w: s.scalar(select(func.count(OutboundMessage.id)).join(Company, Company.id == OutboundMessage.company_id)  # noqa: E731
-                               .where(OutboundMessage.kind == "offer", *w)
+                               .where(OutboundMessage.kind == "offer", visible(s), *w)
                                .where(Company.owner_id == user.id if user and user.role == "rep" else true())) or 0
     sent_today = msgs(OutboundMessage.sent_at >= start, OutboundMessage.sent_at < end)
     delivered_today = msgs(OutboundMessage.delivered_at >= start, OutboundMessage.delivered_at < end)
     bounced_today = msgs(OutboundMessage.bounced_at >= start, OutboundMessage.bounced_at < end)
     replies_today = s.scalar(select(func.count(InboundMessage.id)).where(
         InboundMessage.message_type == "reply", InboundMessage.received_at >= start,
-        InboundMessage.received_at < end)) or 0
+        InboundMessage.received_at < end, InboundMessage.company_id.in_(visible_ids(s)))) or 0
     calls_answered = s.scalar(select(func.count(Call.id)).where(Call.answered.is_(True), Call.created_at >= start,
-                                                                Call.created_at < end)) or 0
-    meetings_today = s.scalar(select(func.count(Meeting.id)).where(Meeting.created_at >= start,
-                                                                   Meeting.created_at < end)) or 0
+                                                                Call.created_at < end, Call.company_id.in_(visible_ids(s)))) or 0
+    meetings_today = s.scalar(select(func.count(Meeting.id)).where(Meeting.created_at >= start, Meeting.created_at < end,
+                                                                   Meeting.company_id.in_(visible_ids(s)))) or 0
     eligible = cq(Company.data_status == "complete", Company.stage == "new", Company.do_not_contact.is_(False))
     return {
         "day": day, "target": target, "complete_today": complete_today,
@@ -218,8 +234,8 @@ def dashboard(s: Session, user: User, day: date | None = None) -> dict:
             "sent": msgs(OutboundMessage.status.in_(["sent", "delivered", "bounced"])),
             "delivered": msgs(OutboundMessage.status == "delivered"),
             "replies": s.scalar(select(func.count(func.distinct(InboundMessage.company_id))).where(
-                InboundMessage.message_type == "reply")) or 0,
-            "meetings": s.scalar(select(func.count(Meeting.id))) or 0,
+                InboundMessage.message_type == "reply", InboundMessage.company_id.in_(visible_ids(s)))) or 0,
+            "meetings": s.scalar(select(func.count(Meeting.id)).where(Meeting.company_id.in_(visible_ids(s)))) or 0,
             "won": cq(Company.stage == "won"),
         },
         "runs": runs,
@@ -232,8 +248,8 @@ def daily_report(s: Session, day: date | None = None) -> dict:
     start, end = riyadh_day_bounds_utc(day)
     # القطاعات والعروض التي جلبت اجتماعات وصفقات (تراكميًا مع أرقام اليوم)
     by_sector = {}
-    for c in s.scalars(select(Company).where(Company.stage.in_(["contacted", "replied", "interested", "meeting",
-                                                                "won", "lost", "do_not_contact"]))):
+    for c in s.scalars(select(Company).where(visible(s), Company.stage.in_(["contacted", "replied", "interested", "meeting",
+                                                                            "won", "lost", "do_not_contact"]))):
         key = SECTORS.get(c.sector_key, {}).get("label", c.sector_key or "—")
         d = by_sector.setdefault(key, {"contacted": 0, "replied": 0, "meetings": 0, "won": 0})
         d["contacted"] += 1
@@ -244,7 +260,7 @@ def daily_report(s: Session, day: date | None = None) -> dict:
         if c.stage == "won":
             d["won"] += 1
     by_offer = {}
-    for m in s.scalars(select(OutboundMessage).where(OutboundMessage.kind == "offer",
+    for m in s.scalars(select(OutboundMessage).where(OutboundMessage.kind == "offer", OutboundMessage.company_id.in_(visible_ids(s)),
                                                      OutboundMessage.status.in_(["sent", "delivered", "bounced"]))):
         key = m.offer.service_name if m.offer else "—"
         d = by_offer.setdefault(key, {"sent": 0, "replies": 0, "meetings": 0, "won": 0, "_companies": set()})
@@ -265,7 +281,7 @@ def daily_report(s: Session, day: date | None = None) -> dict:
                                            "duplicate_count": 0, "rejected_count": 0})
             for k in d:
                 d[k] += v.get(k, 0)
-    complete = s.scalar(select(func.count(Company.id)).where(Company.counted_on == day,
+    complete = s.scalar(select(func.count(Company.id)).where(Company.counted_on == day, visible(s),
                                                              Company.data_status == "complete")) or 0
     costs = {svc: round(v or 0, 2) for svc, v in s.execute(
         select(CostEntry.service, func.sum(CostEntry.cost_usd)).where(CostEntry.day == day)
@@ -273,7 +289,8 @@ def daily_report(s: Session, day: date | None = None) -> dict:
     total_cost = round(sum(costs.values()), 2)
     tomorrow = day + timedelta(days=1)
     _, tend = riyadh_day_bounds_utc(tomorrow)
-    actions = list(s.scalars(select(Task).where(Task.status == "open", Task.due_at < tend).order_by(Task.due_at)))
+    actions = list(s.scalars(select(Task).where(Task.status == "open", Task.due_at < tend,
+                                                Task.company_id.in_(visible_ids(s))).order_by(Task.due_at)))
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.run_date == day)))
     return {"day": day, "by_sector": by_sector, "by_offer": by_offer, "by_source": by_source,
             "complete": complete, "costs": costs, "total_cost": total_cost,
@@ -303,7 +320,7 @@ def weekly_segments(s: Session, day: date | None = None) -> dict:
                   .where(OutboundMessage.kind == "offer", OutboundMessage.sent_at.isnot(None))
                   .group_by(OutboundMessage.company_id).subquery())
     cohort = list(s.scalars(select(Company).join(first_sent, first_sent.c.company_id == Company.id)
-                            .where(first_sent.c.first >= t0, first_sent.c.first < t1)))
+                            .where(first_sent.c.first >= t0, first_sent.c.first < t1, visible(s))))
     rows: dict[str, dict] = {}
     for c in cohort:
         key = c.sector_key or "—"
@@ -351,7 +368,7 @@ def todays_customers(s: Session, user: User, day: date | None = None, campaign_i
     start, end = riyadh_day_bounds_utc(day)
     q = scope_companies(select(Company), user).where(
         ((Company.first_found_at >= start) & (Company.first_found_at < end)) | (Company.counted_on == day),
-        Company.data_status.in_(["complete", "incomplete"]), Company.is_test.is_(False))
+        Company.data_status.in_(["complete", "incomplete"]), visible(s))
     if campaign_id:
         q = q.where(Company.campaign_id == campaign_id)
     rows = []

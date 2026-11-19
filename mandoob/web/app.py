@@ -141,7 +141,11 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
         unread = s.scalar(select(func.count(Notification.id)).where(Notification.user_id == user.id,
                                                                     Notification.read.is_(False))) or 0
     flash = request.session.pop("flash", None)
-    return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash,
+    demo = False
+    if user is not None and s is not None:
+        from ..reports import demo_view
+        demo = demo_view(s)
+    return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
                                                       "path": request.url.path, **ctx})
 
 
@@ -1010,6 +1014,36 @@ def settings_seed_test(request: Request, user: User = Depends(require_manager), 
                    + f"). رسائل مرسلة: {v['messages_sent']}، "
                    f"مجدولة: {v['messages_queued']}، مكالمات: {v['calls']}.")
     return back("/companies?kind=test")
+
+
+@app.post("/demo-view")
+def toggle_demo_view(request: Request, on: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..auth import audit
+    from ..training_demo import _set_demo_view
+    _set_demo_view(s, bool(on))
+    audit(s, user, "demo_view", None, on=bool(on))
+    flash(request, "وضع العرض التدريبي مفعّل: تظهر البيانات التجريبية في الإحصائيات والتقارير." if on else
+          "أُطفئ وضع العرض التدريبي: الإحصائيات للبيانات الحقيقية فقط.")
+    return back(request.headers.get("referer") or "/")
+
+
+@app.post("/settings/training")
+def settings_training(request: Request, action: str = Form("create"), user: User = Depends(require_manager),
+                      s=Depends(get_db)):
+    from ..auth import audit
+    from ..training_demo import create, remove
+    if action == "remove":
+        n = remove(s)
+        audit(s, user, "training_remove", None, removed=n)
+        flash(request, f"حُذفت البيانات التدريبية ({n} شركة) وأُطفئ وضع العرض التدريبي.")
+        return back("/settings")
+    res = create(s)
+    audit(s, user, "training_create", None, **{k: v for k, v in res.items() if isinstance(v, int)})
+    flash(request, "البيانات التدريبية موجودة مسبقًا." if not res.get("offers") else
+          f"أُنشئت بيانات تدريبية: {res['created']} شركة، {res['offers']} عرضًا (لم يُرسل أي منها)، {res['replies']} ردًا، "
+          f"{res['tasks']} مهمة، {res['meetings']} اجتماعًا، {res['won']} صفقات، {res['calls']} مكالمات مسجلة. "
+          "وضع العرض التدريبي مفعّل.")
+    return back("/")
 
 
 @app.post("/settings/suppress")
