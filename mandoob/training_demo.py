@@ -227,8 +227,9 @@ def create(s) -> dict:
     interested = [c for c in companies if c.stage == "interested"]
     for k, c in enumerate(interested[:7]):
         start = _dt(k % 3 + 1, 10 + k % 4)
-        if c.owner_id:
-            mt = Meeting(company_id=c.id, owner_id=c.owner_id, starts_at=start, ends_at=start + timedelta(minutes=30),
+        owner_id = c.owner_id or s.scalar(select(User.id).where(User.role.in_(["admin", "manager"])).order_by(User.id))
+        if owner_id:
+            mt = Meeting(company_id=c.id, owner_id=owner_id, starts_at=start, ends_at=start + timedelta(minutes=30),
                          attendee_email=next((ct.value for ct in c.contacts if ct.kind == "email"), None),
                          calendar_event_id=f"training-evt-{c.id}", created_at=now_utc() - timedelta(hours=k))
             s.add(mt)
