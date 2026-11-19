@@ -312,6 +312,7 @@ class AgentSource:
         self.known_fn = known_fn or (lambda: [])
         self.per_call, self.max_searches, self.max_fetches = per_call, max_searches, max_fetches
         self.last: AgentResult | None = None
+        self.campaign_id: int | None = None  # تُنسب تكلفة النداء للحملة (تقارير التكلفة حسب البحث/الحملة)
 
     def search(self, query: str, city: str, state: dict) -> Iterator[Candidate]:
         if not settings.ai_enabled:
@@ -328,7 +329,8 @@ class AgentSource:
                   f"أسماء ونطاقات لدينا مسبقًا (تجنّبها): {known or 'لا يوجد'}")
         try:
             out, blocks, searches = ai.ai_agent(AGENT_SYSTEM, prompt, AGENT_SCHEMA, max_searches=self.max_searches,
-                                                max_fetches=self.max_fetches, note="agent")
+                                                max_fetches=self.max_fetches, note="agent",
+                                                campaign_id=self.campaign_id)
         except ai.AIUnavailable as e:
             raise SourceError(f"البحث الآلي: {e}") from e
         state["done"] = True

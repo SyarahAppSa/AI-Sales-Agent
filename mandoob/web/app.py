@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1264,24 +1264,50 @@ def auto_search_run(cid: int, request: Request, batch: int = Form(20), user: Use
     return back(f"/today?campaign={cid}")
 
 
+def _period(mode: str, day: str, date_from: str, date_to: str):
+    """(من، إلى، رسالة خطأ). يومي: يوم واحد (اليوم افتراضيًا). فترة: من/إلى شاملين يومي البداية والنهاية."""
+    def d(x):
+        try:
+            return date.fromisoformat(x) if x else None
+        except ValueError:
+            return None
+    today = riyadh_today()
+    if mode == "range":
+        a, b = d(date_from) or today, d(date_to) or today
+        if b < a:
+            return a, b, "تاريخ النهاية قبل تاريخ البداية — عدّل الفترة ثم اضغط «عرض»."
+        if (b - a).days > 366:
+            return a, b, "الفترة أطول من سنة — اختر فترة أقصر."
+        return a, b, None
+    x = d(day) or today
+    return x, x, None
+
+
 @app.get("/today", response_class=HTMLResponse)
-def today_page(request: Request, day: str = "", campaign: Optional[int] = None, user: User = Depends(current_user),
-               s=Depends(get_db)):
-    from ..reports import todays_customers
-    d = date.fromisoformat(day) if day else riyadh_today()
-    t = todays_customers(s, user, d, campaign)
-    return render(request, "today.html", user, s, t=t, campaign=campaign, qs=str(request.query_params),
-                  camps=list(s.scalars(select(Campaign).order_by(Campaign.id.desc()))))
+def today_page(request: Request, mode: str = "day", day: str = "", date_from: str = Query("", alias="from"),
+               date_to: str = Query("", alias="to"), campaign: Optional[int] = None,
+               user: User = Depends(current_user), s=Depends(get_db)):
+    """استعراض العملاء حسب تاريخ الجمع (يوم أو فترة) — قراءة فقط: لا بحث جديد ولا تكلفة إضافية."""
+    from ..reports import customers_in_period
+    mode = "range" if mode == "range" else "day"
+    a, b, err = _period(mode, day, date_from, date_to)
+    t = customers_in_period(s, user, a, b, campaign) if not err else None
+    return render(request, "today.html", user, s, t=t, err=err, mode=mode, a=a, b=b, campaign=campaign,
+                  qs=str(request.query_params), camps=list(s.scalars(select(Campaign).order_by(Campaign.id.desc()))))
 
 
 @app.get("/today.xlsx")
-def today_xlsx(request: Request, day: str = "", campaign: Optional[int] = None, user: User = Depends(current_user),
-               s=Depends(get_db)):
-    from ..reports import export_today_xlsx, todays_customers
-    d = date.fromisoformat(day) if day else riyadh_today()
-    data = export_today_xlsx(todays_customers(s, user, d, campaign))
+def today_xlsx(request: Request, mode: str = "day", day: str = "", date_from: str = Query("", alias="from"),
+               date_to: str = Query("", alias="to"), campaign: Optional[int] = None,
+               user: User = Depends(current_user), s=Depends(get_db)):
+    from ..reports import customers_in_period, export_today_xlsx
+    a, b, err = _period("range" if mode == "range" else "day", day, date_from, date_to)
+    if err:
+        raise HTTPException(400, err)
+    data = export_today_xlsx(customers_in_period(s, user, a, b, campaign))
+    name = a.isoformat() if a == b else f"{a.isoformat()}_to_{b.isoformat()}"
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f"attachment; filename=customers-{d.isoformat()}.xlsx"})
+                    headers={"Content-Disposition": f"attachment; filename=customers-{name}.xlsx"})
 
 
 # ---------------------------------------------------------------- اطلب عرضًا لأسطولك (صفحة عامة)

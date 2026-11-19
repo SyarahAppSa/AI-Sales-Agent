@@ -92,6 +92,8 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         allow_backfill = camp.allow_backfill
         total_target = sum(q for _, _, q, _, _ in cats)
 
+    if hasattr(sources.get("ai_agent"), "campaign_id"):
+        sources["ai_agent"].campaign_id = campaign_id
     disabled: dict[str, str] = {}
     exhausted: dict[int, bool] = {}
     if scope and max_new and hasattr(sources.get("ai_agent"), "per_call"):

@@ -400,13 +400,15 @@ def weekly_segments(s: Session, day: date | None = None) -> dict:
 
 # ---------------------------------------------------------------- عملاء اليوم
 
-def todays_customers(s: Session, user: User, day: date | None = None, campaign_id: int | None = None) -> dict:
-    """جدول «عملاء اليوم»: كل عميل جديد اكتُشف أو اكتمل اليوم، مع مصادر بياناته."""
-    from .models import CompanySource
-    day = day or riyadh_today()
-    start, end = riyadh_day_bounds_utc(day)
+def customers_in_period(s: Session, user: User, date_from: date, date_to: date,
+                        campaign_id: int | None = None) -> dict:
+    """«عملاء اليوم» لأي يوم أو فترة: العملاء الذين **جُمعت** بياناتهم بين بداية يوم البداية ونهاية يوم النهاية
+    بتوقيت الرياض (شاملًا اليومين). استعراض لما جُمع سابقًا فقط — لا يشغّل بحثًا ولا يحتسب تكلفة جديدة."""
+    from datetime import timedelta
+    start, _ = riyadh_day_bounds_utc(date_from)
+    _, end = riyadh_day_bounds_utc(date_to)
     q = scope_companies(select(Company), user).where(
-        ((Company.first_found_at >= start) & (Company.first_found_at < end)) | (Company.counted_on == day),
+        Company.first_found_at >= start, Company.first_found_at < end,
         Company.data_status.in_(["complete", "incomplete"]), visible(s))
     if campaign_id:
         q = q.where(Company.campaign_id == campaign_id)
@@ -420,20 +422,37 @@ def todays_customers(s: Session, user: User, day: date | None = None, campaign_i
         rows.append({"c": c, "phone": ph, "email": em, "links": links[:6],
                      "complete": c.data_status == "complete" and c.parent_id is None,
                      "branch": c.parent_id is not None})
-    runs_q = select(DiscoveryRun).where(DiscoveryRun.run_date == day)
+    runs_q = select(DiscoveryRun).where(DiscoveryRun.run_date >= date_from, DiscoveryRun.run_date <= date_to)
     if campaign_id:
         runs_q = runs_q.where(DiscoveryRun.campaign_id == campaign_id)
-    runs = list(s.scalars(runs_q))
+    runs = list(s.scalars(runs_q.order_by(DiscoveryRun.run_date)))
+    days = (date_to - date_from).days + 1
     target_q = select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")
     if campaign_id:
         target_q = select(Campaign.daily_target).where(Campaign.id == campaign_id)
-    complete_today = sum(1 for r in rows if r["complete"] and r["c"].counted_on == day)
-    cost = round(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(CostEntry.day == day)) or 0, 2)
-    return {"day": day, "rows": rows, "target": s.scalar(target_q) or 0, "complete": complete_today,
+    complete = sum(1 for r in rows if r["complete"])
+    cost_q = select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(CostEntry.day >= date_from,
+                                                                          CostEntry.day <= date_to)
+    if campaign_id:
+        cost_q = cost_q.where(CostEntry.campaign_id == campaign_id)
+    cost = round(float(s.scalar(cost_q) or 0), 2)
+    unattributed = 0.0
+    if campaign_id:  # تكلفة سُجلت قبل نسب التكلفة للحملات: تُعرض منفصلة بوضوح لا تُنسب لحملة بعينها
+        unattributed = round(float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(
+            CostEntry.day >= date_from, CostEntry.day <= date_to, CostEntry.campaign_id.is_(None))) or 0), 2)
+    today = riyadh_today()
+    return {"day": date_from, "date_from": date_from, "date_to": date_to, "days": days, "rows": rows,
+            "target": (s.scalar(target_q) or 0) * days, "complete": complete,
             "incomplete": sum(1 for r in rows if r["c"].data_status == "incomplete"),
             "duplicates": sum(r.duplicate_count or 0 for r in runs), "rejected": sum(r.rejected_count or 0 for r in runs),
-            "runs": runs, "running": any(r.status == "running" for r in runs), "cost": cost,
-            "cost_per": round(cost / complete_today, 3) if complete_today else None}
+            "runs": runs, "running": date_from <= today <= date_to and any(r.status == "running" for r in runs),
+            "cost": cost, "cost_unattributed": unattributed,
+            "cost_per": round(cost / complete, 3) if complete else None}
+
+
+def todays_customers(s: Session, user: User, day: date | None = None, campaign_id: int | None = None) -> dict:
+    day = day or riyadh_today()
+    return customers_in_period(s, user, day, day, campaign_id)
 
 
 def export_today_xlsx(t: dict) -> bytes:
@@ -443,7 +462,8 @@ def export_today_xlsx(t: dict) -> bytes:
     ws = wb.active
     ws.title = "عملاء اليوم"
     ws.sheet_view.rightToLeft = True
-    ws.append([f"عملاء اليوم — {t['day']}", f"مكتملون جدد: {t['complete']} من {t['target']}",
+    period = str(t["date_from"]) if t["date_from"] == t["date_to"] else f"من {t['date_from']} إلى {t['date_to']}"
+    ws.append([f"العملاء حسب تاريخ الجمع — {period}", f"مكتملون: {t['complete']} من {t['target']}",
                f"قيد الاستكمال: {t['incomplete']}", f"مكررات مستبعدة: {t['duplicates']}"])
     ws.append([])
     ws.append(["اسم العميل", "نوع النشاط", "المدينة", "الهاتف", "مصدر الهاتف", "البريد", "مصدر البريد",
