@@ -40,6 +40,7 @@ class OfferFilters:
     status: str | None = None          # sent / delivered / bounced ...
     reply: str | None = None           # replied / no_reply / <intent>
     q: str | None = None
+    source: str | None = None          # مصدر الفرصة (discovery / website_form / campaign / partner / carrier_of)
 
 
 @dataclass
@@ -81,6 +82,8 @@ def offers_report(s: Session, user: User, f: OfferFilters) -> OffersReport:
         q = q.where(OutboundMessage.offer_id == f.offer_id)
     if f.status:
         q = q.where(OutboundMessage.status == f.status)
+    if f.source:
+        q = q.where(Company.lead_source.like(f"{f.source}%"))
     if f.q:
         like = f"%{f.q}%"
         q = q.where(or_(Company.name.like(like), OutboundMessage.to_address.like(like),
@@ -125,7 +128,10 @@ def needs_followup_today(s: Session, user: User, day: date | None = None) -> lis
                                                             OutboundMessage.kind == "offer")
                               .order_by(OutboundMessage.id.desc()))
         ph = c.primary("phone")
-        out.append({"task": t, "company": c, "phone": format_phone_display(ph.value) if ph else "—",
+        from .models import CompanySignal
+        sig = s.scalar(select(CompanySignal).where(CompanySignal.company_id == c.id)
+                       .order_by(CompanySignal.announced_on.desc()))
+        out.append({"task": t, "company": c, "phone": format_phone_display(ph.value) if ph else "—", "signal": sig,
                     "last_reply": last, "owner": t.owner.name if t.owner else "غير مسند",
                     "offer": last_offer, "overdue": t.due_at < riyadh_day_bounds_utc(day)[0]})
     return out
@@ -272,3 +278,63 @@ def daily_report(s: Session, day: date | None = None) -> dict:
             "complete": complete, "costs": costs, "total_cost": total_cost,
             "cost_per_lead": round(total_cost / complete, 3) if complete else None,
             "actions": actions, "runs": runs}
+
+
+# ---------------------------------------------------------------- التقرير الأسبوعي للشرائح
+
+INTERESTED_INTENTS = ("interested", "callback_request", "meeting_request", "quote_request", "details_request")
+
+
+def week_bounds(day: date) -> tuple[date, date]:
+    """الأسبوع من الأحد إلى السبت (بتوقيت الرياض)."""
+    start = day - timedelta(days=(day.weekday() + 1) % 7)
+    return start, start + timedelta(days=7)
+
+
+def weekly_segments(s: Session, day: date | None = None) -> dict:
+    """لكل شريحة: الشركات التي تواصلنا معها أول مرة هذا الأسبوع (دفعة الأسبوع)، وما نتج عنها حتى الآن."""
+    from .leads import source_label
+    day = day or riyadh_today()
+    start, end = week_bounds(day)
+    t0, _ = riyadh_day_bounds_utc(start)
+    t1, _ = riyadh_day_bounds_utc(end)
+    first_sent = (select(OutboundMessage.company_id, func.min(OutboundMessage.sent_at).label("first"))
+                  .where(OutboundMessage.kind == "offer", OutboundMessage.sent_at.isnot(None))
+                  .group_by(OutboundMessage.company_id).subquery())
+    cohort = list(s.scalars(select(Company).join(first_sent, first_sent.c.company_id == Company.id)
+                            .where(first_sent.c.first >= t0, first_sent.c.first < t1)))
+    rows: dict[str, dict] = {}
+    for c in cohort:
+        key = c.sector_key or "—"
+        r = rows.setdefault(key, {"label": SECTORS.get(key, {}).get("label", key), "experiment": False,
+                                  "contacted": 0, "interested": 0, "meetings": 0, "won": 0})
+        r["contacted"] += 1
+        if c.category is not None and c.category.is_experiment:
+            r["experiment"] = True
+        if s.scalar(select(InboundMessage.id).where(InboundMessage.company_id == c.id,
+                                                    InboundMessage.intent.in_(INTERESTED_INTENTS)).limit(1)):
+            r["interested"] += 1
+        if s.scalar(select(Meeting.id).where(Meeting.company_id == c.id).limit(1)):
+            r["meetings"] += 1
+        if c.stage == "won":
+            r["won"] += 1
+    for r in rows.values():
+        n = r["contacted"]
+        r["meetings_per_100"] = round(100 * r["meetings"] / n, 1) if n else 0.0
+        r["interested_per_100"] = round(100 * r["interested"] / n, 1) if n else 0.0
+        r["small_sample"] = n < 30
+    ordered = sorted(rows.items(), key=lambda kv: (-kv[1]["meetings_per_100"], -kv[1]["contacted"]))
+    # الطلبات الواردة حسب المصدر
+    from .models import InboundLead
+    leads = {}
+    for lead in s.scalars(select(InboundLead).where(InboundLead.created_at >= t0, InboundLead.created_at < t1)):
+        lbl = source_label(lead.source)
+        leads[lbl] = leads.get(lbl, 0) + 1
+    # حصص الاختبار الحالية
+    split = {"core": 0, "experiment": 0}
+    for cat in s.scalars(select(Category).join(Campaign).where(Campaign.status == "active", Category.active.is_(True))):
+        split["experiment" if cat.is_experiment else "core"] += cat.quota or 0
+    totals = {k: sum(r[k] for r in rows.values()) for k in ("contacted", "interested", "meetings", "won")}
+    totals["meetings_per_100"] = round(100 * totals["meetings"] / totals["contacted"], 1) if totals["contacted"] else 0.0
+    return {"start": start, "end": end - timedelta(days=1), "rows": ordered, "leads": leads, "split": split,
+            "totals": totals}

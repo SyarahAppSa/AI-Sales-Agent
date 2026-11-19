@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>طلبات العروض الواردة</h1><p class="sub" style="margin:0">طلبات «اطلب عرضًا لأسطولك» ومصدر كل طلب.</p></div></div>
+<div class="card small"><b>رابط الصفحة:</b> <span class="ltr">{{ link }}</span>
+<div class="muted" style="margin-top:6px">لتمييز المصدر أضف إلى الرابط: <span class="ltr">?src=website</span> لموقع الشركة، <span class="ltr">?utm_campaign=اسم-الحملة</span> لحملة، <span class="ltr">?ref=رمز-الشريك</span> لإحالة شريك.</div></div>
+<div class="card tablewrap"><table><tr><th>الشركة</th><th>الطلب</th><th>التواصل</th><th>المصدر</th><th>المسؤول</th><th>الوقت</th></tr>
+{% for r in rows %}{% set c = companies.get(r.company_id) %}<tr>
+<td>{% if c %}<a href="/companies/{{ c.id }}"><b>{{ r.company_name }}</b></a>{% else %}{{ r.company_name }}{% endif %}<div class="small muted">{{ r.city }}</div></td>
+<td class="small">{{ r.vehicles or '—' }} مركبة<div>{{ r.service_text or (r.offer_id and 'خدمة محددة') or 'استشارة' }}</div></td>
+<td class="small">{{ r.contact_name }}<div><span class="ltr">{{ r.phone or '' }}</span></div><div><span class="ltr">{{ r.email or '' }}</span></div><span class="pill">{{ {'phone':'اتصال','whatsapp':'واتساب','email':'بريد'}[r.preferred_channel] }}</span></td>
+<td><span class="pill info">{{ source_label(r.source) }}</span></td>
+<td>{{ c.owner.name if c and c.owner else '—' }}<div class="small muted">{{ STAGE_LABELS.get(c.stage, '') if c else '' }}</div></td>
+<td class="small">{{ fmt(r.created_at) }}</td></tr>{% else %}<tr><td colspan="6" class="muted">لا توجد طلبات بعد.</td></tr>{% endfor %}</table></div>
+{% endblock %}

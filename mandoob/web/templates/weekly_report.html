@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>التقرير الأسبوعي للشرائح</h1><p class="sub" style="margin:0">الأسبوع {{ fmt_date(w.start) }} — {{ fmt_date(w.end) }}</p></div>
+<div class="row"><a class="btn sm" href="?day={{ prev }}">الأسبوع السابق</a><a class="btn sm" href="?day={{ next }}">الأسبوع التالي</a></div></div>
+<div class="grid g4" style="margin-bottom:14px">
+  <div class="stat"><div class="l">تواصلنا معها هذا الأسبوع</div><div class="v">{{ w.totals.contacted }}</div></div>
+  <div class="stat"><div class="l">ردود مهتمة</div><div class="v">{{ w.totals.interested }}</div></div>
+  <div class="stat"><div class="l">اجتماعات لكل ١٠٠ شركة</div><div class="v">{{ w.totals.meetings_per_100 }}</div></div>
+  <div class="stat"><div class="l">حصص الهدف اليومي</div><div class="v" style="direction:rtl">{{ w.split.core }} <span class="muted" style="font-size:15px">حالية</span> / {{ w.split.experiment }} <span class="muted" style="font-size:15px">اختبار</span></div></div>
+</div>
+<div class="card">
+  <h2>الاجتماعات المحجوزة لكل ١٠٠ شركة جرى التواصل معها</h2>
+  <p class="small muted" style="margin-top:-8px">الشركات التي أُرسل لها أول عرض هذا الأسبوع، وما نتج عنها حتى اليوم.</p>
+  {% set mx = [w.rows|map(attribute='1.meetings_per_100')|max if w.rows else 0, 1]|max %}
+  <div class="hbars" role="img" aria-label="الاجتماعات لكل 100 شركة حسب الشريحة">
+  {% for key, r in w.rows %}<div class="row" data-tip="{{ r.label }}: {{ r.meetings }} اجتماع من {{ r.contacted }} شركة"><span>{{ r.label }}{% if r.experiment %} <span class="pill warn">اختبار</span>{% endif %}</span>
+  <div class="track"><div class="fill" style="width:{{ (100 * r.meetings_per_100 / mx)|round(1) }}%"></div></div><span class="num">{{ r.meetings_per_100 }}</span></div>
+  {% else %}<p class="muted">لم يُرسل أي عرض أول هذا الأسبوع.</p>{% endfor %}
+  </div>
+  <div class="tablewrap" style="margin-top:14px"><table><tr><th>الشريحة</th><th>تواصلنا</th><th>ردود مهتمة</th><th>مهتمة / ١٠٠</th><th>اجتماعات</th><th>اجتماعات / ١٠٠</th><th>صفقات</th></tr>
+  {% for key, r in w.rows %}<tr><td>{{ r.label }}{% if r.experiment %} <span class="pill warn">اختبار</span>{% endif %}{% if r.small_sample %} <span class="pill" title="أقل من 30 شركة — النسبة غير مستقرة بعد">عينة صغيرة</span>{% endif %}</td>
+  <td>{{ r.contacted }}</td><td>{{ r.interested }}</td><td>{{ r.interested_per_100 }}</td><td>{{ r.meetings }}</td><td><b>{{ r.meetings_per_100 }}</b></td><td>{{ r.won }}</td></tr>{% endfor %}</table></div>
+  <p class="small muted">النسب على عينة أقل من 30 شركة غير مستقرة؛ يُفضّل الحكم على الشريحة بعد أسبوعين أو ثلاثة.</p>
+</div>
+<div class="card"><h2>طلبات «اطلب عرضًا لأسطولك» هذا الأسبوع حسب المصدر</h2>
+{% for k, v in w.leads.items() %}<div class="kv"><span class="k">{{ k }}</span><span class="n">{{ v }}</span></div>{% else %}<p class="muted">لا توجد طلبات.</p>{% endfor %}</div>
+{% endblock %}

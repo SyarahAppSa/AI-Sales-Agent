@@ -17,11 +17,11 @@ from ..normalize import domain_of
 from ..timeutil import now_utc, riyadh_day_bounds_utc, riyadh_today
 from .base import Candidate, SourceError, SourceUnavailable
 from .crawler import Crawler, SiteResult
-from .sources import AIWebSearchSource, BraveSearchSource, GooglePlacesSource
+from .sources import AISignalsSource, AIWebSearchSource, BraveSearchSource, GooglePlacesSource, find_official_website
 
 log = logging.getLogger(__name__)
 
-SOURCE_ORDER = ["google_places", "web_search", "ai_search"]
+SOURCE_ORDER = ["google_places", "web_search", "ai_search", "signals"]
 
 
 def default_sources() -> dict:
@@ -30,7 +30,7 @@ def default_sources() -> dict:
             return [d for (d,) in s.execute(select(Company.domain).where(Company.domain.isnot(None))
                                             .order_by(Company.id.desc()).limit(300))]
     return {"google_places": GooglePlacesSource(), "web_search": BraveSearchSource(),
-            "ai_search": AIWebSearchSource(known_domains)}
+            "ai_search": AIWebSearchSource(known_domains), "signals": AISignalsSource()}
 
 
 def _count_today(s: Session, category_id: int, day: date) -> int:
@@ -209,6 +209,8 @@ def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawle
         if fit is None:
             from ..companies import FitResult
             fit = FitResult(True, pre.fit_reason, pre.fit_evidence_url, pre.fit_score, pre.activity)
+        if cand.signals:
+            fit.signals = list(fit.signals or []) + list(cand.signals)
         res = upsert_candidate(s, cand, site, cat, fit, run_id=run_id, day=day)
         src = cand.source_type
         ps = dict(run.per_source or {})
@@ -220,7 +222,7 @@ def _handle_candidate(run_id: int, cat_id: int, cand: Candidate, crawler: Crawle
             _bump(run, "complete_count", src)
         elif res.outcome == "new_incomplete":
             _bump(run, "incomplete_count", src)
-        elif res.outcome == "duplicate":
+        elif res.outcome in ("duplicate", "branch"):
             _bump(run, "duplicate_count", src)
         else:
             _bump(run, "rejected_count", src)
@@ -234,6 +236,20 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
     """يعود للبحث عن البيان الناقص للشركات «قيد استكمال البيانات»."""
     crawler = crawler or Crawler(max_pages=10)
     completed = 0
+    # شركات عُرف اسمها فقط (مثل الناقلين المذكورين في صفحات العملاء): نبحث أولًا عن موقعها الرسمي
+    with session_scope() as s:
+        nosite = [(c.id, c.name, c.city) for c in s.scalars(
+            select(Company).where(Company.data_status == "incomplete", Company.website.is_(None),
+                                  Company.enrich_attempts < 2).limit(20))]
+    for cid, name, city in nosite:
+        site_url = find_official_website(name, city)
+        with session_scope() as s:
+            c = s.get(Company, cid)
+            c.enrich_attempts += 1
+            if site_url and not s.scalar(select(Company.id).where(Company.domain == domain_of(site_url))):
+                c.website, c.domain = site_url, domain_of(site_url)
+                c.retry_enrich_at = None
+                log_activity(s, cid, "data", "عُثر على الموقع الرسمي", site_url)
     with session_scope() as s:
         ids = [cid for (cid,) in s.execute(
             select(Company.id).where(Company.data_status == "incomplete", Company.website.isnot(None),
@@ -253,7 +269,8 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
             if is_complete(c):
                 c.data_status = "complete"
                 c.completed_at = now_utc()
-                c.counted_on = riyadh_today()
+                if c.parent_id is None and c.lead_source in (None, "discovery") or (c.lead_source or "").startswith("carrier_of"):
+                    c.counted_on = riyadh_today()
                 log_activity(s, c.id, "data", "اكتملت بيانات الشركة", "عُثر على البيان الناقص في موقعها")
                 from ..assignment import assign_owner
                 assign_owner(s, c)

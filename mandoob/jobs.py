@@ -155,3 +155,30 @@ def daily_report_tick(force: bool = False) -> bool:
             notify(s, u, None, f"التقرير اليومي — {rep['day']}", "\n".join(lines))
     _mark("daily_report_done")
     return True
+
+
+def weekly_report_tick(force: bool = False) -> bool:
+    """نهاية الأسبوع (الخميس بعد وقت التقرير اليومي): ملخص الشرائح لمدير المبيعات."""
+    sched = get_setting("schedule", DEFAULT_SCHEDULE)
+    if not force:
+        if now_riyadh().weekday() != 3 or not _due(sched.get("daily_report_time", "18:00"), "weekly_report_done"):
+            return False
+    from .inbox import notify
+    from .reports import weekly_segments
+    with session_scope() as s:
+        w = weekly_segments(s)
+        lines = [f"أسبوع {w['start']} — {w['end']}",
+                 f"تواصلنا مع {w['totals']['contacted']} شركة — {w['totals']['meetings_per_100']} اجتماع لكل 100 شركة", "",
+                 "الشرائح (اجتماعات / 100 — مهتمة / 100 — صفقات):"]
+        for _, r in w["rows"]:
+            tag = " [اختبار]" if r["experiment"] else ""
+            small = " (عينة صغيرة)" if r["small_sample"] else ""
+            lines.append(f"- {r['label']}{tag}: {r['meetings_per_100']} — {r['interested_per_100']} — {r['won']} "
+                         f"(من {r['contacted']} شركة){small}")
+        if w["leads"]:
+            lines.append("\nطلبات «اطلب عرضًا لأسطولك»: " + "، ".join(f"{k}: {v}" for k, v in w["leads"].items()))
+        lines.append(f"\nالحصص الحالية: {w['split']['core']} للقطاعات الحالية و{w['split']['experiment']} للاختبار.")
+        for u in s.scalars(select(User).where(User.role.in_(["admin", "manager"]), User.active.is_(True))):
+            notify(s, u, None, f"التقرير الأسبوعي للشرائح — {w['start']}", "\n".join(lines))
+    _mark("weekly_report_done")
+    return True

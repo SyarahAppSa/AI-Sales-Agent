@@ -16,6 +16,7 @@
   <div><label>نوع العرض</label><select name="offer"><option value="">الكل</option>{% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if o.id==f.offer_id }}>{{ o.service_name }}</option>{% endfor %}</select></div>
   <div><label>حالة التسليم</label><select name="status"><option value="">الكل</option>{% for k in ['sent','delivered','bounced'] %}<option value="{{ k }}" {{ 'selected' if k==f.status }}>{{ STATUS_LABELS[k] }}</option>{% endfor %}</select></div>
   <div><label>الرد</label><select name="reply"><option value="">الكل</option><option value="replied" {{ 'selected' if f.reply=='replied' }}>ردّت</option><option value="no_reply" {{ 'selected' if f.reply=='no_reply' }}>لم ترد</option>{% for k,v in INTENT_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if k==f.reply }}>{{ v }}</option>{% endfor %}</select></div>
+  <div><label>مصدر الفرصة</label><select name="source"><option value="">الكل</option>{% for k,v in [('discovery','اكتشاف المنصة'),('website_form','نموذج اطلب عرضًا'),('campaign','حملة'),('partner','إحالة شريك'),('carrier_of','ناقل لعميل')] %}<option value="{{ k }}" {{ 'selected' if k==f.source }}>{{ v }}</option>{% endfor %}</select></div>
   <div><label>بحث</label><input name="q" value="{{ f.q or '' }}"></div>
   <div style="flex:0 0 auto"><button class="btn p">تصفية</button> <a class="btn" href="/offers-report">مسح</a></div>
 </div></form>

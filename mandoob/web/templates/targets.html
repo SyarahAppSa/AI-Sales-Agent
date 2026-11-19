@@ -26,7 +26,7 @@
   {% if user.role in ('admin','manager') %}<form method="post" action="/targets/{{ c.id }}/status" style="flex:0 0 auto">
     {% if c.status=='active' %}<button class="btn d" name="action" value="pause">إيقاف الحملة</button>{% else %}<button class="btn p" name="action" value="activate">اعتماد وتفعيل</button>{% endif %}</form>{% endif %}</div>
   <table style="margin-top:10px"><tr><th>الفئة</th><th>المدن</th><th>الأولوية</th><th>إنجاز اليوم</th><th>العرض</th></tr>
-  {% for cat in c.categories %}<tr><td>{{ cat.label }}{% if not cat.active %} <span class="pill">موقوفة</span>{% endif %}</td><td>{{ cat.cities|join('، ') }}</td><td>{{ cat.priority }}</td>
+  {% for cat in c.categories %}<tr><td>{{ cat.label }}{% if cat.is_experiment %} <span class="pill warn">اختبار</span>{% endif %}{% if not cat.active %} <span class="pill">موقوفة</span>{% endif %}</td><td>{{ cat.cities|join('، ') }}</td><td>{{ cat.priority }}</td>
   <td style="min-width:160px">{{ progress[cat.id] }} / {{ cat.quota }}<div class="bar"><i style="width:{{ (100*progress[cat.id]/cat.quota)|round|int if cat.quota else 0 }}%"></i></div></td>
   <td>{% if cat.offer %}{{ cat.offer.service_name }} {% if cat.offer.approved %}<span class="pill ok">معتمد</span>{% else %}<span class="pill warn">غير معتمد</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}</table>
 </div>

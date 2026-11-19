@@ -209,3 +209,69 @@ class DirectoryImportSource:
                                  contacts=contacts, fit_hint=row.get("fit_reason", ""),
                                  evidence_url=row.get("fit_evidence_url") or None))
         return out
+
+
+SIGNALS_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["items"],
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False,
+        "required": ["company", "website", "city", "kind", "title", "announced_on", "url"],
+        "properties": {
+            "company": {"type": "string"}, "website": {"type": "string"}, "city": {"type": "string"},
+            "kind": {"type": "string", "enum": ["warehouse_opening", "new_city", "contract_win", "hiring_drivers",
+                                                 "hiring_fleet"]},
+            "title": {"type": "string"}, "announced_on": {"type": "string"}, "url": {"type": "string"},
+        }}}},
+}
+
+
+class AISignalsSource:
+    """يرصد شركات غيّرت احتياجها مؤخرًا (افتتاح مستودع، توسع، عقد تشغيل، توظيف سائقين ومشرفي أسطول)
+    من الأخبار وإعلانات التوظيف، ويرفق الإشارة بتاريخها ورابطها."""
+    name = "signals"
+
+    def search(self, query: str, city: str, state: dict) -> Iterator[Candidate]:
+        if not settings.ai_enabled:
+            raise SourceUnavailable("ANTHROPIC_API_KEY غير مضبوط")
+        if state.get("done"):
+            return
+        from ..segments import SIGNAL_PATTERNS
+        prompt = (f"ابحث في الأخبار وإعلانات التوظيف خلال آخر 6 أشهر عن شركات في {city} (السعودية) ضمن نشاط «{query}» "
+                  "أعلنت: افتتاح مستودع أو مركز توزيع، التوسع إلى مدينة جديدة، الفوز بعقد تشغيل، أو توظيف سائقين أو "
+                  "مشرفي أسطول. لكل إعلان: اسم الشركة، موقعها الرسمي (إن وجد)، المدينة، النوع، عنوانًا مختصرًا، "
+                  "تاريخ الإعلان YYYY-MM-DD، ورابط الإعلان. لا تذكر إلا ما وجدته فعلًا.")
+        try:
+            out = ai.ai_json("أنت باحث مبيعات يرصد إشارات التوسع بدقة.", prompt, SIGNALS_SCHEMA,
+                             web_search=True, max_searches=5, note="signals")
+        except ai.AIUnavailable as e:
+            raise SourceError(f"رصد الإشارات: {e}") from e
+        state["done"] = True
+        from datetime import date as _d
+        for it in out.get("items", []):
+            try:
+                announced = _d.fromisoformat(it["announced_on"][:10]) if it["announced_on"] else None
+            except ValueError:
+                announced = None
+            sig = {"kind": it["kind"], "label": SIGNAL_PATTERNS[it["kind"]][0], "title": it["title"],
+                   "announced_on": announced, "url": it["url"]}
+            yield Candidate(name=it["company"], source_type=self.name, source_url=it["url"], city=it["city"] or city,
+                            website=_site_root(it["website"]) if is_company_site(it["website"]) else None,
+                            fit_hint="", evidence_url=it["url"], signals=[sig])
+
+
+WEBSITE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["website", "evidence_url"],
+                  "properties": {"website": {"type": "string"}, "evidence_url": {"type": "string"}}}
+
+
+def find_official_website(name: str, city: str) -> str | None:
+    """يبحث عن الموقع الرسمي لشركة عُرف اسمها فقط (مثل ناقل ذُكر في صفحة عميل)."""
+    if not settings.ai_enabled:
+        return None
+    try:
+        out = ai.ai_json("أنت باحث دقيق. أعد الموقع الرسمي فقط إن تأكدت منه، وإلا اتركه فارغًا.",
+                         f"ما الموقع الإلكتروني الرسمي لشركة «{name}» في {city}، السعودية؟", WEBSITE_SCHEMA,
+                         web_search=True, max_searches=3, note="website")
+    except ai.AIUnavailable:
+        return None
+    w = out.get("website") or ""
+    return _site_root(w) if w and is_company_site(w) else None

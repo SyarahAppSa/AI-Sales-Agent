@@ -58,6 +58,8 @@ def check_eligibility(s: Session, company: Company, offer: Offer) -> tuple[bool,
         return False, "طلبت الشركة إيقاف التواصل"
     if company.is_existing_customer:
         return False, "عميل حالي"
+    if company.parent_id:
+        return False, "فرع لشركة أخرى — يُوجَّه العرض للمقر الرئيسي"
     if company.stage in ("replied", "interested", "meeting", "won", "lost"):
         return False, "الشركة في مرحلة متابعة يدوية"
     if not offer.approved:
@@ -144,9 +146,27 @@ def sent_today(s: Session, campaign_id: int) -> int:
         OutboundMessage.sent_at >= start, OutboundMessage.sent_at < end)) or 0
 
 
-def offer_for(company: Company) -> Offer | None:
-    if company.category and company.category.offer_id:
-        return company.category.offer
+def offer_covers(offer: Offer, company: Company) -> bool:
+    from .segments import in_coverage
+    segs = offer.segments or []
+    if segs and company.sector_key not in segs:
+        return False
+    return in_coverage(company.city, offer.coverage or [])
+
+
+def offer_for(company: Company, s: Session | None = None) -> Offer | None:
+    """العرض المناسب للشركة في مكانها: عرض الفئة إن غطّى مدينتها وشريحتها، وإلا عرض معتمد آخر يغطيهما."""
+    primary = company.category.offer if company.category and company.category.offer_id else None
+    if primary is not None and offer_covers(primary, company):
+        return primary
+    if s is None:
+        return None
+    from .targeting import SECTORS
+    audience = "partner" if SECTORS.get(company.sector_key, {}).get("partner") else "customer"
+    for o in s.scalars(select(Offer).where(Offer.approved.is_(True)).order_by(Offer.id)):
+        if o is not primary and (o.audience or "customer") == audience and offer_covers(o, company) \
+                and (o.segments or primary is None):
+            return o
     return None
 
 
@@ -160,16 +180,17 @@ def queue_offers(campaign_id: int, limit: int = 500) -> dict:
             return stats
         ids = [cid for (cid,) in s.execute(
             select(Company.id).where(Company.campaign_id == campaign_id, Company.data_status == "complete",
-                                     Company.stage == "new").order_by(Company.fit_score.desc(), Company.id)
+                                     Company.stage == "new", Company.parent_id.is_(None)).order_by(Company.fit_score.desc(), Company.id)
             .limit(limit * 3))]
     for cid in ids:
         if stats["queued"] >= limit:
             break
         with session_scope() as s:
             company = s.get(Company, cid)
-            offer = offer_for(company)
+            offer = offer_for(company, s)
             if offer is None:
-                stats["skipped"]["لا يوجد عرض للفئة"] = stats["skipped"].get("لا يوجد عرض للفئة", 0) + 1
+                why = "خارج نطاق الخدمة أو لا يوجد عرض مناسب"
+                stats["skipped"][why] = stats["skipped"].get(why, 0) + 1
                 continue
             ok, why = check_eligibility(s, company, offer)
             if not ok:

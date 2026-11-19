@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}اطلب عرضًا لأسطولك — سيارة آب{% endblock %}{% block public %}
+<div class="login card" style="max-width:620px;margin:6vh auto">
+  <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div></div>
+  {% if done %}
+  <h1 style="text-align:center">شكرًا لكم</h1>
+  <p class="sub" style="text-align:center">وصل طلبكم إلى فريق المبيعات المختص، وسنتواصل معكم بالطريقة التي فضّلتموها.</p>
+  {% else %}
+  <h1>اطلب عرضًا لأسطولك</h1>
+  <p class="sub">أخبرنا عن أسطولك في أقل من دقيقة، وسيتواصل معك المندوب المختص.</p>
+  <form method="post" action="/request-quote">
+    <input type="hidden" name="src" value="{{ src }}"><input type="hidden" name="ref" value="{{ ref }}"><input type="hidden" name="utm" value="{{ utm }}">
+    <div class="hp" aria-hidden="true"><input name="website_url" tabindex="-1" autocomplete="off"></div>
+    <div class="row"><div><label>اسم الشركة</label><input name="company_name" required></div>
+      <div><label>المدينة</label><input name="city" required list="cities"><datalist id="cities">{% for c in CITIES %}<option value="{{ c }}">{% endfor %}</datalist></div></div>
+    <div class="row"><div><label>عدد المركبات التقريبي</label><input name="vehicles" type="number" min="1" inputmode="numeric"></div>
+      <div><label>نشاط الشركة</label><select name="activity"><option value="">— اختر —</option>{% for k,v in SECTORS.items() if not v.get('partner') %}<option value="{{ k }}">{{ v.label }}</option>{% endfor %}<option value="other">أخرى</option></select></div></div>
+    <div class="field"><label>الخدمة المطلوبة</label><select name="offer_id"><option value="">غير متأكد — أريد استشارة</option>{% for o in offers %}<option value="{{ o.id }}">{{ o.service_name }}</option>{% endfor %}</select></div>
+    <div class="row"><div><label>اسمك</label><input name="contact_name" required></div>
+      <div><label>الجوال</label><input name="phone" class="ltr" style="text-align:left" inputmode="tel" placeholder="05xxxxxxxx"></div></div>
+    <div class="field"><label>البريد الإلكتروني</label><input name="email" type="email" class="ltr" style="text-align:left"></div>
+    <div class="field"><label>طريقة التواصل المفضلة</label><div class="chips">
+      <label><input type="radio" name="preferred_channel" value="phone" checked> اتصال هاتفي</label>
+      <label><input type="radio" name="preferred_channel" value="whatsapp"> واتساب</label>
+      <label><input type="radio" name="preferred_channel" value="email"> بريد إلكتروني</label></div></div>
+    <div class="field"><label>ملاحظات (اختياري)</label><textarea name="notes" rows="2"></textarea></div>
+    <div class="chips"><label><input type="checkbox" name="consent" required> أوافق على تواصل سيارة آب معي بخصوص هذا الطلب</label></div>
+    <button class="btn p" style="width:100%;margin-top:8px">إرسال الطلب</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

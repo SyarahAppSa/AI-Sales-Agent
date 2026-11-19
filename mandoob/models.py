@@ -67,6 +67,11 @@ class Offer(Base):
     call_to_action: Mapped[str] = mapped_column(
         String(300), default="هل يناسبكم اتصال تعريفي لمدة عشر دقائق هذا الأسبوع؟")
     attachment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("attachments.id"))
+    # النطاق الجغرافي للخدمة (مدن/مناطق/مدن صناعية) — فارغ = كل المملكة
+    coverage: Mapped[list] = mapped_column(JSON, default=list)
+    # الشرائح التي يناسبها العرض — فارغ = كل الشرائح
+    segments: Mapped[list] = mapped_column(JSON, default=list)
+    audience: Mapped[str] = mapped_column(String(20), default="customer")  # customer / partner
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -112,6 +117,7 @@ class Category(Base):
     priority_signals: Mapped[list] = mapped_column(JSON, default=list)  # مثل: يدير أسطول مركبات
     quota: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_experiment: Mapped[bool] = mapped_column(Boolean, default=False)  # ضمن حصة اختبار الشرائح الجديدة
     offer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("offers.id"))
     campaign: Mapped[Campaign] = relationship(back_populates="categories")
     offer: Mapped[Optional[Offer]] = relationship()
@@ -155,6 +161,16 @@ class Company(Base):
     deal_value: Mapped[Optional[float]] = mapped_column(Float)
     retry_enrich_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     enrich_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # تشغيل المركبات
+    fit_phrase: Mapped[Optional[str]] = mapped_column(String(300))  # عبارة التشغيل التي رُشحت بسببها
+    operator_status: Mapped[str] = mapped_column(String(20), default="unknown")  # self / contracted / unknown
+    operator_evidence: Mapped[Optional[str]] = mapped_column(Text)
+    operator_evidence_url: Mapped[Optional[str]] = mapped_column(String(500))
+    decision_unit: Mapped[Optional[str]] = mapped_column(String(120))  # الجهة المقترحة لاتخاذ القرار
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"))  # المقر الرئيسي إن كانت فرعًا
+    lead_source: Mapped[str] = mapped_column(String(80), default="discovery")  # discovery / website_form / campaign:x / partner:x / carrier_of:x
+    vehicles_estimate: Mapped[Optional[int]] = mapped_column(Integer)
+    signal_boost: Mapped[float] = mapped_column(Float, default=0.0)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     sources: Mapped[list["CompanySource"]] = relationship(back_populates="company", cascade="all, delete-orphan")
@@ -198,6 +214,56 @@ class CompanySource(Base):
     found_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("discovery_runs.id"))
     company: Mapped[Company] = relationship(back_populates="sources")
+
+
+class CompanyRelation(Base):
+    """علاقات بين الشركات: الناقل الذي يشغّل توزيع شركة، أو الفرع والمقر الرئيسي."""
+    __tablename__ = "company_relations"
+    __table_args__ = (UniqueConstraint("company_id", "related_id", "kind", name="uq_company_relation"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    related_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # carrier (related يشغّل نقل company) / branch (company فرع لـ related)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[Optional[str]] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    company: Mapped["Company"] = relationship(foreign_keys=[company_id])
+    related: Mapped["Company"] = relationship(foreign_keys=[related_id])
+
+
+class CompanySignal(Base):
+    """إشارة تغيّر الاحتياج: افتتاح مستودع، توسع لمدينة، عقد تشغيل، توظيف سائقين/مشرفي أسطول."""
+    __tablename__ = "company_signals"
+    __table_args__ = (UniqueConstraint("company_id", "kind", "url", name="uq_company_signal"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    label: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(Text, default="")
+    announced_on: Mapped[Optional[date]] = mapped_column(Date)
+    url: Mapped[str] = mapped_column(String(500), default="")
+    found_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class InboundLead(Base):
+    """طلب «اطلب عرضًا لأسطولك» من الصفحة العامة."""
+    __tablename__ = "inbound_leads"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"))
+    company_name: Mapped[str] = mapped_column(String(300))
+    city: Mapped[str] = mapped_column(String(120))
+    vehicles: Mapped[Optional[int]] = mapped_column(Integer)
+    activity: Mapped[Optional[str]] = mapped_column(String(60))
+    offer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("offers.id"))
+    service_text: Mapped[str] = mapped_column(String(200), default="")
+    contact_name: Mapped[str] = mapped_column(String(200), default="")
+    phone: Mapped[Optional[str]] = mapped_column(String(40))
+    email: Mapped[Optional[str]] = mapped_column(String(200))
+    preferred_channel: Mapped[str] = mapped_column(String(20), default="phone")  # phone / email / whatsapp
+    source: Mapped[str] = mapped_column(String(80), default="website")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    ip_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class ExistingCustomer(Base):

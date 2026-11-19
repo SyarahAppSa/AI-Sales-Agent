@@ -18,6 +18,29 @@
 <details><summary>المصادر ({{ c.sources|length }})</summary><ul class="small">{% for src in c.sources %}<li>{{ SOURCE_LABELS.get(src.source_type, src.source_type) }}: <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.url[:80] }}</a> — {{ fmt(src.found_at, False) }}</li>{% endfor %}</ul></details>
 </div>
 
+<div class="card"><h2>تشغيل المركبات وجهة القرار</h2>
+<div class="kv"><span class="k">مصدر الفرصة</span><span class="pill info">{{ source_label(c.lead_source) }}</span></div>
+{% if c.vehicles_estimate %}<div class="kv"><span class="k">عدد المركبات التقريبي</span><span class="n">{{ c.vehicles_estimate }}</span></div>{% endif %}
+{% if c.fit_phrase %}<p class="small" style="margin:10px 0 0"><b>عبارة التشغيل:</b> «{{ c.fit_phrase }}» {% if c.fit_evidence_url %}<a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الصفحة)</a>{% endif %}</p>{% endif %}
+<p class="small" style="margin:8px 0 0"><b>من يشغّل المركبات:</b> <span class="pill {{ 'ok' if c.operator_status=='self' else 'warn' if c.operator_status=='contracted' else '' }}">{{ OPERATOR_LABELS.get(c.operator_status, c.operator_status) }}</span>
+{% if c.operator_evidence %}<span class="muted">«{{ c.operator_evidence[:160] }}»</span>{% endif %} {% if c.operator_evidence_url %}<a href="{{ c.operator_evidence_url }}" target="_blank" rel="noopener">(المصدر)</a>{% endif %}</p>
+{% for r in relations %}
+  {% if r.kind == 'carrier' and r.company_id == c.id %}<p class="small" style="margin:6px 0 0">🚚 الناقل المتعاقد: <a href="/companies/{{ r.related_id }}">{{ r.related.name }}</a> — فرصة مستقلة {% if r.source_url %}<a href="{{ r.source_url }}" target="_blank" rel="noopener">(المصدر)</a>{% endif %}</p>
+  {% elif r.kind == 'carrier' %}<p class="small" style="margin:6px 0 0">تشغّل نقل/توزيع: <a href="/companies/{{ r.company_id }}">{{ r.company.name }}</a> {% if r.source_url %}<a href="{{ r.source_url }}" target="_blank" rel="noopener">(المصدر)</a>{% endif %}</p>
+  {% elif r.kind == 'branch' and r.company_id == c.id %}<p class="small" style="margin:6px 0 0">🏢 فرع للمقر الرئيسي: <a href="/companies/{{ r.related_id }}"><b>{{ r.related.name }}</b></a> ({{ r.related.city }}) — يُوجَّه العرض للمقر الرئيسي</p>
+  {% elif r.kind == 'branch' %}<p class="small" style="margin:6px 0 0">فرع تابع: <a href="/companies/{{ r.company_id }}">{{ r.company.name }}</a> ({{ r.company.city }})</p>{% endif %}
+{% endfor %}
+<p class="small" style="margin:10px 0 0"><b>الجهة المقترحة للعرض:</b> {{ c.decision_unit or '—' }}
+{% set em = c.primary('email') %}{% if em %} — البريد: <span class="ltr">{{ em.value }}</span> ({{ em.label }}) <a href="{{ em.source_url }}" target="_blank" rel="noopener">المصدر</a>{% endif %}</p>
+{% if user.role in ('admin','manager') %}<details class="small" style="margin-top:8px"><summary>ربط الفروع بالمقر الرئيسي</summary>
+{% if c.parent_id %}<form method="post" action="/companies/{{ c.id }}/action"><input type="hidden" name="action" value="unlink_branch"><button class="btn sm">فك الربط (سجل مستقل)</button></form>
+{% else %}<form method="post" action="/companies/{{ c.id }}/action" class="row"><input type="hidden" name="action" value="set_parent"><input name="owner_id" type="number" placeholder="رقم سجل المقر الرئيسي"><button class="btn sm">ربط كفرع</button></form>{% endif %}</details>{% endif %}
+</div>
+
+{% if signals %}<div class="card"><h2>لماذا الآن؟</h2>
+{% for g in signals %}<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill warn">{{ g.label }}</span> <span class="small muted">{{ fmt_date(g.announced_on) if g.announced_on else 'تاريخ الإعلان غير مذكور' }}</span>
+<div class="small">{{ g.title[:220] }}</div>{% if g.url %}<a class="small" href="{{ g.url }}" target="_blank" rel="noopener">رابط الإعلان</a>{% endif %}</div>{% endfor %}</div>{% endif %}
+
 <div class="card"><h2>العروض المرسلة</h2>
 {% for m in msgs %}<div style="border-bottom:1px solid var(--line);padding:8px 0">
 <a href="/messages/{{ m.id }}"><b>{{ m.subject }}</b></a> <span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err','failed':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>

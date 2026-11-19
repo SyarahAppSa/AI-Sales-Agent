@@ -18,7 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .. import jobs
 from ..auth import ROLE_LABELS, authenticate, ensure_admin, hash_password
-from ..companies import SOURCE_LABELS, log_activity
+from ..companies import OPERATOR_LABELS, SOURCE_LABELS, log_activity
 from ..config import settings
 from ..db import SessionLocal, init_db, session_scope
 from ..discovery.sources import DirectoryImportSource
@@ -29,6 +29,7 @@ from ..normalize import domain_of, format_phone_display, normalize_email, normal
 from ..reports import (STAGE_LABELS, STATUS_LABELS, OfferFilters, company_timeline, daily_report, dashboard,
                        export_offers_xlsx, needs_followup_today, offers_report, scope_companies)
 from ..replyparse import INTENT_LABELS
+from ..segments import REGIONS
 from ..targeting import CITIES, SECTORS, parse_request
 from ..timeutil import fmt, fmt_date, now_utc, riyadh_to_utc, riyadh_today, to_riyadh
 
@@ -50,7 +51,7 @@ app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.globals.update(fmt=fmt, fmt_date=fmt_date, STATUS_LABELS=STATUS_LABELS, STAGE_LABELS=STAGE_LABELS,
-                             SECTORS=SECTORS, CITIES=list(CITIES), ROLE_LABELS=ROLE_LABELS,
+                             SECTORS=SECTORS, CITIES=list(CITIES), REGIONS=REGIONS, OPERATOR_LABELS=OPERATOR_LABELS, ROLE_LABELS=ROLE_LABELS,
                              INTENT_LABELS=INTENT_LABELS, SOURCE_LABELS=SOURCE_LABELS, phone=format_phone_display)
 
 
@@ -237,6 +238,7 @@ def _save_categories(s, camp: Campaign, form) -> None:
         cat.priority = int(form.get(f"cat_{i}_priority") or i + 1)
         cat.quota = max(int(form.get(f"cat_{i}_quota") or 0), 0)
         cat.active = form.get(f"cat_{i}_active") == "on"
+        cat.is_experiment = form.get(f"cat_{i}_experiment") == "on"
         oid = form.get(f"cat_{i}_offer_id")
         cat.offer_id = int(oid) if oid else None
         s.flush()
@@ -283,7 +285,8 @@ def target_edit(cid: int, request: Request, user: User = Depends(current_user), 
     parsed = {"name": camp.name, "exclusions": camp.exclusions, "categories": [
         {"id": c.id, "sector_key": c.sector_key, "label": c.label, "cities": c.cities, "keywords_ar": c.keywords_ar,
          "keywords_en": c.keywords_en, "priority": c.priority, "priority_signals": c.priority_signals,
-         "quota": c.quota, "active": c.active, "offer_id": c.offer_id} for c in camp.categories],
+         "quota": c.quota, "active": c.active, "offer_id": c.offer_id, "is_experiment": c.is_experiment}
+        for c in camp.categories],
         "exclude_existing_customers": camp.exclude_existing_customers}
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.campaign_id == cid)
                           .order_by(DiscoveryRun.id.desc()).limit(10)))
@@ -342,8 +345,16 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
 
 @app.get("/companies", response_class=HTMLResponse)
 def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
-              page: int = 1, user: User = Depends(current_user), s=Depends(get_db)):
+              page: int = 1, source: str = "", operator: str = "", signals: str = "",
+              user: User = Depends(current_user), s=Depends(get_db)):
+    from ..models import CompanySignal
     qq = scope_companies(select(Company), user).where(Company.data_status == status)
+    if source:
+        qq = qq.where(Company.lead_source.like(f"{source}%"))
+    if operator:
+        qq = qq.where(Company.operator_status == operator)
+    if signals:
+        qq = qq.where(Company.id.in_(select(CompanySignal.company_id)))
     if q:
         qq = qq.where(Company.name.like(f"%{q}%") | Company.domain.like(f"%{q}%"))
     if city:
@@ -355,8 +366,13 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
     counts = {st: s.scalar(scope_companies(select(func.count(Company.id)), user).where(Company.data_status == st)) or 0
               for st in ("complete", "incomplete")}
     from ..companies import missing_fields
+    from ..leads import source_label
+    sig = {cid: n for cid, n in s.execute(select(CompanySignal.company_id, func.count(CompanySignal.id))
+                                          .where(CompanySignal.company_id.in_([r.id for r in rows]))
+                                          .group_by(CompanySignal.company_id))}
     return render(request, "companies.html", user, s, rows=rows, status=status, q=q, city=city, sector=sector,
-                  total=total, page=page, counts=counts, missing_fields=missing_fields)
+                  total=total, page=page, counts=counts, missing_fields=missing_fields, source=source,
+                  operator=operator, signals=signals, sig=sig, source_label=source_label)
 
 
 @app.get("/companies/{cid}", response_class=HTMLResponse)
@@ -375,10 +391,17 @@ def company_detail(cid: int, request: Request, user: User = Depends(current_user
     meetings = list(s.scalars(select(Meeting).where(Meeting.company_id == cid).order_by(Meeting.starts_at)))
     consents = list(s.scalars(select(Consent).where(Consent.company_id == cid).order_by(Consent.id.desc())))
     reps = list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
+    from ..models import CompanyRelation, CompanySignal
+    from ..leads import source_label
+    relations = list(s.scalars(select(CompanyRelation).where(
+        (CompanyRelation.company_id == cid) | (CompanyRelation.related_id == cid))))
+    signals = list(s.scalars(select(CompanySignal).where(CompanySignal.company_id == cid)
+                             .order_by(CompanySignal.announced_on.desc())))
     from ..voice import check_call_eligibility
     call_ok, call_why = check_call_eligibility(s, c)
     return render(request, "company.html", user, s, c=c, timeline=timeline, msgs=msgs, replies=replies, tasks=tasks,
-                  calls=calls, meetings=meetings, consents=consents, reps=reps, call_ok=call_ok, call_why=call_why)
+                  calls=calls, meetings=meetings, consents=consents, reps=reps, call_ok=call_ok, call_why=call_why,
+                  relations=relations, signals=signals, source_label=source_label)
 
 
 @app.post("/companies/{cid}/action")
@@ -419,6 +442,22 @@ def company_action(cid: int, request: Request, action: str = Form(...), note: st
                   "، ".join(fmt(x) for x in e.suggestions), "err")
         except RuntimeError as e:
             flash(request, str(e), "err")
+    elif action == "unlink_branch" and user.role in ("admin", "manager"):
+        from ..models import CompanyRelation
+        for r in s.scalars(select(CompanyRelation).where(CompanyRelation.company_id == cid,
+                                                         CompanyRelation.kind == "branch")):
+            s.delete(r)
+        c.parent_id = None
+        log_activity(s, cid, "branch", "فُك ربط الشركة بالمقر الرئيسي", note, user_id=user.id)
+        flash(request, "أصبحت الشركة سجلًا مستقلًا")
+    elif action == "set_parent" and user.role in ("admin", "manager") and owner_id:
+        from ..models import CompanyRelation
+        hq = s.get(Company, owner_id)
+        if hq and hq.id != cid:
+            c.parent_id = hq.parent_id or hq.id
+            s.add(CompanyRelation(company_id=cid, related_id=c.parent_id, kind="branch", evidence=f"ربط يدوي بواسطة {user.name}"))
+            log_activity(s, cid, "branch", f"رُبطت كفرع لـ {hq.name}", user_id=user.id)
+            flash(request, "رُبطت الشركة بالمقر الرئيسي")
     elif action == "won":
         c.stage, c.deal_value = "won", value
         log_activity(s, cid, "won", "صفقة رابحة", f"القيمة: {value or '—'}", user_id=user.id)
@@ -478,7 +517,7 @@ def _filters(request: Request) -> OfferFilters:
     return OfferFilters(date_from=d("from"), date_to=d("to"), city=p.get("city") or None,
                         sector=p.get("sector") or None, campaign_id=i("campaign"), owner_id=i("owner"),
                         offer_id=i("offer"), status=p.get("status") or None, reply=p.get("reply") or None,
-                        q=p.get("q") or None)
+                        q=p.get("q") or None, source=p.get("source") or None)
 
 
 @app.get("/offers-report", response_class=HTMLResponse)
@@ -542,6 +581,9 @@ async def offers_save(request: Request, user: User = Depends(require_manager), s
     o.approved_body = form.get("approved_body", "")
     o.pricing_text = form.get("pricing_text", "")
     o.call_to_action = form.get("call_to_action") or o.call_to_action
+    o.coverage = _split(form.get("coverage", ""))
+    o.segments = form.getlist("segments")
+    o.audience = form.get("audience") or "customer"
     att = form.get("attachment_id")
     o.attachment_id = int(att) if att else None
     upload = form.get("attachment")
@@ -825,6 +867,67 @@ def notifications(request: Request, user: User = Depends(current_user), s=Depend
     for n in rows:
         n.read = True
     return page
+
+
+# ---------------------------------------------------------------- اطلب عرضًا لأسطولك (صفحة عامة)
+
+@app.get("/request-quote", response_class=HTMLResponse)
+def request_quote_page(request: Request, s=Depends(get_db)):
+    p = request.query_params
+    offers = list(s.scalars(select(Offer).where(Offer.approved.is_(True), Offer.audience != "partner")))
+    return templates.TemplateResponse(request, "request_quote.html", {
+        "user": None, "flash": request.session.pop("flash", None), "path": request.url.path, "offers": offers,
+        "src": p.get("src", ""), "ref": p.get("ref", ""), "utm": p.get("utm_campaign", ""), "done": p.get("done")})
+
+
+@app.post("/request-quote")
+def request_quote_submit(request: Request, company_name: str = Form(...), city: str = Form(...),
+                         vehicles: str = Form(""), activity: str = Form(""), offer_id: str = Form(""),
+                         service_text: str = Form(""), contact_name: str = Form(...), phone: str = Form(""),
+                         email: str = Form(""), preferred_channel: str = Form("phone"), consent: str = Form(""),
+                         notes: str = Form(""), src: str = Form(""), ref: str = Form(""), utm: str = Form(""),
+                         website_url: str = Form(""), s=Depends(get_db)):
+    from ..leads import create_lead, hash_ip, normalize_source, too_many
+    if website_url:  # حقل مخفي لاصطياد البرامج الآلية
+        return back("/request-quote?done=1")
+    if not consent or not (normalize_phone(phone) or normalize_email(email)):
+        flash(request, "يرجى إدخال رقم جوال أو بريد صحيح والموافقة على التواصل", "err")
+        return back(f"/request-quote?src={src}&ref={ref}&utm_campaign={utm}")
+    ip = hash_ip(request.client.host if request.client else None, settings.secret_key)
+    if too_many(s, ip):
+        flash(request, "تم استلام عدة طلبات من هذا الجهاز. سنتواصل معكم قريبًا.", "err")
+        return back("/request-quote")
+    try:
+        nveh = max(0, min(int(vehicles), 100000)) if vehicles.strip() else None
+    except ValueError:
+        nveh = None
+    create_lead(s, company_name=company_name, city=city, vehicles=nveh,
+                activity=activity if activity in SECTORS else None,
+                offer_id=int(offer_id) if offer_id.isdigit() else None, service_text=service_text,
+                contact_name=contact_name, phone=phone, email=email,
+                preferred_channel=preferred_channel if preferred_channel in ("phone", "email", "whatsapp") else "phone",
+                source=normalize_source(src, ref, utm), notes=notes, ip_hash=ip)
+    return back("/request-quote?done=1")
+
+
+@app.get("/leads", response_class=HTMLResponse)
+def leads_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..leads import source_label
+    from ..models import InboundLead
+    rows = list(s.scalars(select(InboundLead).order_by(InboundLead.id.desc()).limit(200)))
+    companies_ = {c.id: c for c in s.scalars(select(Company).where(Company.id.in_([r.company_id for r in rows if r.company_id])))}
+    base = settings.public_base_url.rstrip("/")
+    return render(request, "leads.html", user, s, rows=rows, companies=companies_, source_label=source_label,
+                  link=f"{base}/request-quote")
+
+
+@app.get("/weekly-report", response_class=HTMLResponse)
+def weekly_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..reports import weekly_segments
+    d = date.fromisoformat(day) if day else riyadh_today()
+    w = weekly_segments(s, d)
+    return render(request, "weekly_report.html", user, s, w=w, prev=(w["start"] - timedelta(days=7)).isoformat(),
+                  next=(w["start"] + timedelta(days=7)).isoformat())
 
 
 # ---------------------------------------------------------------- Webhooks

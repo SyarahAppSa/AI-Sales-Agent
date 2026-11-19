@@ -80,13 +80,29 @@ SECTORS: dict[str, dict[str, Any]] = {
         "keywords_ar": ["شركة ليموزين", "نقل ركاب", "سيارات أجرة"],
         "keywords_en": ["limousine company", "taxi company", "passenger transport"],
     },
-    "construction_fleet": {
-        "label": "المقاولات والمعدات الثقيلة",
-        "triggers": ["مقاولات", "معدات ثقيلة", "construction", "heavy equipment"],
-        "keywords_ar": ["شركة مقاولات أسطول معدات", "تأجير معدات ثقيلة"],
-        "keywords_en": ["construction company fleet", "heavy equipment rental"],
-    },
 }
+
+from .segments import (DEFAULT_DECISION_UNIT, INDUSTRIAL_HINTS, REGION_TRIGGERS, REGIONS, SECTOR_OVERRIDES,
+                       USAGE_SEGMENTS)
+
+_BASE_OPERATIONAL = {
+    "transport_logistics": ["أسطول شاحنات", "أسطولنا", "شاحناتنا", "نقل بضائع بين المدن", "fleet of trucks", "our fleet"],
+    "refrigerated_transport": ["شاحنات مبردة", "نقل مبرد", "سلاسل التبريد", "cold chain", "reefer trucks"],
+    "delivery": ["توصيل الميل الأخير", "مندوبي توصيل", "أسطول التوصيل", "last-mile delivery", "delivery fleet"],
+    "car_rental": ["أسطول", "سيارة", "تأجير طويل الأجل", "fleet", "corporate leasing"],
+    "passenger_transport": ["أسطول", "سيارات ليموزين", "fleet"],
+}
+for _k, _v in SECTORS.items():
+    _v.setdefault("operational", _BASE_OPERATIONAL.get(_k, []))
+    _v.setdefault("decision_unit", DEFAULT_DECISION_UNIT.get(_k, "إدارة التشغيل"))
+    _v.setdefault("kind", "vertical")
+for _k, _v in USAGE_SEGMENTS.items():
+    SECTORS[_k] = {**_v, "kind": "usage"}
+for _k, _v in SECTOR_OVERRIDES.items():
+    SECTORS[_k] = {**SECTORS.get(_k, {}), **_v, "kind": "usage"}
+for _k, _v in SECTORS.items():
+    # المحلل يقارن بنص موحّد (بدون همزات/تاء مربوطة)
+    _v["triggers"] = [normalize_arabic(x).lower() for x in _v["triggers"]]
 
 EXCLUSION_HINTS = {
     "brokers": (["وسيط", "وسطاء", "broker"], ["وسطاء الشحن والنقل", "منصات الحجز والمقارنة",
@@ -100,11 +116,26 @@ PRIORITY_HINTS = {
 _AR_NUM = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
 
 
+_ZONE_WORDS = ("صناعي", "ميناء", "اللوجستية", "الاقتصادية", "للصناعات", "سدير")
+
+
 def _find_cities(t: str) -> list[str]:
-    found = []
+    found: list[str] = []
     for city, variants in CITIES.items():
         if any(normalize_arabic(v).lower() in t for v in variants):
             found.append(city)
+    want_zones = any(normalize_arabic(h).lower() in t for h in INDUSTRIAL_HINTS)
+    for region, trigs in REGION_TRIGGERS.items():
+        if any(normalize_arabic(tr).lower() in t for tr in trigs):
+            for place in REGIONS[region]:
+                is_zone = any(w in place for w in _ZONE_WORDS)
+                if (want_zones or not is_zone) and place not in found:
+                    found.append(place)
+    if want_zones:  # «المدن الصناعية والمناطق اللوجستية» للمدن المذكورة
+        for city in list(found):
+            for region, places in REGIONS.items():
+                if city in places:
+                    found.extend(p for p in places if any(w in p for w in _ZONE_WORDS) and p not in found)
     return found
 
 
@@ -122,16 +153,14 @@ def _find_sectors(t: str) -> list[str]:
 
 
 def _find_quotas(text: str, sectors: list[str]) -> dict[str, int]:
+    """«٢٠٠ شركة نقل» → حصة لفئة. وإذا غطى رقم واحد عدة فئات («٨٠ لاختبار قطاعين») يُقسم بينها."""
     t = normalize_arabic(text.translate(_AR_NUM)).lower()
     quotas: dict[str, int] = {}
-    for m in re.finditer(r"(\d{1,4})\s*(?:شركه|شركات|منشاه|منشآت)?\s*([^\d،,.؛]{2,60})", t):
+    for m in re.finditer(r"(\d{1,4})\s*(?:شركه|شركات|منشاه|منشآت)?\s*([^\d،,.؛]{2,160})", t):
         n, tail = int(m.group(1)), m.group(2)
-        for key in sectors:
-            if key in quotas:
-                continue
-            if any(normalize_arabic(tr).lower() in tail for tr in SECTORS[key]["triggers"]):
-                quotas[key] = n
-                break
+        hit = [k for k in sectors if k not in quotas and any(tr in tail for tr in SECTORS[k]["triggers"])]
+        for i, key in enumerate(hit):
+            quotas[key] = n // len(hit) + (1 if i < n % len(hit) else 0)
     return quotas
 
 
@@ -159,6 +188,17 @@ def parse_request_rules(text: str, daily_target: int = 400) -> dict[str, Any]:
     missing = [s for s in sectors if s not in quotas]
     for i, s in enumerate(missing):
         quotas[s] = remaining // len(missing) + (1 if i < remaining % len(missing) else 0)
+    exp_idx = None
+    for word in ("اختبار", "تجريبي", "تجربه"):
+        j = t.find(word)
+        if j >= 0:
+            exp_idx = j if exp_idx is None else min(exp_idx, j)
+    experimental = set()
+    if exp_idx is not None:
+        tail = t[exp_idx:]
+        for key in sectors:
+            if any(tr in tail for tr in SECTORS[key]["triggers"]):
+                experimental.add(key)
     cats = []
     for i, key in enumerate(sectors):
         s = SECTORS[key]
@@ -166,6 +206,7 @@ def parse_request_rules(text: str, daily_target: int = 400) -> dict[str, Any]:
             "sector_key": key, "label": s["label"], "cities": cities,
             "keywords_ar": s["keywords_ar"], "keywords_en": s["keywords_en"],
             "priority": i + 1, "priority_signals": signals, "quota": quotas.get(key, 0),
+            "is_experiment": key in experimental,
         })
     return {
         "name": "حملة " + " و".join(SECTORS[k]["label"] for k in sectors) + " — " + "، ".join(cities),
@@ -189,7 +230,7 @@ TARGETING_SCHEMA = {
         "categories": {"type": "array", "items": {
             "type": "object", "additionalProperties": False,
             "required": ["sector_key", "label", "cities", "keywords_ar", "keywords_en", "priority",
-                         "priority_signals", "quota"],
+                         "priority_signals", "quota", "is_experiment"],
             "properties": {
                 "sector_key": {"type": "string"},
                 "label": {"type": "string"},
@@ -199,6 +240,7 @@ TARGETING_SCHEMA = {
                 "priority": {"type": "integer"},
                 "priority_signals": {"type": "array", "items": {"type": "string"}},
                 "quota": {"type": "integer"},
+                "is_experiment": {"type": "boolean"},
             }}},
     },
 }
@@ -210,6 +252,11 @@ _SYSTEM = """أنت محلل استهداف مبيعات لشركة «سيارة
 - لكل فئة اكتب 4-8 عبارات بحث عربية و3-6 إنجليزية تشمل المرادفات والأنشطة القريبة (مثال: النقل المبرد يشمل نقل الأغذية المبردة وسلاسل التبريد والتوزيع المبرد).
 - الحصص: إن ذكر المدير أرقامًا لكل فئة فالتزم بها، وإلا وزّع الهدف اليومي ({target}) حسب الأولوية. مجموع الحصص = الهدف اليومي.
 - exclusions: الأنشطة المستبعدة بوضوح (مثل الوسطاء ومنصات الحجز).
+- إن وصف المدير طريقة تشغيل المركبات بدل القطاع (مثل «فرق ميدانية تزور العملاء») فاختر الشريحة المناسبة عبر القطاعات
+  (field_services, distribution_supply, contractors_operators, own_delivery, staff_transport, fleet_partners)
+  واكتب كلمات بحث تشغيلية (مثل «فرق صيانة متنقلة»، «أسطول التوزيع»، field service fleet، last-mile delivery).
+- المناطق تتحول إلى مدنها ومحافظاتها، وأضف المدن الصناعية والمناطق اللوجستية إذا طلبها المدير.
+- is_experiment = true للفئات التي طلب المدير «اختبارها» كشريحة جديدة.
 - priority 1 هي الأعلى."""
 
 

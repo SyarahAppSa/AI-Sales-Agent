@@ -19,6 +19,8 @@
 </div></div>
 
 <div class="card"><h2>الفئات وحصصها من الهدف اليومي</h2>
+{% set exp = parsed.categories|selectattr('is_experiment')|map(attribute='quota')|sum %}{% set allq = parsed.categories|map(attribute='quota')|sum %}
+<p class="small muted" style="margin-top:-6px">الإجمالي {{ allq }} شركة يوميًا: {{ allq - exp }} للقطاعات الحالية و{{ exp }} لاختبار شرائح جديدة. تظهر نتائج كل فئة في <a href="/weekly-report">التقرير الأسبوعي للشرائح</a>.</p>
 <input type="hidden" name="cat_count" value="{{ parsed.categories|length + 1 }}">
 {% for c in parsed.categories + [{'sector_key':'','label':'','cities':[],'keywords_ar':[],'keywords_en':[],'priority':parsed.categories|length+1,'priority_signals':[],'quota':0,'new':True}] %}
 {% set i = loop.index0 %}
@@ -41,6 +43,7 @@
     <div><label>كلمات البحث الإنجليزية</label><textarea rows="2" name="cat_{{ i }}_keywords_en" class="ltr" style="text-align:left">{{ c.keywords_en|join(', ') }}</textarea></div>
   </div>
   <div class="chips"><label><input type="checkbox" name="cat_{{ i }}_active" {{ 'checked' if c.get('active', True) }}> الفئة نشطة</label>
+  <label><input type="checkbox" name="cat_{{ i }}_experiment" {{ 'checked' if c.get('is_experiment') }}> فئة اختبار (من حصة اختبار الشرائح الجديدة)</label>
   {% if not c.new %}<label><input type="checkbox" name="cat_{{ i }}_delete"> حذف الفئة</label>{% endif %}</div>
   {% if c.new %}</details>{% endif %}
 </div>

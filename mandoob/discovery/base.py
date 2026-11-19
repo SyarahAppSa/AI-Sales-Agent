@@ -27,6 +27,8 @@ class Candidate:
     fit_hint: str = ""                # سبب ترشيح أولي من المصدر (مثل الذكاء الاصطناعي)
     evidence_url: str | None = None
     contacts: list[FoundContact] = field(default_factory=list)  # بيانات منشورة مع مصدرها فقط
+    lead_source: str | None = None
+    signals: list = field(default_factory=list)  # إشارات توقيت مرفقة من المصدر (مثل خبر افتتاح مستودع)
 
 
 class SourceError(RuntimeError):
