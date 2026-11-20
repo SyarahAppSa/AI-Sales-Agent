@@ -15,6 +15,7 @@
   ('dash', 'grid', 'لوحة التحكم', '/', []),
 ] + ([('emerg', 'bell', 'لوحة طوارئ', '/emergency', [])] if can_emergency else []) + [
   ('social', 'users', 'مواقع التواصل الاجتماعي', '/social', []),
+  ('crm', 'building', 'عملاء CRM', '/crm', []),
   ('find', 'search', 'البحث عن العملاء', None, [('/prospects', 'العملاء المحتملون'), ('/prospecting', 'البحث عن العملاء'),
       ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
   ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),
@@ -25,6 +26,7 @@
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
       ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]),
 ] %}{% else %}{% set groups = [
+  ('crm', 'building', 'عملاء CRM', '/portal/crm', []),
   ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات'),
       ('/portal/lists', 'قائمة عملاء إدارية')]),
   ('sales', 'chart', 'المبيعات والمتابعة', None, [('/portal/kit', 'ملفات طلبات العملاء')]),

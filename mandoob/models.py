@@ -226,6 +226,16 @@ class Company(Base):
     contact_status_by_id: Mapped[Optional[int]] = mapped_column(Integer)
     last_note: Mapped[Optional[str]] = mapped_column(Text)
     last_note_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # «عملاء CRM»: نسخة للقراءة من crm.syarahapp.sa — المفتاح رقم العميل في الـCRM (لا تكرار عند إعادة السحب)
+    crm_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+    crm_number: Mapped[Optional[str]] = mapped_column(String(80), index=True)  # الرقم الظاهر للعميل في الـCRM
+    crm_source: Mapped[Optional[str]] = mapped_column(String(20))       # api / file
+    crm_status: Mapped[Optional[str]] = mapped_column(String(120))
+    crm_contact_name: Mapped[Optional[str]] = mapped_column(String(200))
+    crm_owner_name: Mapped[Optional[str]] = mapped_column(String(200))  # الموظف الذي يعمل على العميل في الـCRM
+    crm_notes: Mapped[Optional[str]] = mapped_column(Text)               # الملاحظات المسجلة أمام العميل في الـCRM
+    crm_raw: Mapped[Optional[dict]] = mapped_column(JSON)
+    crm_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_note_by_id: Mapped[Optional[int]] = mapped_column(Integer)
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_attempt_by_id: Mapped[Optional[int]] = mapped_column(Integer)
@@ -366,6 +376,7 @@ class ExistingCustomer(Base):
     domain: Mapped[Optional[str]] = mapped_column(String(200))
     phone: Mapped[Optional[str]] = mapped_column(String(40))
     email: Mapped[Optional[str]] = mapped_column(String(200))
+    crm_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)  # مصدره «عملاء CRM»
 
 
 class Suppression(Base):

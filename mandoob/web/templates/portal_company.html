@@ -2,6 +2,10 @@
 <div class="top"><div><h1><span translate="no">{{ c.name }}</span></h1><p class="sub" style="margin:0">{{ c.activity }} — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></p></div>
 <div class="row"><a class="btn sm p" href="/portal/kit?company={{ c.id }}">ملفات طلبات العملاء</a><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
 <div class="grid g2"><div>
+{% if c.crm_id %}<div class="card"><h2>من الـCRM</h2>
+<div class="small"><b>رقم العميل:</b> <span translate="no">{{ c.crm_number or c.crm_id }}</span>{% if c.crm_status %} · <b>الحالة:</b> <span translate="no">{{ c.crm_status }}</span>{% endif %}{% if c.crm_owner_name %} · <b>الموظف في الـCRM:</b> <span translate="no">{{ c.crm_owner_name }}</span>{% endif %}{% if c.crm_contact_name %} · <b>مسؤول التواصل:</b> <span translate="no">{{ c.crm_contact_name }}</span>{% endif %}</div>
+{% if c.crm_notes %}<div class="small" style="margin-top:6px;white-space:pre-line" translate="no">{{ c.crm_notes }}</div>{% endif %}
+<div class="small muted" style="margin-top:4px">نسخة للقراءة — آخر تحديث {{ fmt(c.crm_synced_at) }}</div></div>{% endif %}
 <div class="card"><h2>بيانات العميل</h2>
 {% set ph = c.primary('phone') %}{% set em = c.primary('email') %}
 {% if can('see_phone') and ph %}<div class="kv"><span class="k">الهاتف</span><span><a class="tel" dir="ltr" href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ ph.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ ph.source_url }}" target="_blank" rel="noopener" class="ltr">{{ ph.source_url.split('//')[-1][:50] }}</a></div>{% endif %}

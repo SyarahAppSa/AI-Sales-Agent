@@ -10,6 +10,10 @@
 
 <div class="grid g2">
 <div>
+{% if c.crm_id %}<div class="card"><h2>من الـCRM</h2>
+<div class="small"><b>رقم العميل:</b> <span translate="no">{{ c.crm_number or c.crm_id }}</span>{% if c.crm_status %} · <b>الحالة:</b> <span translate="no">{{ c.crm_status }}</span>{% endif %}{% if c.crm_owner_name %} · <b>الموظف في الـCRM:</b> <span translate="no">{{ c.crm_owner_name }}</span>{% endif %}{% if c.crm_contact_name %} · <b>مسؤول التواصل:</b> <span translate="no">{{ c.crm_contact_name }}</span>{% endif %}</div>
+{% if c.crm_notes %}<div class="small" style="margin-top:6px;white-space:pre-line" translate="no">{{ c.crm_notes }}</div>{% endif %}
+<div class="small muted" style="margin-top:4px">نسخة للقراءة — آخر تحديث {{ fmt(c.crm_synced_at) }}</div></div>{% endif %}
 <div class="card"><h2>بيانات التواصل الموثّقة</h2>
 {% set has_ph = c.contacts|selectattr('kind','equalto','phone')|selectattr('verified')|list %}{% set has_em = c.contacts|selectattr('kind','equalto','email')|selectattr('verified')|list %}
 {% if c.data_status != 'complete' %}<div class="health warn" style="margin-bottom:12px"><span class="dotc"></span><div class="t">

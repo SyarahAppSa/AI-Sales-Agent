@@ -660,6 +660,7 @@ def _phone_full(v: str) -> str:
 
 
 templates.env.globals.update(phone_full=_phone_full)
+templates.env.filters["todt"] = lambda v: datetime.fromisoformat(v) if isinstance(v, str) and v else v
 
 
 LIST_STATUS = {"replied": "تم التواصل — رد", "no_answer": "تم التواصل — لم يرد", "wrong_number": "رقم خاطئ",
@@ -3688,3 +3689,93 @@ async def kit_sent(request: Request, s=Depends(get_db, scope="function")):
     log_activity(s, comp.id, "note", "أُرسلت ملفات للعميل", f"{names} — بواسطة {user.name}", user_id=user.id)
     flash(request, f"سُجّل إرسال {len(items)} عنصر إلى العميل")
     return back(f"{base}?company={comp.id}")
+
+
+# ---------------------------------------------------------------- عملاء CRM (نسخة للقراءة فقط من crm.syarahapp.sa)
+
+def _crm_page(request: Request, s, user: User, base: str, q: str, page: int):
+    from .. import crm
+    from ..permissions import can
+    stmt = crm.visible_query(s, user, q)
+    total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    per = 50
+    page = max(1, page)
+    rows = list(s.scalars(stmt.order_by(Company.name).offset((page - 1) * per).limit(per)))
+    owners = {u.id: u.name for u in s.scalars(select(User))}
+    manage = base == "/crm" and user.role in ("admin", "manager")
+    conn, st = crm.get_conn(s), crm.get_state(s)
+    all_total = s.scalar(select(func.count(Company.id)).where(Company.crm_id.isnot(None))) or 0
+    return render(request, "crm.html", user, s, rows=rows, total=total, all_total=all_total, q=q, page=page,
+                  pages=max(1, -(-total // per)), owners=owners, base=base, manage=manage,
+                  is_admin=user.role == "admin" and base == "/crm", st=st,
+                  conn={"username": conn.get("username"), "has_password": bool(conn.get("password_enc")),
+                        "entity": conn.get("entity"), "daily": conn.get("daily"), "base_url": conn.get("base_url")},
+                  see_phone=can(user, "see_phone") or base == "/crm", see_email=can(user, "see_email") or base == "/crm",
+                  crm_num=crm.display_number)
+
+
+@app.get("/crm", response_class=HTMLResponse)
+def crm_page(request: Request, q: str = "", page: int = 1, user: User = Depends(current_user),
+             s=Depends(get_db, scope="function")):
+    return _crm_page(request, s, user, "/crm", q, page)
+
+
+@app.get("/portal/crm", response_class=HTMLResponse)
+def portal_crm_page(request: Request, q: str = "", page: int = 1, user: User = Depends(staff_user),
+                    s=Depends(get_db, scope="function")):
+    return _crm_page(request, s, user, "/portal/crm", q, page)
+
+
+@app.post("/crm/settings")
+async def crm_settings(request: Request, user: User = Depends(require_admin), s=Depends(get_db, scope="function")):
+    """إعدادات الربط الآمنة: كلمة المرور تُشفّر ولا تُعاد للواجهة."""
+    from .. import crm
+    from ..auth import audit
+    form = await request.form()
+    crm.set_conn(s, username=(form.get("username") or "").strip()[:200] or None,
+                 password=(form.get("password") or "") or None,
+                 entity=form.get("entity") if form.get("entity") in ("contact", "lead") else None,
+                 daily=form.get("daily") == "on")
+    audit(s, user, "crm_settings", None, username=(form.get("username") or "").strip()[:200],
+          password_changed=bool(form.get("password")))
+    flash(request, "حُفظت إعدادات الربط (كلمة المرور مشفّرة ولا تُعرض). اضغط «اختبار الاتصال».")
+    return back("/crm#settings")
+
+
+@app.post("/crm/test")
+def crm_test(request: Request, user: User = Depends(require_admin), s=Depends(get_db, scope="function")):
+    from .. import crm
+    try:
+        r = crm.test_connection()
+        flash(request, f"نجح الاتصال بالـCRM: {r['total']} عميل. الحقول: " + "، ".join(r["fields"][:25]))
+    except crm.CrmError as e:
+        flash(request, f"تعذّر الاتصال: {e}", "err")
+    return back("/crm#settings")
+
+
+@app.post("/crm/sync")
+def crm_sync(request: Request, mode: str = Form("full"), user: User = Depends(require_manager),
+             s=Depends(get_db, scope="function")):
+    from .. import crm
+    if not crm.has_credentials(crm.get_conn(s)):
+        flash(request, "أدخل بيانات الدخول إلى الـCRM في «إعدادات الربط» أولًا، أو استورد ملف Excel", "err")
+        return back("/crm")
+    crm.set_state(s, requested={"limit": 20} if mode == "sample" else {"full": True}, requested_by=user.name)
+    flash(request, ("سيُسحب عينة من ٢٠ عميلًا" if mode == "sample" else "سيبدأ التحديث من الـCRM") + " خلال دقيقة. حدّث الصفحة لرؤية النتيجة.")
+    return back("/crm")
+
+
+@app.post("/crm/import")
+async def crm_import(request: Request, file: UploadFile = File(...), user: User = Depends(require_manager),
+                     s=Depends(get_db, scope="function")):
+    from .. import crm
+    from ..prospects import UploadError
+    data = await file.read()
+    try:
+        st = crm.import_file(file.filename or "crm.xlsx", data)
+    except UploadError as e:
+        flash(request, f"تعذّر قراءة الملف: {e}", "err")
+        return back("/crm")
+    flash(request, f"استُورد ملف الـCRM: {st['added']} مضاف، {st['updated']} محدّث"
+                   + (f" (منها {st['linked']} رُبط بعميل موجود)" if st["linked"] else "") + f"، {st['failed']} متعذّر")
+    return back("/crm")

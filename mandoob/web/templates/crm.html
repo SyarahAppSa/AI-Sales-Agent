@@ -1,0 +1,79 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>عملاء CRM</h1>
+<p class="sub">نسخة للقراءة فقط من عملاء الشركة في crm.syarahapp.sa{% if not manage %}، حسب صلاحياتك{% endif %}. لا يُرسل أي تعديل إلى الـCRM.</p></div></div>
+
+<div class="kpis">
+  <div class="kpi"><div class="l">{{ 'عملاء الـCRM في المنصة' if manage else 'عملاء الـCRM المسندون إليك' }}</div><div class="v">{{ all_total if manage else total }}</div>
+    <div class="s">العدد الفعلي — مستبعدون من عدّاد العملاء المحتملين الجدد</div></div>
+  {% if manage %}{% set L = st.last or {} %}
+  <div class="kpi"><div class="l">آخر تحديث</div><div class="v small" style="font-size:18px">{{ fmt(st.last_at|todt) if st.last_at else '—' }}</div>
+    <div class="s">{{ {'api':'من الربط المباشر','file':'من ملف: ' ~ (st.file_name or '')}.get(st.source, '') }}{{ ' — عينة' if st.sample }}</div></div>
+  <div class="kpi"><div class="l">مضاف</div><div class="v">{{ L.added or 0 }}</div></div>
+  <div class="kpi"><div class="l">محدّث</div><div class="v">{{ L.updated or 0 }}</div><div class="s">{% if L.linked %}منها {{ L.linked }} رُبط بعميل موجود{% endif %}</div></div>
+  <div class="kpi {{ 'attn' if L.failed }}"><div class="l">متعذّر استيراده</div><div class="v">{{ L.failed or 0 }}</div></div>
+  {% endif %}
+</div>
+
+{% if manage %}
+<div class="card">
+  {% if st.running %}<p><span class="pill info">جارٍ السحب</span> {% if st.progress %}{{ st.progress.done }} من {{ st.progress.total }}{% endif %}</p>{% endif %}
+  {% if st.requested %}<p><span class="pill info">طلب تحديث بانتظار البدء (خلال دقيقة)</span></p>{% endif %}
+  {% if st.error %}<p class="err" style="color:var(--err)"><b>آخر محاولة تعذّرت:</b> {{ st.error }}</p>{% endif %}
+  {% if (st.last or {}).failures %}<details><summary class="small">أسباب التعذّر ({{ st.last.failures|length }})</summary>
+    <table class="small"><tr><th>رقم العميل في الـCRM</th><th>الاسم</th><th>السبب</th></tr>
+    {% for f in st.last.failures[:100] %}<tr><td translate="no">{{ f.crm_id }}</td><td translate="no">{{ f.name }}</td><td>{{ f.reason }}</td></tr>{% endfor %}</table></details>{% endif %}
+  <div class="row" style="align-items:flex-end;gap:10px;margin-top:6px">
+    {% if conn.has_password %}
+    <form method="post" action="/crm/sync"><input type="hidden" name="mode" value="full"><button class="btn p">تحديث من الـCRM</button></form>
+    <form method="post" action="/crm/sync"><input type="hidden" name="mode" value="sample"><button class="btn">سحب عينة (٢٠ عميلًا)</button></form>
+    {% else %}<span class="small muted">الربط المباشر غير مفعّل بعد — {% if is_admin %}أدخل بيانات الدخول في «إعدادات الربط» أدناه{% else %}يُدخل مدير المنصة بيانات الدخول{% endif %}، أو استورد ملف Excel.</span>{% endif %}
+    <form method="post" action="/crm/import" enctype="multipart/form-data" class="row" style="gap:8px;align-items:center">
+      <label class="btn">استيراد ملف Excel / CSV من الـCRM<input type="file" name="file" accept=".xlsx,.xls,.csv" hidden onchange="this.form.submit()"></label>
+    </form>
+  </div>
+  <p class="small muted" style="margin-top:6px">رقم العميل في الـCRM يمنع التكرار عند إعادة السحب. العميل الموجود في المنصة بالجوال أو البريد يُربط بسجله نفسه ويبقى مندوبه وملاحظاته وسجل اتصاله. يُحدَّث تلقائيًا مرة يوميًا عند تفعيل الربط.</p>
+</div>
+{% endif %}
+
+{% if is_admin %}
+<details class="card" id="settings" {{ 'open' if not conn.has_password }}><summary><b>إعدادات الربط الآمنة</b> <span class="small muted">— مدير المنصة فقط</span></summary>
+<form method="post" action="/crm/settings" autocomplete="off" style="margin-top:10px">
+  <div class="row">
+    <div><label>عنوان واجهة الـCRM</label><input value="{{ conn.base_url }}" disabled class="ltr" style="text-align:left"></div>
+    <div><label>اسم المستخدم في الـCRM</label><input name="username" value="{{ conn.username or '' }}" class="ltr" style="text-align:left" autocomplete="off"></div>
+    <div><label>كلمة المرور</label><input type="password" name="password" placeholder="{{ 'محفوظة مشفّرة — اتركها فارغة للإبقاء عليها' if conn.has_password else 'أدخل كلمة المرور' }}" autocomplete="new-password"></div>
+    <div style="flex:0 0 170px"><label>ما يُنسخ</label><select name="entity"><option value="contact" {{ 'selected' if conn.entity=='contact' }}>العملاء (Contacts)</option><option value="lead" {{ 'selected' if conn.entity=='lead' }}>الصفقات (Leads)</option></select></div>
+  </div>
+  <div class="chips"><label><input type="checkbox" name="daily" {{ 'checked' if conn.daily }}> تحديث تلقائي مرة يوميًا</label></div>
+  <p class="small muted">تُحفظ كلمة المرور مشفّرة على الخادم ولا تُعرض أبدًا. يُفضّل حساب CRM مخصص للربط بصلاحية قراءة فقط.</p>
+  <button class="btn p">حفظ</button>
+</form>
+{% if conn.has_password %}<form method="post" action="/crm/test" style="margin-top:8px"><button class="btn">اختبار الاتصال</button></form>{% endif %}
+{% if st.sample_fields %}<p class="small muted" style="margin-top:8px">حقول الـCRM المقروءة: <span class="ltr" translate="no">{{ st.sample_fields|join(', ') }}</span></p>{% endif %}
+</details>
+{% endif %}
+
+<div class="card">
+<form method="get" action="{{ base }}" class="row" style="align-items:flex-end;margin-bottom:8px">
+  <div style="flex:1 1 320px"><label for="crm-q">بحث باسم الشركة أو رقم الجوال أو رقم العميل</label><input id="crm-q" name="q" value="{{ q }}"></div>
+  <button class="btn">بحث</button>{% if q %}<a class="btn" href="{{ base }}">مسح</a>{% endif %}
+  <span class="small muted">{{ total }} عميل</span>
+</form>
+<div class="tablewrap"><table>
+<tr><th>رقم العميل في الـCRM</th><th>اسم الشركة</th><th>مسؤول التواصل</th><th>رقم الجوال</th><th>البريد</th><th>المدينة</th><th>حالة العميل</th><th>الموظف في الـCRM</th><th>ملاحظات الـCRM</th><th>المندوب في المنصة</th></tr>
+{% for c in rows %}<tr>
+<td translate="no" class="small">{{ crm_num(c) }}</td>
+<td><a href="{{ '/companies/%d' % c.id if base == '/crm' else '/portal/companies/%d' % c.id }}" translate="no">{{ c.name }}</a></td>
+<td translate="no">{{ c.crm_contact_name or '—' }}</td>
+<td class="phcell">{% if see_phone %}{% for ct in c.contacts if ct.kind == 'phone' %}<div class="ph" translate="no" dir="ltr">{{ ct.value }}</div>{% else %}—{% endfor %}{% else %}<span class="small muted">مخفي</span>{% endif %}</td>
+<td translate="no" class="ltr">{% if see_email %}{% for ct in c.contacts if ct.kind == 'email' %}{{ ct.value }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}{% else %}<span class="small muted">مخفي</span>{% endif %}</td>
+<td translate="no">{{ c.city or '—' }}</td>
+<td translate="no">{% if c.crm_status %}<span class="pill">{{ c.crm_status }}</span>{% else %}—{% endif %}</td>
+<td translate="no">{{ c.crm_owner_name or '—' }}</td>
+<td translate="no" class="small" style="max-width:260px">{% if c.crm_notes %}{% if c.crm_notes|length > 90 %}<details><summary>{{ c.crm_notes[:90] }}…</summary><div style="white-space:pre-line">{{ c.crm_notes }}</div></details>{% else %}<span style="white-space:pre-line">{{ c.crm_notes }}</span>{% endif %}{% else %}—{% endif %}</td>
+<td translate="no">{{ owners.get(c.owner_id, '—') if c.owner_id else '—' }}</td>
+</tr>{% else %}<tr><td colspan="10" class="muted">{% if q %}لا نتائج لـ«{{ q }}»{% elif manage %}لم يُنسخ أي عميل بعد — فعّل الربط أو استورد ملفًا{% else %}لا يوجد عملاء CRM مسندون إليك بعد{% endif %}</td></tr>{% endfor %}
+</table></div>
+{% if pages > 1 %}<div class="row small" style="margin-top:8px;gap:8px">{% if page > 1 %}<a class="btn" href="?q={{ q|urlencode }}&page={{ page - 1 }}">السابق</a>{% endif %}<span>صفحة {{ page }} من {{ pages }}</span>{% if page < pages %}<a class="btn" href="?q={{ q|urlencode }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>{% endif %}
+</div>
+{% endblock %}

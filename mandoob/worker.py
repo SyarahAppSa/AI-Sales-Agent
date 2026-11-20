@@ -25,6 +25,8 @@ def configure(scheduler) -> None:
     scheduler.add_job(jobs.enrich_tick, "interval", minutes=10, id="enrich", max_instances=1, coalesce=True)
     from . import prospects
     scheduler.add_job(prospects.tick, "interval", minutes=1, id="prospects", max_instances=1, coalesce=True)
+    from . import crm
+    scheduler.add_job(crm.tick, "interval", minutes=1, id="crm_sync", max_instances=1, coalesce=True)
     from . import emergency
     scheduler.add_job(emergency.worker_heartbeat, "interval", minutes=1, id="heartbeat", max_instances=1, coalesce=True)
     from . import officials
