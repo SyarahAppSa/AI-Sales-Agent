@@ -666,18 +666,35 @@ LIST_STATUS = {"replied": "تم التواصل — رد", "no_answer": "تم ا�
                "do_not_contact": "طلب عدم التواصل"}
 
 
-def _admin_lists_view(request, user, s, lid, q, page, cstate, base):
-    from ..models import AdminList, AdminListContact
-    lists = list(s.execute(select(AdminList.id, AdminList.name, AdminList.sheet, AdminList.created_at, AdminList.note)
-                           .order_by(AdminList.id.desc())))
+def _admin_lists_view(request, user, s, lid, q, page, cstate, base, owner=""):
+    """الإدارة: كل القوائم مع الإسناد. الموظف: ما أُسند إليه فقط (القوائم التي فيها صفوف مسندة إليه)."""
+    from ..models import AdminList, AdminListAssignment, AdminListContact
+    staff = base.startswith("/portal")
+    if staff:
+        mine = list(s.execute(select(AdminListAssignment.list_id, AdminListAssignment.row_idx)
+                              .where(AdminListAssignment.owner_id == user.id)))
+        my_lists = {l_ for l_, _ in mine}
+        lists = [x for x in s.execute(select(AdminList.id, AdminList.name, AdminList.sheet, AdminList.created_at, AdminList.note)
+                                      .order_by(AdminList.id.desc())) if x[0] in my_lists]
+        if lid not in my_lists:
+            lid = lists[0][0] if lists else None
+    else:
+        lists = list(s.execute(select(AdminList.id, AdminList.name, AdminList.sheet, AdminList.created_at, AdminList.note)
+                               .order_by(AdminList.id.desc())))
     cur = s.get(AdminList, lid) if lid else (s.get(AdminList, lists[0][0]) if lists else None)
-    rows, total, kinds, cmap, counts = [], 0, {}, {}, {"all": 0, "none": 0, "done": 0, "replied": 0}
+    rows, total, kinds, cmap, amap = [], 0, {}, {}, {}
+    counts = {"all": 0, "none": 0, "done": 0, "replied": 0, "unassigned": 0, "assigned": 0}
     if cur is not None:
         kinds = _col_kinds(cur.headers or [], cur.rows or [])
         cmap = {x.row_idx: x for x in s.scalars(select(AdminListContact).where(AdminListContact.list_id == cur.id))}
+        amap = {x.row_idx: x for x in s.scalars(select(AdminListAssignment).where(AdminListAssignment.list_id == cur.id))}
         data = list(enumerate(cur.rows or []))
-        counts = {"all": len(data), "done": len(cmap), "none": len(data) - len(cmap),
-                  "replied": sum(1 for x in cmap.values() if x.status == "replied")}
+        if staff:
+            data = [(i, r) for i, r in data if i in amap and amap[i].owner_id == user.id]
+        idxs = {i for i, _ in data}
+        counts = {"all": len(data), "done": sum(1 for i in idxs if i in cmap), "none": sum(1 for i in idxs if i not in cmap),
+                  "replied": sum(1 for i in idxs if i in cmap and cmap[i].status == "replied"),
+                  "unassigned": sum(1 for i in idxs if i not in amap), "assigned": sum(1 for i in idxs if i in amap)}
         if q:
             ql = q.strip().lower()
             data = [(i, r) for i, r in data if any(ql in str(c).lower() for c in r)]
@@ -685,21 +702,87 @@ def _admin_lists_view(request, user, s, lid, q, page, cstate, base):
             data = [(i, r) for i, r in data if i not in cmap]
         elif cstate == "done":
             data = [(i, r) for i, r in data if i in cmap]
+        elif cstate == "unassigned":
+            data = [(i, r) for i, r in data if i not in amap]
+        elif cstate == "assigned":
+            data = [(i, r) for i, r in data if i in amap]
         elif cstate in LIST_STATUS:
             data = [(i, r) for i, r in data if i in cmap and cmap[i].status == cstate]
+        if owner.isdigit():
+            data = [(i, r) for i, r in data if i in amap and amap[i].owner_id == int(owner)]
         total = len(data)
         rows = data[(page - 1) * 200: page * 200]
-    sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
+    if staff:
+        sizes = {}
+        for i, *_ in lists:
+            sizes[i] = s.scalar(select(func.count(AdminListAssignment.id)).where(AdminListAssignment.list_id == i,
+                                                                                  AdminListAssignment.owner_id == user.id)) or 0
+    else:
+        sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
     skip_first = bool(cur and cur.headers and str(cur.headers[0]).strip() in ("م", "#", "No", "no", "رقم", "ت", "مسلسل"))
+    staff_users = list(s.scalars(select(User).where(User.active.is_(True), User.role == "rep").order_by(User.name))) if not staff else []
+    names = {u.id: u.name for u in s.scalars(select(User))}
     return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
-                  sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first, cmap=cmap, cstate=cstate, counts=counts,
-                  LIST_STATUS=LIST_STATUS, base=base, can_manage=user.role in ("admin", "manager"))
+                  sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first, cmap=cmap, amap=amap, cstate=cstate,
+                  counts=counts, LIST_STATUS=LIST_STATUS, base=base, can_manage=user.role in ("admin", "manager") and not staff,
+                  staff_users=staff_users, names=names, owner=owner, staff_view=staff)
 
 
 @app.get("/admin-lists", response_class=HTMLResponse)
-def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "",
+def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "", owner: str = "",
                 user: User = Depends(require_manager), s=Depends(get_db)):
-    return _admin_lists_view(request, user, s, lid, q, page, cstate, "/admin-lists")
+    return _admin_lists_view(request, user, s, lid, q, page, cstate, "/admin-lists", owner)
+
+
+@app.post("/admin-lists/{lid}/assign")
+async def admin_lists_assign(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """إسناد عملاء من القائمة لموظف: عدد (١٠/٥٠/١٠٠) من غير المسندين بالترتيب ضمن البحث/الفلتر الحالي، أو المحدد يدويًا.
+    المسند لموظف آخر لا يُنقل إلا بتأكيد «نقل المسند لموظف آخر»."""
+    from ..auth import audit
+    from ..models import AdminList, AdminListAssignment, AdminListContact
+    form = await request.form()
+    al = s.get(AdminList, lid) or _404()
+    owner_id = int(form.get("owner_id") or 0)
+    u = s.get(User, owner_id) if owner_id else None
+    ret = _safe_back(request, f"/admin-lists?lid={lid}")
+    if not u or not u.active:
+        flash(request, "اختر موظفًا نشطًا.", "err")
+        return back(ret)
+    reassign = bool(form.get("reassign"))
+    amap = {x.row_idx: x for x in s.scalars(select(AdminListAssignment).where(AdminListAssignment.list_id == lid))}
+    picked = [int(x) for x in form.getlist("rows") if str(x).isdigit()]
+    if not picked:
+        n = int(form.get("count") or 0)
+        if n not in (10, 50, 100):
+            flash(request, "اختر العدد: ١٠ أو ٥٠ أو ١٠٠، أو حدّد عملاء من الجدول.", "err")
+            return back(ret)
+        q, cstate = (form.get("q") or "").strip().lower(), form.get("cstate") or ""
+        cmap = {x.row_idx for x in s.scalars(select(AdminListContact).where(AdminListContact.list_id == lid))}
+        for i, r in enumerate(al.rows or []):
+            if len(picked) >= n:
+                break
+            if i in amap or (q and not any(q in str(c).lower() for c in r)):
+                continue
+            if cstate == "none" and i in cmap:
+                continue
+            picked.append(i)
+    done = skipped = 0
+    for i in picked:
+        if not (0 <= i < len(al.rows or [])):
+            continue
+        x = amap.get(i)
+        if x is not None and x.owner_id != u.id and not reassign:
+            skipped += 1
+            continue
+        if x is None:
+            s.add(AdminListAssignment(list_id=lid, row_idx=i, owner_id=u.id, assigned_by=user.id))
+        else:
+            x.owner_id, x.assigned_by, x.assigned_at = u.id, user.id, now_utc()
+        done += 1
+    audit(s, user, "assign_customers", u, source="admin_list", list=lid, count=done)
+    flash(request, f"أُسند {done} عميل إلى {u.name}" + (f" — وتُرك {skipped} مسند لموظف آخر (فعّل «نقل المسند» لنقله)" if skipped else "")
+          + "." if done or skipped else "لا يوجد عملاء غير مسندين مطابقون.", "ok" if done else "err")
+    return back(ret)
 
 
 @app.get("/portal/lists", response_class=HTMLResponse)
@@ -750,6 +833,10 @@ def admin_list_contact(lid: int, idx: int, request: Request, status: str = Form(
 @app.post("/portal/lists/{lid}/row/{idx}/contact")
 def portal_list_contact(lid: int, idx: int, request: Request, status: str = Form(""), note: str = Form(""),
                         confirm: str = Form(""), user: User = Depends(staff_user), s=Depends(get_db)):
+    from ..models import AdminListAssignment
+    if not s.scalar(select(AdminListAssignment.id).where(AdminListAssignment.list_id == lid, AdminListAssignment.row_idx == idx,
+                                                          AdminListAssignment.owner_id == user.id)):
+        raise HTTPException(403, "هذا العميل غير مسند إليك")
     return _list_contact(request, s, user, lid, idx, status, note, bool(confirm), "/portal/lists")
 
 

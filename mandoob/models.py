@@ -796,3 +796,15 @@ class Incident(Base):
     service: Mapped[str] = mapped_column(String(20))   # web / db / scheduler
     kind: Mapped[str] = mapped_column(String(40), default="error")
     message: Mapped[str] = mapped_column(String(500), default="")
+
+
+class AdminListAssignment(Base):
+    """إسناد صف من «قائمة عملاء إدارية» لموظف — الموظف يرى ما أُسند إليه فقط."""
+    __tablename__ = "admin_list_assignments"
+    __table_args__ = (UniqueConstraint("list_id", "row_idx", name="uq_admin_list_assign"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    list_id: Mapped[int] = mapped_column(ForeignKey("admin_lists.id"), index=True)
+    row_idx: Mapped[int] = mapped_column(Integer)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    assigned_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

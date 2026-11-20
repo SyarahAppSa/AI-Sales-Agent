@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}قائمة عملاء إدارية — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
-<div class="dash-head"><div><h1>قائمة عملاء إدارية</h1><div class="date">ارفع ملف Excel من جهازك فيظهر كما هو بكل أعمدته — دون تحقق أو تعديل.</div></div>
+<div class="dash-head"><div><h1>قائمة عملاء إدارية</h1><div class="date">{% if staff_view %}العملاء المسندون إليك من القوائم الإدارية — سجّل نتيجة تواصلك مع كل عميل.{% else %}ارفع ملف Excel من جهازك ثم أسند عملاءه للموظفين — الموظف يرى ما أُسند إليه فقط.{% endif %}</div></div>
 {% if cur %}<div class="row" style="flex:0 0 auto"><a class="btn p" href="{{ base }}/{{ cur.id }}.xlsx">تنزيل Excel</a></div>{% endif %}</div>
 
 {% if can_manage %}<div class="card"><form method="post" action="/admin-lists/upload" enctype="multipart/form-data" class="row" style="align-items:flex-end">
@@ -16,17 +16,27 @@
 <form method="get" class="row" style="flex:0 0 auto"><input type="hidden" name="lid" value="{{ cur.id }}"><input type="hidden" name="cstate" value="{{ cstate }}"><input name="q" value="{{ q }}" placeholder="بحث في القائمة" style="width:200px"><button class="btn sm">بحث</button></form>
 {% if can_manage %}<form method="post" action="/admin-lists/{{ cur.id }}/verify" style="flex:0 0 auto"><button class="btn sm" title="ينسخ الصفوف إلى طابور التحقق؛ القائمة تبقى كما هي">إرسال للتحقق{% if cur.sent_to_verify_at %} (أُرسلت){% endif %}</button></form>
 <form method="post" action="/admin-lists/{{ cur.id }}/delete" style="flex:0 0 auto" onsubmit="return confirm('حذف هذه القائمة؟')"><button class="btn sm d">حذف</button></form>{% endif %}</div></div>
-<div class="seg" style="margin-bottom:10px">{% for k, lab in [('', 'الكل (%d)' % counts.all), ('none', 'لم يُتواصل معهم (%d)' % counts.none), ('done', 'تم التواصل (%d)' % counts.done), ('replied', 'ردّوا (%d)' % counts.replied)] %}<a href="{{ base }}?lid={{ cur.id }}&cstate={{ k }}&q={{ q }}" class="{{ 'on' if cstate == k }}">{{ lab }}</a>{% endfor %}</div>
+<div class="seg" style="margin-bottom:10px">{% for k, lab in [('', 'الكل (%d)' % counts.all)] + ([('unassigned', 'غير مسندين (%d)' % counts.unassigned), ('assigned', 'مسندون (%d)' % counts.assigned)] if not staff_view else []) + [('none', 'لم يُتواصل معهم (%d)' % counts.none), ('done', 'تم التواصل (%d)' % counts.done), ('replied', 'ردّوا (%d)' % counts.replied)] %}<a href="{{ base }}?lid={{ cur.id }}&cstate={{ k }}&q={{ q }}&owner={{ owner }}" class="{{ 'on' if cstate == k }}">{{ lab }}</a>{% endfor %}</div>
+{% if can_manage %}<form method="post" action="/admin-lists/{{ cur.id }}/assign" id="assignform" class="card row" style="align-items:flex-end;padding:14px 18px;margin-bottom:10px;background:var(--brand-soft)">
+  <input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="cstate" value="{{ cstate }}">
+  <div><label>إسناد إلى الموظف</label><select name="owner_id" required><option value="">اختر موظفًا…</option>{% for u in staff_users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select></div>
+  <div><label>العدد (من غير المسندين بالترتيب)</label><select name="count"><option value="10">١٠ عملاء</option><option value="50">٥٠ عميلًا</option><option value="100" selected>١٠٠ عميل</option></select></div>
+  <label class="chips" style="flex:0 0 auto;margin:0 0 8px"><input type="checkbox" name="reassign"> نقل المسند لموظف آخر</label>
+  <button class="btn p" style="flex:0 0 auto">إسناد</button>
+  <div class="small muted" style="flex:1 1 100%">يُسند العدد المختار من نتيجة البحث/الفلتر الحالي. أو حدّد عملاء بعينهم من عمود ☐ في الجدول ثم اضغط «إسناد».</div>
+  <div style="flex:0 0 auto"><label>عرض عملاء موظف</label><select onchange="location='{{ base }}?lid={{ cur.id }}&owner='+this.value"><option value="">الكل</option>{% for u in staff_users %}<option value="{{ u.id }}" {{ 'selected' if owner == u.id|string }}>{{ u.name }}</option>{% endfor %}</select></div>
+</form>{% endif %}
 {% if cur.note %}<p class="small muted" style="margin:0 0 8px">{{ cur.note }} — رُفعت {{ fmt(cur.created_at) }}</p>{% endif %}
 <div class="tablewrap alist"><table translate="no">
-<thead><tr>{% if not skip_first %}<th class="n">#</th>{% endif %}{% for h in cur.headers %}<th class="k-{{ kinds.get(loop.index0, 'text') }}">{{ h }}</th>{% endfor %}<th class="cst">تم التواصل؟</th><th class="cst">هل رد؟</th><th class="cst">ملاحظة</th><th class="cst">تحديث التواصل</th></tr></thead>
-<tbody>{% for idx, r in rows %}{% set x = cmap.get(idx) %}<tr class="{{ 'done' if x }}">{% if not skip_first %}<td class="n">{{ idx + 1 }}</td>{% endif %}
+<thead><tr>{% if can_manage %}<th class="n">☐</th>{% endif %}{% if not skip_first %}<th class="n">#</th>{% endif %}{% for h in cur.headers %}<th class="k-{{ kinds.get(loop.index0, 'text') }}">{{ h }}</th>{% endfor %}<th class="cst">المسؤول</th><th class="cst">تم التواصل؟</th><th class="cst">هل رد؟</th><th class="cst">ملاحظة</th><th class="cst">تحديث التواصل</th></tr></thead>
+<tbody>{% for idx, r in rows %}{% set x = cmap.get(idx) %}{% set as_ = amap.get(idx) %}<tr class="{{ 'done' if x }}">{% if can_manage %}<td class="n"><input type="checkbox" name="rows" value="{{ idx }}" form="assignform"></td>{% endif %}{% if not skip_first %}<td class="n">{{ idx + 1 }}</td>{% endif %}
 {% for c in r %}{% set k = kinds.get(loop.index0, 'text') %}{% set v = cell(c) %}<td class="k-{{ k }}">{% if not v %}<span class="muted">—</span>
 {% elif k == 'phone' %}<a class="tel" dir="ltr" href="tel:{{ phone_full(v) }}">{{ phone_full(v) }}</a>
 {% elif k == 'email' %}<a class="ltr" href="mailto:{{ v }}">{{ v }}</a>
 {% elif k == 'url' %}<a class="btn sm" href="{{ v if v.startswith('http') else 'https://' ~ v }}" target="_blank" rel="noopener" title="{{ v }}">فتح ↗</a>
 {% elif k in ('date', 'num') %}<span class="ltr">{{ v }}</span>
 {% else %}{{ v }}{% endif %}</td>{% endfor %}
+<td class="cst">{% if as_ %}<span translate="no">{{ names.get(as_.owner_id, '—') }}</span><div class="small muted">{{ fmt(as_.assigned_at, False) }}</div>{% else %}<span class="pill warn">غير مسند</span>{% endif %}</td>
 <td class="cst">{% if x %}<span class="pill ok">نعم</span><div class="small muted"><span translate="no">{{ x.by_name }}</span> — {{ fmt(x.at) }}</div>{% else %}<span class="pill warn">لا</span>{% endif %}</td>
 <td class="cst">{% if x %}{% if x.status == 'replied' %}<span class="pill ok">رد</span>{% elif x.status == 'no_answer' %}<span class="pill warn">لم يرد</span>{% else %}<span class="pill err">{{ LIST_STATUS[x.status] }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
 <td class="cst k-long small">{% if x and x.note %}<span translate="no">{{ x.note }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
@@ -34,9 +44,9 @@
   <select name="status" style="width:170px" required><option value="">اختر النتيجة…</option>{% for k, lab in LIST_STATUS.items() %}<option value="{{ k }}" {{ 'selected' if x and x.status == k }}>{{ lab }}</option>{% endfor %}{% if x %}<option value="reset">إلغاء (لم يتم التواصل)</option>{% endif %}</select>
   <input name="note" placeholder="ملاحظة" style="width:150px">
   {% if x and x.by_id != user.id %}<input type="hidden" name="confirm" value="" class="cf"><button class="btn sm" onclick="if(!this.form.querySelector('.cf').value){if(confirm('تم التواصل مع هذا العميل بواسطة {{ x.by_name }} — هل تريد تسجيل تحديث جديد؟')){this.form.querySelector('.cf').value='1'}else{return false}}">حفظ</button>{% else %}<button class="btn sm p">حفظ</button>{% endif %}</form></td></tr>
-{% else %}<tr><td colspan="{{ (cur.headers|length) + 5 }}" class="muted">لا توجد صفوف{% if q %} مطابقة للبحث{% endif %}.</td></tr>{% endfor %}</tbody>
+{% else %}<tr><td colspan="{{ (cur.headers|length) + 7 }}" class="muted">لا توجد صفوف{% if q %} مطابقة للبحث{% endif %}.</td></tr>{% endfor %}</tbody>
 </table></div>
-<div class="row" style="margin-top:10px">{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="{{ base }}?lid={{ cur.id }}&q={{ q }}&cstate={{ cstate }}&page={{ page - 1 }}">السابق</a>{% endif %}
-{% if page * 200 < total %}<a class="btn sm" style="flex:0 0 auto" href="{{ base }}?lid={{ cur.id }}&q={{ q }}&cstate={{ cstate }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>
-</div>{% elif not lists %}<div class="card"><p class="muted">لا توجد قوائم بعد. ارفع ملف Excel من الأعلى.</p></div>{% endif %}
+<div class="row" style="margin-top:10px">{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="{{ base }}?lid={{ cur.id }}&q={{ q }}&cstate={{ cstate }}&owner={{ owner }}&page={{ page - 1 }}">السابق</a>{% endif %}
+{% if page * 200 < total %}<a class="btn sm" style="flex:0 0 auto" href="{{ base }}?lid={{ cur.id }}&q={{ q }}&cstate={{ cstate }}&owner={{ owner }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>
+</div>{% elif not lists %}<div class="card"><p class="muted">{% if staff_view %}لا يوجد عملاء مسندون إليك من القوائم الإدارية بعد.{% else %}لا توجد قوائم بعد. ارفع ملف Excel من الأعلى.{% endif %}</p></div>{% endif %}
 {% endblock %}

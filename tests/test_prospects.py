@@ -302,10 +302,17 @@ def test_admin_list_contact_status_shared_and_no_double_call():
     with TestClient(app) as adm:
         otp_login(adm, ADMIN, "admin")
         adm.post("/staff/add", data={"name": "موظف القوائم", "email": "lists.rep@syarahapp.test", "team": "", "profile": "sales_rep"})
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        with session_scope() as s:
+            rid = s.query(User).filter(User.email == "lists.rep@syarahapp.test").one().id
+        adm.post(f"/admin-lists/{lid}/assign", data={"owner_id": str(rid), "rows": "0"})   # إسناد صف محدد
     with TestClient(app) as rep_:
         otp_login(rep_, "lists.rep@syarahapp.test", "portal")
         page = rep_.get(f"/portal/lists?lid={lid}").text
         assert "مؤسسة التواصل المشترك" in page and "لم يرد" in page
+        assert "مؤسسة لم يتصل بها أحد" not in page                                      # غير المسند لا يظهر
+        assert rep_.post(f"/portal/lists/{lid}/row/1/contact", data={"status": "replied"}).status_code == 403
         r = rep_.post(f"/portal/lists/{lid}/row/0/contact", data={"status": "replied"},
                       headers={"referer": f"http://testserver/portal/lists?lid={lid}"}, follow_redirects=True)
         assert "لا تكرر الاتصال" in r.text
@@ -319,3 +326,37 @@ def test_admin_list_contact_status_shared_and_no_double_call():
         otp_login(adm, ADMIN, "admin")
         html = adm.get("/").text
         assert "عملاء أضافتهم الإدارة" in html and "تم التواصل معهم" in html and "لم يُتواصل معهم بعد" in html
+
+
+
+def test_admin_list_assign_by_count_10_50_100():
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, AdminListAssignment, User
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["اسم المؤسسة", "رقم الجوال"])
+    for i in range(12):
+        ws.append([f"مؤسسة الإسناد {i}", f"05510{i:05d}"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        adm.post("/admin-lists/upload", files={"file": ("asg.xlsx", buf.getvalue(), "application/octet-stream")})
+        adm.post("/staff/add", data={"name": "موظف الإسناد", "email": "assign.rep@syarahapp.test", "team": "", "profile": "sales_rep"})
+        with session_scope() as s:
+            lid = s.query(AdminList).order_by(AdminList.id.desc()).first().id
+            rid = s.query(User).filter(User.email == "assign.rep@syarahapp.test").one().id
+        page = adm.get(f"/admin-lists?lid={lid}").text
+        assert "إسناد إلى الموظف" in page and "١٠ عملاء" in page and "٥٠ عميلًا" in page and "١٠٠ عميل" in page
+        adm.post(f"/admin-lists/{lid}/assign", data={"owner_id": str(rid), "count": "10"})
+        with session_scope() as s:
+            assert s.query(AdminListAssignment).filter_by(list_id=lid, owner_id=rid).count() == 10
+        assert "غير مسندين (2)" in adm.get(f"/admin-lists?lid={lid}").text
+        adm.post(f"/admin-lists/{lid}/assign", data={"owner_id": str(rid), "count": "50"})   # الباقي فقط
+        with session_scope() as s:
+            assert s.query(AdminListAssignment).filter_by(list_id=lid, owner_id=rid).count() == 12
+    with TestClient(app) as rep_:
+        otp_login(rep_, "assign.rep@syarahapp.test", "portal")
+        page = rep_.get("/portal/lists").text
+        assert "مؤسسة الإسناد 0" in page and "الكل (12)" in page

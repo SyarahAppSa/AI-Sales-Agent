@@ -354,5 +354,18 @@
 "تعمل": "Running",
 "لا يوجد": "None",
 "التنزيل محظور على كل الحسابات عدا مدير المنصة": "Downloads blocked for all accounts except the platform owner",
-"نُزّل {x} (مسموح لمدير المنصة).": "{x} downloaded (allowed for the platform owner)."
+"نُزّل {x} (مسموح لمدير المنصة).": "{x} downloaded (allowed for the platform owner).",
+"غير مسندين ({x})": "Unassigned ({x})",
+"مسندون ({x})": "Assigned ({x})",
+"إسناد إلى الموظف": "Assign to employee",
+"العدد (من غير المسندين بالترتيب)": "Count (unassigned, in order)",
+"١٠ عملاء": "10 customers",
+"٥٠ عميلًا": "50 customers",
+"١٠٠ عميل": "100 customers",
+"نقل المسند لموظف آخر": "Move ones assigned to another employee",
+"عرض عملاء موظف": "Show an employee's customers",
+"العملاء المسندون إليك من القوائم الإدارية — سجّل نتيجة تواصلك مع كل عميل.": "Customers assigned to you from admin lists — record your contact result for each.",
+"ارفع ملف Excel من جهازك ثم أسند عملاءه للموظفين — الموظف يرى ما أُسند إليه فقط.": "Upload an Excel file, then assign its customers to employees — each employee sees only what is assigned to them.",
+"لا يوجد عملاء مسندون إليك من القوائم الإدارية بعد.": "No customers from admin lists are assigned to you yet.",
+"المسؤول": "Owner"
 }
