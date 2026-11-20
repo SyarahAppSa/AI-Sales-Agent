@@ -158,3 +158,20 @@ details summary{cursor:pointer;color:var(--brand);font-weight:700}
 @media (max-width:900px){.topbar{left:16px;right:16px}.top,.dash-head{padding-top:58px}}
 @media (max-width:900px){[dir="ltr"] .topbar{left:16px;right:16px}.topbar{flex-wrap:wrap;justify-content:flex-end;gap:8px}.topbar .chip{max-width:150px}}
 @media (max-width:420px){.topbar .flag{display:none}}
+
+/* القائمة الجانبية: ستة أقسام قابلة للطي */
+.nav .grp{display:none}
+.nav a.top1,.nav .ghead{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border-radius:16px;color:var(--ink);font:inherit;font-weight:700;font-size:15px;background:none;border:0;cursor:pointer;margin-bottom:2px;text-align:start}
+.nav .ghead .lbl,.nav a.top1 .lbl{flex:1}
+.nav a.top1:hover,.nav .ghead:hover{background:var(--brand-hover);text-decoration:none}
+.nav a.top1.on{background:var(--brand-soft);color:var(--brand)}.nav a.top1.on .ic{color:var(--brand)}
+.nav .ngrp.cur>.ghead{color:var(--brand)}.nav .ngrp.cur>.ghead .ic{color:var(--brand)}
+.nav .chev{flex:0 0 auto;color:var(--muted);transition:transform .2s}
+.nav .ngrp.open>.ghead .chev{transform:rotate(-90deg)}
+[dir="ltr"] .nav .chev{transform:scaleX(-1)}[dir="ltr"] .nav .ngrp.open>.ghead .chev{transform:rotate(-90deg)}
+.nav .gitems{display:none;padding:2px 0 6px}
+.nav .ngrp.open>.gitems{display:block}
+.nav .gitems a{display:flex;align-items:center;gap:8px;padding:8px 14px;margin:1px 0;padding-inline-start:48px;border-radius:12px;font-weight:700;font-size:14px;color:var(--muted);white-space:normal;line-height:1.5}
+.nav .gitems a:hover{background:var(--brand-hover);color:var(--ink);text-decoration:none}
+.nav .gitems a.on{background:var(--brand-soft);color:var(--brand)}
+body.mini .nav .chev,body.mini .nav .gitems{display:none}body.mini .nav .ghead,body.mini .nav a.top1{justify-content:center}

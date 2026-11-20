@@ -2312,6 +2312,23 @@ def portal_officials(request: Request, user: User = Depends(staff_user), s=Depen
                   csum=_csum(s, [r["c"] for r in rows]))
 
 
+@app.get("/officials", response_class=HTMLResponse)
+def admin_officials(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    """«موظفو الشركات» في بوابة الإدارة: جهة القرار ووسائل التواصل وحالة التواصل لكل المنشآت."""
+    rows = _portal_rows(s, user, "")
+    return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: True, cbase="/companies",
+                  xlsx_url="/officials.xlsx", csum=_csum(s, [r["c"] for r in rows]))
+
+
+@app.get("/officials.xlsx")
+def admin_officials_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
+    rows = [[r["c"].name, r["c"].activity, r["c"].city, r["c"].decision_unit or "", r["phone"] or "", r["email"] or ""]
+            + contact_cells(s, r["c"]) for r in _portal_rows(s, user, "")]
+    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار", "الهاتف", "البريد"] + CONTACT_HEADERS
+    return response(workbook([("موظفو الشركات", head, rows)]), "company-officials.xlsx")
+
+
 @app.get("/portal/officials.xlsx")
 def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
     from ..auth import audit

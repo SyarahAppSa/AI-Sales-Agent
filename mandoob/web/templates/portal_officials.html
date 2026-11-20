@@ -1,9 +1,9 @@
 {% extends "base.html" %}{% from "_contact.html" import inline %}{% block content %}
-<div class="top"><div><h1>تقرير مسؤولي الشركات</h1><p class="sub" style="margin:0">جهة القرار ووسائل التواصل وحالة التواصل للمنشآت المسندة إليك فقط.</p></div>
-<div class="row">{% if can('export') %}<a class="btn p" href="/portal/officials.xlsx">تنزيل Excel</a>{% endif %}</div></div>
+<div class="top"><div><h1>{{ 'موظفو الشركات' if cbase else 'تقرير مسؤولي الشركات' }}</h1><p class="sub" style="margin:0">{{ 'جهة القرار ووسائل التواصل وحالة التواصل لكل المنشآت (أول ٥٠٠).' if cbase else 'جهة القرار ووسائل التواصل وحالة التواصل للمنشآت المسندة إليك فقط.' }}</p></div>
+<div class="row">{% if can('export') %}<a class="btn p" href="{{ xlsx_url or '/portal/officials.xlsx' }}">تنزيل Excel</a>{% endif %}</div></div>
 <div class="card tablewrap"><table>
 <tr><th>المنشأة وحالة التواصل</th><th>جهة القرار المقترحة</th>{% if can('see_phone') %}<th>الهاتف</th>{% endif %}{% if can('see_email') %}<th>البريد</th>{% endif %}</tr>
-{% for r in rows %}{% set c = r.c %}<tr><td style="min-width:240px"><a href="/portal/companies/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div>{{ inline(csum[c.id], '/portal/companies/%d' % c.id, can('update_status')) }}</td>
+{% for r in rows %}{% set c = r.c %}<tr><td style="min-width:240px"><a href="{{ cbase or '/portal/companies' }}/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div>{{ inline(csum[c.id], '/portal/companies/%d' % c.id, can('update_status')) }}</td>
 <td class="small">{{ c.decision_unit or '—' }}</td>
 {% if can('see_phone') %}<td class="small ltr">{{ r.phone or '—' }}</td>{% endif %}{% if can('see_email') %}<td class="small ltr">{{ r.email or '—' }}</td>{% endif %}</tr>
 {% else %}<tr><td colspan="4" class="muted">لا يوجد عملاء مسندون إليك حاليًا.</td></tr>{% endfor %}

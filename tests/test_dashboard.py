@@ -50,8 +50,12 @@ def test_four_cards_match_their_lists_and_branding():
         assert ">المندوب الذكي<" in html and ">لسيارة اب<" in html and "سيـــارة" not in html
         assert "البحث عن عملاء" in html and "حالة البحث" in html and "أداء المبيعات" in html
         assert "أحدث العملاء" in html and "متابعات الفريق" in html
-        for g in ("العملاء", "المتابعة والمبيعات", "التقارير", "الإدارة والإعدادات"):
-            assert f'<div class="grp">{g}</div>' in html
+        heads = re.findall(r'class="ghead"[^>]*>.*?<span class="lbl">([^<]+)</span>', html, re.S)
+        assert heads == ["البحث عن العملاء", "العملاء والشركات", "المبيعات والمتابعة", "التقارير", "الإدارة والإعدادات"]
+        assert 'class="top1 on"' in html and "ngrp open" not in html                     # لوحة التحكم محددة والأقسام مطوية
+        sub = c.get("/companies?status=complete").text                                   # صفحة فرعية: قسمها مفتوح ومميز
+        assert re.search(r'class="ngrp open cur" data-grp="cust"', sub)
+        assert re.search(r'class="on"\s+aria-current="page"><span class="lbl">الشركات وإسنادها للموظفين', sub)
         cards = re.findall(r'<a class="kpi[^"]*" href="([^"]+)" data-card="(\w+)">.*?<div class="v">(\d+)', html, re.S)
         assert [k for _, k, _ in cards] == ["new", "incomplete", "ready", "followups"]
         assert "من 400" in html

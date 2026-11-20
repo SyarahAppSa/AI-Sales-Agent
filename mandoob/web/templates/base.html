@@ -12,38 +12,45 @@
 <script>try{if(localStorage.getItem('mini')==='1')document.body.classList.add('mini')}catch(e){}</script>
 {% if user %}
 {% if user.role in ('admin','manager') %}{% set groups = [
-  ('', [('/', 'grid', 'لوحة التحكم', False)]),
-  ('العملاء', [('/prospects', 'target', 'العملاء المحتملون', False), ('/prospecting', 'search', 'البحث عن عملاء', False), ('/discover', 'building', 'اكتشاف عملاء جدد', False),
-               ('/today', 'list', 'عملاء اليوم', False), ('/companies', 'users', 'العملاء وإسنادهم للموظفين', False)]),
-  ('المتابعة والمبيعات', [('/followups', 'clock', 'متابعات اليوم', False), ('/offers-report', 'send', 'العروض المرسلة', False),
-               ('/leads', 'inbox', 'طلبات العروض الواردة', False), ('/notifications', 'bell', 'التنبيهات', True)]),
-  ('التقارير', [('/daily-report', 'chart', 'التقرير اليومي', False), ('/weekly-report', 'calendar', 'التقرير الأسبوعي', False),
-               ('/runs', 'list', 'سجل التشغيل', False)]),
-  ('الإدارة والإعدادات', [('/targets', 'target', 'الفئات المستهدفة', False), ('/staff', 'users', 'الموظفون والصلاحيات', False),
-               ('/team', 'target', 'قواعد التوزيع', False), ('/mail', 'mail', 'ربط بريد الشركة', False),
-               ('/settings', 'settings', 'الإعدادات', False)]
-               + ([('/offers', 'file', 'العروض والمرفقات', False), ('/sandbox', 'inbox', 'صندوق التجربة', False)] if outreach_on else [])),
+  ('dash', 'grid', 'لوحة التحكم', '/', []),
+  ('find', 'search', 'البحث عن العملاء', None, [('/prospects', 'العملاء المحتملون'), ('/prospecting', 'البحث عن العملاء'),
+      ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
+  ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),
+      ('/officials', 'موظفو الشركات')]),
+  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/followups', 'متابعات اليوم'), ('/offers-report', 'الشركات التي أُرسلت إليها عروض'),
+      ('/leads', 'طلبات العروض الواردة')] + ([('/offers', 'العروض والمرفقات'), ('/sandbox', 'صندوق التجربة')] if outreach_on else [])),
+  ('rep', 'file', 'التقارير', None, [('/daily-report', 'التقرير اليومي'), ('/weekly-report', 'التقرير الأسبوعي للشرائح')]),
+  ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
+      ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]),
 ] %}{% else %}{% set groups = [
-  ('العملاء', [('/portal', 'list', 'عملائي ومتابعاتي', False)]),
-  ('التقارير', [('/portal/officials', 'users', 'تقرير مسؤولي الشركات', False)]
-               + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False)] if (user.perms or {}).get('see_reports') else [])),
+  ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات')]),
+  ('rep', 'file', 'التقارير', None, ([('/portal/reports', 'تقرير مبيعاتي')] if (user.perms or {}).get('see_reports') else [])),
 ] %}{% endif %}
+{% macro is_on(href) -%}{{ '1' if (path == href if href in ('/', '/portal') else (path == href or path.startswith(href + '/'))) and not (href == '/offers' and path.startswith('/offers-report')) }}{%- endmacro %}
 <div class="layout">
 <aside class="side">
   <div class="brand">
     <a class="logo" href="{{ '/' if user.role in ('admin','manager') else '/portal' }}"><div class="ar">المندوب الذكي</div><div class="en">لسيارة اب</div><span class="tag">{{ 'بوابة الإدارة' if user.role in ('admin','manager') else 'بوابة الموظفين' }}</span></a>
     <button class="collapse" type="button" title="القائمة" aria-label="القائمة" onclick="if(window.matchMedia('(max-width:900px)').matches){document.body.classList.toggle('navopen')}else{document.body.classList.toggle('mini');try{localStorage.setItem('mini',document.body.classList.contains('mini')?'1':'0')}catch(e){}}">{{ icon('panel') }}</button>
   </div>
-  <nav class="nav">
-  {% for gname, items in groups %}
-    {% if gname %}<div class="grp">{{ gname }}</div>{% endif %}
-    {% for href, ic, label, cnt in items %}
-      {% set on = (path == '/' if href == '/' else ((path == href or path.startswith(href + '/')) and not (href == '/offers' and path.startswith('/offers-report')))) %}
-      <a href="{{ href }}" class="{{ 'on' if on }}" title="{{ label }}" {{ 'aria-current="page"' if on }}>{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if cnt and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>
-    {% endfor %}
+  <nav class="nav" aria-label="القائمة الرئيسية">
+  {% for key, ic, label, href, items in groups %}
+    {% if href %}
+      {% set on = is_on(href) == '1' %}
+      <a href="{{ href }}" class="top1 {{ 'on' if on }}" title="{{ label }}" {% if on %}aria-current="page"{% endif %}>{{ icon(ic) }}<span class="lbl">{{ label }}</span></a>
+    {% elif items %}
+      {% set ns = namespace(open=False) %}{% for h, l in items %}{% if is_on(h) == '1' %}{% set ns.open = True %}{% endif %}{% endfor %}
+      <div class="ngrp {{ 'open cur' if ns.open }}" data-grp="{{ key }}">
+        <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>
+          <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="gitems">
+        {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>{% endfor %}
+        </div>
+      </div>
+    {% endif %}
   {% endfor %}
     <div class="sep"></div>
-    <a href="/logout" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>
+    <a href="/logout" class="top1" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>
   </nav>
 </aside>
 <main class="main">
@@ -80,5 +87,14 @@ if(saved&&saved.data){fields().forEach(function(e,i){var v=saved.data[key(e,i)];
   document.querySelectorAll('details').forEach(function(d){if(d.querySelector('textarea')&&Array.prototype.some.call(d.querySelectorAll('textarea'),function(t){return t.value})){d.open=true}});
   if(saved.y)window.scrollTo(0,saved.y);}
 })();
+</script>
+<script>
+/* أقسام القائمة: فتح قسم يطوي السابق؛ القسم الذي فيه الصفحة الحالية مفتوح عند التحميل. على الجوال تُغلق القائمة بعد اختيار صفحة. */
+document.querySelectorAll('.ngrp .ghead').forEach(function(b){b.addEventListener('click',function(){
+  if(document.body.classList.contains('mini')){document.body.classList.remove('mini');try{localStorage.setItem('mini','0')}catch(e){}}
+  var g=b.parentNode,open=!g.classList.contains('open');
+  document.querySelectorAll('.ngrp.open').forEach(function(x){x.classList.remove('open');x.querySelector('.ghead').setAttribute('aria-expanded','false')});
+  if(open){g.classList.add('open');b.setAttribute('aria-expanded','true')}});});
+document.querySelectorAll('.nav a').forEach(function(a){a.addEventListener('click',function(){document.body.classList.remove('navopen')})});
 </script>
 </body></html>
