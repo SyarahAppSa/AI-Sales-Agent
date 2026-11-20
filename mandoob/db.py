@@ -86,4 +86,6 @@ def _add_missing_columns() -> None:
                         default = f" DEFAULT {v}"
                     elif isinstance(v, str):
                         default = " DEFAULT '" + v.replace("'", "''") + "'"
-                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}{default}'))
+                # IF NOT EXISTS: الموقع والعامل قد يبدآن معًا بعد النشر فيحاول كلاهما إضافة العمود نفسه
+                ine = "" if _is_sqlite else "IF NOT EXISTS "
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {ine}{col.name} {ddl_type}{default}'))
