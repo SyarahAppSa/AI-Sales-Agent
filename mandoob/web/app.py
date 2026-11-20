@@ -422,6 +422,85 @@ def home(request: Request, period: str = "7d", user: User = Depends(current_user
                   health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
 
 
+# ---------------------------------------------------------------- العملاء المحتملون
+
+def _prospect_args(day: str):
+    try:
+        return date.fromisoformat(day) if day else riyadh_today()
+    except ValueError:
+        return riyadh_today()
+
+
+@app.get("/prospects", response_class=HTMLResponse)
+def prospects_page(request: Request, day: str = "", city: str = "", sector: str = "", level: str = "", state: str = "ready",
+                   q: str = "", owner: str = "", all: int = 0, user: User = Depends(current_user), s=Depends(get_db)):
+    from .. import prospects as P
+    from ..activities import SECTORS as ASECTORS
+    from ..models import ProspectRun
+    d = _prospect_args(day)
+    qq = P.query(s, d, city, sector, level, state, q, owner)
+    if user.role == "rep":
+        qq = qq.where(Company.owner_id == user.id)
+    total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
+    rows = list(s.scalars(qq.limit(500 if all else 50)))
+    cities = [c for (c,) in s.execute(select(Company.city).where(Company.prospect_on == d).distinct()) if c]
+    last = s.scalar(select(ProspectRun).order_by(ProspectRun.id.desc()))
+    parents = {c.id: s.get(Company, c.parent_id) for c in rows if c.parent_id}
+    return render(request, "prospects.html", user, s, sm=P.summary(s, d), rows=rows, parents=parents, total=total, d=d, city=city,
+                  sector=sector, level=level, state=state, q=q, owner=owner, all=all, cities=sorted(cities),
+                  ASECTORS=ASECTORS, LEVELS=P.LEVELS, CONTACT_LEVELS=P.CONTACT_LEVELS, last=last,
+                  csum=_csum(s, rows), qs=str(request.query_params),
+                  staff=list(s.scalars(select(User).where(User.role == "rep", User.active.is_(True)).order_by(User.name))))
+
+
+@app.get("/prospects.xlsx")
+def prospects_xlsx(request: Request, day: str = "", city: str = "", sector: str = "", level: str = "", state: str = "ready",
+                   q: str = "", owner: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+    from .. import prospects as P
+    from ..activities import SECTORS as ASECTORS
+    from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
+    d = _prospect_args(day)
+    qq = P.query(s, d, city, sector, level, state, q, owner)
+    if user.role == "rep":
+        qq = qq.where(Company.owner_id == user.id)
+    rows = []
+    for c in s.scalars(qq):
+        ph, em = c.primary("phone"), c.primary("email")
+        rows.append([c.priority, P.LEVELS.get(c.priority_level or "", ""), c.name, c.name_en or "",
+                     ASECTORS.get(c.sector_key or "", {}).get("label", ""), c.activity, c.city, c.website or "",
+                     format_phone_display(ph.value) if ph else "", ph.source_url if ph else "",
+                     em.value if em else "", em.source_url if em else "",
+                     P.CONTACT_LEVELS.get(c.contact_level or "", "لا توجد وسيلة بعد"), fmt(c.channels_verified_at),
+                     c.priority_reason or "", c.priority_url or "", c.vehicles_estimate or "", c.unified_number or "",
+                     (s.get(Company, c.parent_id).name if c.parent_id else ""),
+                     next((x.url for x in c.sources if x.source_type == "directory"), "")] + contact_cells(s, c))
+    head = ["الأولوية (٠–١٠٠)", "مستوى الأولوية", "الاسم التجاري", "الاسم بالإنجليزية", "القطاع", "النشاط", "المدينة",
+            "الموقع الإلكتروني", "هاتف الأعمال", "مصدر الهاتف", "البريد الرسمي", "مصدر البريد", "مستوى التحقق",
+            "تاريخ التحقق", "سبب الأولوية", "رابط سبب الأولوية", "عدد المركبات المنشور", "الرقم الوطني الموحد",
+            "الشركة الأم", "رابط المصدر"] + CONTACT_HEADERS
+    return response(workbook([("العملاء المحتملون", head, rows)],
+                             {"العملاء المحتملون": [[f"العملاء المحتملون — {d.isoformat()} — {len(rows)} منشأة"]]}),
+                    f"prospects-{d.isoformat()}.xlsx")
+
+
+@app.post("/prospects/run")
+def prospects_run(request: Request, target: int = Form(100), user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospects as P
+    r = P.request_run(s, user, target)
+    flash(request, f"بدأت دفعة «العملاء المحتملون» #{r.id} على الخادم — الهدف {r.target} منشأة قابلة للتواصل. "
+                   "تتحدث الصفحة تلقائيًا.")
+    return back("/prospects")
+
+
+@app.post("/prospects/stop")
+def prospects_stop(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import ProspectRun
+    for r in s.scalars(select(ProspectRun).where(ProspectRun.status.in_(["pending", "running"]))):
+        r.status = "stopped"
+    flash(request, "أُوقفت الدفعة. ما جُمع يبقى في القائمة.")
+    return back("/prospects")
+
+
 @app.post("/companies/{cid}/enrich")
 def company_enrich_now(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
     """يقدّم العميل في طابور إعادة البحث عن الهاتف/البريد (ينفذه العامل خلال ١٠ دقائق)."""

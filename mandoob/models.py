@@ -201,7 +201,18 @@ class Company(Base):
     contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     contacted_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
-    won_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)  # تاريخ تسجيل الصفقة (لأداء المبيعات حسب الفترة)
+    won_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    # «العملاء المحتملون»: قابلية التواصل والأولوية لسيارة آب (بدليل منشور)
+    unified_number: Mapped[Optional[str]] = mapped_column(String(20), index=True)  # الرقم الوطني الموحد (7xxxxxxxxx)
+    cr_number: Mapped[Optional[str]] = mapped_column(String(20))
+    prospect_on: Mapped[Optional[date]] = mapped_column(Date, index=True)  # يوم دخولها قائمة العملاء المحتملين
+    contactable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    contact_level: Mapped[Optional[str]] = mapped_column(String(20))  # website (موثّق من موقعها) / directory (منشور في دليل)
+    channels_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    priority_level: Mapped[Optional[str]] = mapped_column(String(10))  # high / medium / low
+    priority_reason: Mapped[Optional[str]] = mapped_column(Text)
+    priority_url: Mapped[Optional[str]] = mapped_column(String(500))  # تاريخ تسجيل الصفقة (لأداء المبيعات حسب الفترة)
     offer_sent_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_note: Mapped[Optional[str]] = mapped_column(String(300))
     # حالة التواصل اليدوي — على سجل المنشأة نفسه (تظهر في كل القوائم والحملات وتبقى عند نقل العميل)
@@ -665,3 +676,19 @@ class LeadStub(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class ProspectRun(Base):
+    """دفعة «العملاء المحتملون»: جمع من دليل عام، ثم التحقق من قنوات التواصل في موقع كل منشأة، ثم الترتيب."""
+    __tablename__ = "prospect_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/stopped/failed
+    source: Mapped[str] = mapped_column(String(40), default="bluepages")
+    target: Mapped[int] = mapped_column(Integer, default=100)  # عدد المنشآت الجديدة القابلة للتواصل المطلوب
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    log: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)

@@ -1,0 +1,74 @@
+{% extends "base.html" %}{% from "_contact.html" import inline %}{% block title %}العملاء المحتملون — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+{% if last and last.status in ('pending','running') %}<meta http-equiv="refresh" content="30">{% endif %}
+<div class="dash-head">
+  <div><h1>العملاء المحتملون</h1><div class="date">{{ fmt_date(d) }} — منشآت سعودية جديدة قابلة للتواصل، مرتبة حسب ملاءمتها لسيارة آب</div></div>
+  <div class="row" style="flex:0 0 auto"><a class="btn p" href="/prospects.xlsx?{{ qs }}">تنزيل Excel</a></div>
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="/prospects?day={{ d }}&state=ready"><div class="l">جاهزة للتواصل اليوم</div>
+    <div class="v">{{ sm.ready }} <small>من {{ sm.target }}</small></div>
+    <div class="progress"><i style="width:{{ [100, (100 * sm.ready / sm.target)|round(1)]|min }}%"></i></div>
+    <div class="s">العدد الفعلي — لها وسيلة تواصل مؤسسية واحدة على الأقل</div></a>
+  <a class="kpi" href="/prospects?day={{ d }}&state=ready&level=high"><div class="l">أولوية عالية</div><div class="v">{{ sm.high }}</div>
+    <div class="s">دليل منشور على تشغيل مركبات أو أسطول</div></a>
+  <a class="kpi {{ 'attn' if sm.needs }}" href="/prospects?day={{ d }}&state=needs"><div class="l">تحتاج استكمال</div><div class="v">{{ sm.needs }}</div>
+    <div class="s">الاسم فقط بلا هاتف أو بريد مؤسسي</div></a>
+  <div class="kpi"><div class="l">مكررة (مستبعدة)</div><div class="v">{{ sm.duplicates }}</div>
+    <div class="s">موجودة سابقًا أو من عملائنا الحاليين: {{ sm.existing_customers }}</div></div>
+</div>
+
+<div class="card">
+  <div class="head2"><h2>ملخص اليوم</h2>
+  {% if user.role in ('admin','manager') %}
+    {% if last and last.status in ('pending','running') %}
+      <form method="post" action="/prospects/stop" class="row" style="flex:0 0 auto"><span class="pill info" style="align-self:center">دفعة #{{ last.id }} تعمل الآن — {{ ((last.stats or {}).bluepages or {}).ready or 0 }} من {{ last.target }}</span><button class="btn sm">إيقاف</button></form>
+    {% else %}
+      <form method="post" action="/prospects/run" class="row" style="flex:0 0 auto;align-items:center"><label style="margin:0">عدد المنشآت</label><input name="target" type="number" min="10" max="5000" value="100" style="width:110px"><button class="btn p sm">تشغيل دفعة</button></form>
+    {% endif %}
+  {% endif %}</div>
+  <div class="grid g4 small">
+    <div>سجلات فُحصت: <b>{{ sm.examined }}</b> ({{ sm.pages }} صفحة دليل)</div>
+    <div>نسبة الجاهزة من المضافة: <b>{{ sm.ready_rate }}%</b></div>
+    <div>لها هاتف: <b>{{ sm.with_phone }}</b> — لها بريد: <b>{{ sm.with_email }}</b></div>
+    <div>موثّقة من موقع المنشأة: <b>{{ sm.website_verified }}</b> — تكلفة البيانات: <b>${{ sm.cost }}</b></div>
+  </div>
+  <p class="small muted" style="margin:10px 0 0">المصدر: دليل الصفحات الزرقاء (صفحات عامة يسمح الموقع بزحفها)، ثم زيارة موقع كل منشأة للتحقق من الهاتف والبريد. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
+</div>
+
+<form class="card row" method="get">
+  <input type="hidden" name="day" value="{{ d }}">
+  <div><label>الحالة</label><select name="state"><option value="ready" {{ 'selected' if state=='ready' }}>جاهزة للتواصل</option><option value="needs" {{ 'selected' if state=='needs' }}>تحتاج استكمال</option><option value="all" {{ 'selected' if state=='all' }}>الكل</option></select></div>
+  <div><label>المدينة</label><select name="city"><option value="">الكل</option>{% for c in cities %}<option {{ 'selected' if c==city }}>{{ c }}</option>{% endfor %}</select></div>
+  <div><label>القطاع</label><select name="sector"><option value="">الكل</option>{% for k,v in ASECTORS.items() %}<option value="{{ k }}" {{ 'selected' if k==sector }}>{{ v.label }}</option>{% endfor %}</select></div>
+  <div><label>الأولوية</label><select name="level"><option value="">الكل</option>{% for k,v in LEVELS.items() %}<option value="{{ k }}" {{ 'selected' if k==level }}>{{ v }}</option>{% endfor %}</select></div>
+  <div><label>المسؤول</label><select name="owner"><option value="">الكل</option><option value="none" {{ 'selected' if owner=='none' }}>غير مسند</option></select></div>
+  <div><label>بحث</label><input name="q" value="{{ q }}"></div>
+  <div><label>اليوم</label><input type="date" name="day" value="{{ d }}"></div>
+  <button class="btn p">تطبيق</button>
+</form>
+
+<form method="post" action="/companies/assign" class="card">
+<div class="head2"><h2>{% if all %}كل الفرص{% else %}أعلى ٥٠ فرصة{% endif %} <span class="muted small">({{ total }} منشأة)</span></h2>
+{% if user.role in ('admin','manager') %}<div class="row" style="flex:0 0 auto;align-items:center"><select name="owner_id" style="width:200px"><option value="">إسناد المحدد إلى…</option>{% for u in staff %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select><button class="btn sm">إسناد</button></div>{% endif %}</div>
+<div class="tablewrap"><table>
+<tr>{% if user.role in ('admin','manager') %}<th></th>{% endif %}<th>الأولوية</th><th>المنشأة</th><th>لماذا تناسب سيارة آب</th><th>التواصل</th><th>المسؤول ونتيجة التواصل</th></tr>
+{% for c in rows %}{% set ph = c.primary('phone') %}{% set em = c.primary('email') %}<tr>
+{% if user.role in ('admin','manager') %}<td><input type="checkbox" name="company_ids" value="{{ c.id }}"></td>{% endif %}
+<td><span class="pill {{ {'high':'ok','medium':'info','low':''}.get(c.priority_level,'') }}">{{ LEVELS.get(c.priority_level, '—') }}</span><div class="small muted">{{ c.priority }}/100</div></td>
+<td style="min-width:200px"><a href="/companies/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a>
+  <div class="small muted">{{ (c.activity or '—')|truncate(60, True, '…') }} · {{ c.city or '—' }}</div>
+  {% if c.parent_id and parents.get(c.id) %}{% set hq = parents[c.id] %}<div class="small">فرع لـ <a href="/companies/{{ hq.id }}"><span translate="no">{{ hq.name }}</span></a>{% if hq.owner %} — يتابعه <span translate="no">{{ hq.owner.name }}</span>{% endif %}</div>{% endif %}</td>
+<td class="small" style="max-width:340px">{{ c.priority_reason or '—' }}{% if c.priority_url %} <a href="{{ c.priority_url }}" target="_blank" rel="noopener">(الرابط)</a>{% endif %}</td>
+<td class="small" style="min-width:170px">{% if ph %}<div class="ltr"><a href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a></div>{% endif %}{% if em %}<div class="ltr"><a href="mailto:{{ em.value }}">{{ em.value }}</a></div>{% endif %}
+  {% if c.website %}<div class="ltr"><a href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
+  <div class="muted">{{ CONTACT_LEVELS.get(c.contact_level, 'لا توجد وسيلة بعد') }}</div></td>
+<td>{% if c.owner %}<span translate="no">{{ c.owner.name }}</span>{% else %}<span class="pill warn">غير مسند</span>{% endif %}{{ inline(csum[c.id], '/companies/' ~ c.id) }}</td>
+</tr>{% else %}<tr><td colspan="6" class="muted">لا توجد منشآت لهذا اليوم بعد. شغّل دفعة من الأعلى.</td></tr>{% endfor %}
+</table></div>
+{% if not all and total > 50 %}<p><a class="btn sm" href="/prospects?{{ qs }}&all=1">عرض الكل ({{ total }})</a></p>{% endif %}
+</form>
+
+{% if last %}<details class="card"><summary>سجل آخر دفعة (#{{ last.id }} — {{ {'pending':'في الانتظار','running':'قيد التشغيل','done':'اكتملت','stopped':'أُوقفت','failed':'فشلت'}.get(last.status, last.status) }})</summary>
+<pre class="small" style="white-space:pre-wrap">{{ (last.log or [])[-60:]|join('\n') }}</pre></details>{% endif %}
+{% endblock %}

@@ -13,7 +13,7 @@
 {% if user %}
 {% if user.role in ('admin','manager') %}{% set groups = [
   ('', [('/', 'grid', 'لوحة التحكم', False)]),
-  ('العملاء', [('/prospecting', 'search', 'البحث عن عملاء', False), ('/discover', 'building', 'اكتشاف عملاء جدد', False),
+  ('العملاء', [('/prospects', 'target', 'العملاء المحتملون', False), ('/prospecting', 'search', 'البحث عن عملاء', False), ('/discover', 'building', 'اكتشاف عملاء جدد', False),
                ('/today', 'list', 'عملاء اليوم', False), ('/companies', 'users', 'العملاء وإسنادهم للموظفين', False)]),
   ('المتابعة والمبيعات', [('/followups', 'clock', 'متابعات اليوم', False), ('/offers-report', 'send', 'العروض المرسلة', False),
                ('/leads', 'inbox', 'طلبات العروض الواردة', False), ('/notifications', 'bell', 'التنبيهات', True)]),
