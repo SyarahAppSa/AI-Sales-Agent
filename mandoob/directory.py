@@ -675,6 +675,13 @@ def tick() -> bool:
             _log(stale, "استئناف بعد انقطاع العامل")
         r = s.scalar(select(DirectoryRun).where(DirectoryRun.status == "pending").order_by(DirectoryRun.id))
         rid = r.id if r else None
+        if rid is not None:  # قفل تركه عامل سابق (تحديث/إعادة تشغيل) بلا دفعة حية ← يُحرَّر
+            from .models import JobLock
+            live = s.scalar(select(DirectoryRun.id).where(DirectoryRun.status == "running",
+                                                          DirectoryRun.heartbeat >= now_utc() - timedelta(minutes=12)))
+            lk = s.get(JobLock, "directory")
+            if lk is not None and not live:
+                lk.locked_until = now_utc() - timedelta(seconds=1)
     if rid is None:
         return False
     with job_lock("directory", minutes=20) as ok:
