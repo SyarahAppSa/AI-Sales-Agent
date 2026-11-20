@@ -25,6 +25,8 @@ def configure(scheduler) -> None:
     scheduler.add_job(jobs.enrich_tick, "interval", minutes=10, id="enrich", max_instances=1, coalesce=True)
     from . import prospects
     scheduler.add_job(prospects.tick, "interval", minutes=1, id="prospects", max_instances=1, coalesce=True)
+    from . import officials
+    scheduler.add_job(officials.tick, "interval", minutes=5, id="officials", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.daily_report_tick, "interval", minutes=5, id="daily_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.weekly_report_tick, "interval", minutes=15, id="weekly_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.outreach_tick, "interval", minutes=10, id="outreach", max_instances=1, coalesce=True)

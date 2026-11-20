@@ -2428,23 +2428,79 @@ def portal_officials(request: Request, user: User = Depends(staff_user), s=Depen
     from ..permissions import can
     rows = _portal_rows(s, user, "")
     return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: can(user, p),
-                  csum=_csum(s, [r["c"] for r in rows]))
+                  csum=_csum(s, [r["c"] for r in rows]), offs=_officials_map(s, [r["c"].id for r in rows]),
+                  **_official_ctx())
+
+
+def _officials_map(s, ids):
+    from ..models import CompanyOfficial
+    out: dict = {}
+    for o in s.scalars(select(CompanyOfficial).where(CompanyOfficial.company_id.in_(ids or [0]))
+                       .order_by(CompanyOfficial.is_primary.desc(), CompanyOfficial.id)):
+        out.setdefault(o.company_id, []).append(o)
+    return out
+
+
+def _official_ctx():
+    from .. import officials as O
+    return {"OSTATUS": O.STATUS, "OSOURCES": O.SOURCE_TYPES}
+
+
+OFFICIAL_HEADERS = ["المسؤول الموثّق", "المنصب", "نبذة عن دوره", "حالة التحقق", "رابط الدليل", "نوع المصدر", "تاريخ آخر تحقق",
+                    "بريد المسؤول المهني", "هاتف المسؤول المهني"]
+
+
+def _official_cells(c, os_):
+    from .. import officials as O
+    o = next((x for x in os_ if x.is_primary), os_[0] if os_ else None)
+    if o is None:
+        return ["لم يُعثر على مسؤول موثّق" if c.officials_checked_at else "لم يُبحث بعد"] + [""] * 8
+    return [o.name, o.title, o.summary, O.STATUS.get(o.status, o.status) + (f" ({o.status_reason})" if o.status_reason else ""),
+            o.evidence_url, O.SOURCE_TYPES.get(o.source_type, o.source_type), fmt(o.verified_at), o.email or "", o.phone or ""]
 
 
 @app.get("/officials", response_class=HTMLResponse)
 def admin_officials(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
-    """«موظفو الشركات» في بوابة الإدارة: جهة القرار ووسائل التواصل وحالة التواصل لكل المنشآت."""
+    """«موظفو الشركات» في بوابة الإدارة: جهة القرار المقترحة + المسؤول الموثّق + وسائل التواصل وحالة التواصل."""
+    from .. import officials as O
     rows = _portal_rows(s, user, "")
+    cfg = O.get_auto(s)
+    cnt = lambda st: s.scalar(select(func.count(Company.id)).where(Company.official_status == st)) or 0  # noqa: E731
+    ostats = {"verified": cnt("verified"), "needs": cnt("needs_check"), "none": cnt("none"),
+              "pending": s.scalar(select(func.count(Company.id)).where(
+                  Company.is_test.is_(False), Company.officials_checked_at.is_(None),
+                  (Company.data_status == "complete") | Company.contactable.is_(True))) or 0,
+              "spent": round(O.spent_today(s), 2),
+              "last": fmt(datetime.fromisoformat(cfg["last_cycle_at"])) if cfg.get("last_cycle_at") else None}
     return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: True, cbase="/companies",
-                  xlsx_url="/officials.xlsx", csum=_csum(s, [r["c"] for r in rows]))
+                  xlsx_url="/officials.xlsx", csum=_csum(s, [r["c"] for r in rows]),
+                  offs=_officials_map(s, [r["c"].id for r in rows]), ocfg=cfg, ostats=ostats, **_official_ctx())
+
+
+@app.post("/officials/control")
+def officials_control(request: Request, action: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import officials as O
+    if action == "pause":
+        O.set_auto(s, paused=True)
+        flash(request, "أُوقف البحث عن أصحاب القرار. ما وُجد يبقى كما هو.")
+    elif action == "resume":
+        O.set_auto(s, paused=False)
+        flash(request, "استُؤنف البحث عن أصحاب القرار — الدورة التالية خلال دقائق.")
+    elif action == "run":
+        O.set_auto(s, paused=False, last_cycle_at=None)
+        flash(request, "طُلبت دورة بحث الآن — تبدأ على الخادم خلال ٥ دقائق، ابتداءً بالمنشآت التي لم يُحدَّد مسؤولها.")
+    return back("/officials")
 
 
 @app.get("/officials.xlsx")
 def admin_officials_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
     from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
-    rows = [[r["c"].name, r["c"].activity, r["c"].city, r["c"].decision_unit or "", r["phone"] or "", r["email"] or ""]
-            + contact_cells(s, r["c"]) for r in _portal_rows(s, user, "")]
-    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار", "الهاتف", "البريد"] + CONTACT_HEADERS
+    prs = _portal_rows(s, user, "")
+    offs = _officials_map(s, [r["c"].id for r in prs])
+    rows = [[r["c"].name, r["c"].activity, r["c"].city, r["c"].decision_unit or ""] + _official_cells(r["c"], offs.get(r["c"].id, []))
+            + [r["phone"] or "", r["email"] or ""] + contact_cells(s, r["c"]) for r in prs]
+    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار المقترحة"] + OFFICIAL_HEADERS + \
+        ["هاتف الشركة العام", "بريد الشركة العام"] + CONTACT_HEADERS
     return response(workbook([("موظفو الشركات", head, rows)]), "company-officials.xlsx")
 
 
@@ -2458,10 +2514,12 @@ def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=
     for r in _portal_rows(s, user, ""):
         c = r["c"]
         rows.append([c.name, c.activity, c.city, c.decision_unit or ""]
+                    + (lambda cells: cells[:7] + [cells[7] if can(user, "see_email") else "", cells[8] if can(user, "see_phone") else ""])(
+                        _official_cells(c, _officials_map(s, [c.id]).get(c.id, [])))
                     + ([r["phone"] or ""] if can(user, "see_phone") else [])
                     + ([r["email"] or ""] if can(user, "see_email") else []) + contact_cells(s, c))
-    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار"] + (["الهاتف"] if can(user, "see_phone") else []) + \
-        (["البريد"] if can(user, "see_email") else []) + CONTACT_HEADERS
+    head = ["المنشأة", "النشاط", "المدينة", "جهة القرار المقترحة"] + OFFICIAL_HEADERS + \
+        (["هاتف الشركة العام"] if can(user, "see_phone") else []) + (["بريد الشركة العام"] if can(user, "see_email") else []) + CONTACT_HEADERS
     audit(s, user, "export", user, kind="officials", rows=len(rows))
     return response(workbook([("مسؤولو الشركات", head, rows)]), "company-officials.xlsx")
 

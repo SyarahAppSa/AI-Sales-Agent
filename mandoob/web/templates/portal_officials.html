@@ -1,11 +1,33 @@
 {% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% block content %}
+{% macro official_cell(c, os_, can) -%}
+{% set o = (os_|selectattr('is_primary')|first) or (os_|first) %}
+{% if o %}<div><b><span translate="no">{{ o.name }}</span></b> <span class="pill {{ 'ok' if o.status == 'verified' else 'warn' }}">{{ OSTATUS.get(o.status, o.status) }}</span></div>
+<div>{{ o.title or '—' }}</div>
+{% if o.summary %}<div class="muted">{{ o.summary }}</div>{% endif %}
+{% if o.status_reason %}<div class="muted">سبب الحالة: {{ o.status_reason }}</div>{% endif %}
+<div><a href="{{ o.evidence_url }}" target="_blank" rel="noopener">الدليل</a> <span class="muted">— {{ OSOURCES.get(o.source_type, o.source_type) }} — آخر تحقق: {{ fmt(o.verified_at, False) }}</span></div>
+{% if (o.email and can('see_email')) or (o.phone and can('see_phone')) %}<div style="margin-top:4px"><span class="pill info">تواصل مهني للمسؤول</span>
+{% if o.email and can('see_email') %} <span class="ltr">{{ o.email }}</span> <a href="{{ o.email_url }}" target="_blank" rel="noopener" class="muted">المصدر</a>{% endif %}
+{% if o.phone and can('see_phone') %} <span class="tel" dir="ltr">{{ o.phone }}</span> <a href="{{ o.phone_url }}" target="_blank" rel="noopener" class="muted">المصدر</a>{% endif %}</div>{% endif %}
+{% if os_|length > 1 %}<details><summary class="small">{{ os_|length - 1 }} آخرون</summary>{% for x in os_ if x.id != o.id %}<div><span translate="no">{{ x.name }}</span> — {{ x.title }} <a href="{{ x.evidence_url }}" target="_blank" rel="noopener">الدليل</a></div>{% endfor %}</details>{% endif %}
+{% elif c.officials_checked_at %}<span class="muted">لم يُعثر على مسؤول موثّق</span><div class="muted">آخر بحث: {{ fmt(c.officials_checked_at, False) }}</div>
+{% else %}<span class="muted">لم يُبحث بعد — في دورة البحث القادمة</span>{% endif %}
+{%- endmacro %}
 <div class="top"><div><h1>{{ 'موظفو الشركات' if cbase else 'تقرير مسؤولي الشركات' }}</h1><p class="sub" style="margin:0">{{ 'جهة القرار ووسائل التواصل وحالة التواصل لكل المنشآت (أول ٥٠٠).' if cbase else 'جهة القرار ووسائل التواصل وحالة التواصل للمنشآت المسندة إليك فقط.' }}</p></div>
 <div class="row">{% if can('export') %}<a class="btn p" href="{{ xlsx_url or '/portal/officials.xlsx' }}">تنزيل Excel</a>{% endif %}</div></div>
+{% if cbase and ocfg %}<div class="card"><div class="head2"><h2>البحث عن أصحاب القرار</h2>
+<div class="row" style="flex:0 0 auto">{% if ocfg.paused %}<form method="post" action="/officials/control"><input type="hidden" name="action" value="resume"><button class="btn p sm">استئناف</button></form>{% else %}<form method="post" action="/officials/control"><input type="hidden" name="action" value="pause"><button class="btn sm">إيقاف</button></form>{% endif %}
+<form method="post" action="/officials/control"><input type="hidden" name="action" value="run"><button class="btn sm">تشغيل دورة الآن</button></form></div></div>
+<div class="grid g4 small"><div>الحالة: <b>{{ 'موقوف' if ocfg.paused else 'يعمل كل %s ساعات'|format(ocfg.every_hours) }}</b></div>
+<div>آخر دورة: {{ ostats.last or '—' }}</div><div>موثّق: <b>{{ ostats.verified }}</b> — يحتاج تحقق: <b>{{ ostats.needs }}</b> — لم يُعثر: <b>{{ ostats.none }}</b> — لم يُبحث: <b>{{ ostats.pending }}</b></div>
+<div>تكلفة اليوم: ${{ ostats.spent }} من ${{ ocfg.daily_budget_usd }} — {{ ocfg.per_cycle }} منشأة لكل دورة</div></div>
+<p class="small muted" style="margin:8px 0 0">المصادر: صفحات «فريق الإدارة» في مواقع الشركات، الملفات المهنية العامة على لينكدإن كما تظهر في محركات البحث، منشورات التعيين على إكس، الأخبار والمقابلات، وصفحات متحدثي المؤتمرات. لا يُقبل اسم إلا إن ظهر مع اسم الشركة في الدليل نفسه.</p></div>{% endif %}
 <div class="card tablewrap"><table>
-<tr><th>المنشأة وحالة التواصل</th><th>جهة القرار المقترحة</th>{% if can('see_phone') %}<th>الهاتف</th>{% endif %}{% if can('see_email') %}<th>البريد</th>{% endif %}</tr>
+<tr><th>المنشأة وحالة التواصل</th><th>جهة القرار المقترحة</th><th>المسؤول الموثّق</th>{% if can('see_phone') %}<th>هاتف الشركة العام</th>{% endif %}{% if can('see_email') %}<th>بريد الشركة العام</th>{% endif %}</tr>
 {% for r in rows %}{% set c = r.c %}<tr><td style="min-width:240px"><a href="{{ cbase or '/portal/companies' }}/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div>{{ inline(csum[c.id], '/portal/companies/%d' % c.id, can('update_status')) }}</td>
 <td class="small">{{ c.decision_unit or '—' }}</td>
+<td class="small" style="min-width:260px;max-width:360px">{{ official_cell(c, offs.get(c.id, []), can) }}</td>
 {% if can('see_phone') %}<td class="small telcol">{{ phone_pairs(r.phones) }}</td>{% endif %}{% if can('see_email') %}<td class="small ltr">{{ r.email or '—' }}</td>{% endif %}</tr>
-{% else %}<tr><td colspan="4" class="muted">لا يوجد عملاء مسندون إليك حاليًا.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="5" class="muted">لا يوجد عملاء مسندون إليك حاليًا.</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

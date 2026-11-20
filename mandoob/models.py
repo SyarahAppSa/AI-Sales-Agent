@@ -212,7 +212,9 @@ class Company(Base):
     priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
     priority_level: Mapped[Optional[str]] = mapped_column(String(10))  # high / medium / low
     priority_reason: Mapped[Optional[str]] = mapped_column(Text)
-    priority_url: Mapped[Optional[str]] = mapped_column(String(500))  # تاريخ تسجيل الصفقة (لأداء المبيعات حسب الفترة)
+    priority_url: Mapped[Optional[str]] = mapped_column(String(500))
+    officials_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    official_status: Mapped[Optional[str]] = mapped_column(String(20))  # verified / needs_check / none  # تاريخ تسجيل الصفقة (لأداء المبيعات حسب الفترة)
     offer_sent_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_note: Mapped[Optional[str]] = mapped_column(String(300))
     # حالة التواصل اليدوي — على سجل المنشأة نفسه (تظهر في كل القوائم والحملات وتبقى عند نقل العميل)
@@ -708,3 +710,28 @@ class ProspectPool(Base):
     uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class CompanyOfficial(Base):
+    """صاحب قرار في منشأة (من صفحات عامة) — سجل واحد لكل شخص في المنشأة، يُحدَّث عند ظهور مصدر جديد."""
+    __tablename__ = "company_officials"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    name_norm: Mapped[str] = mapped_column(String(200), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    summary: Mapped[str] = mapped_column(String(300), default="")
+    relevance: Mapped[str] = mapped_column(String(20), default="other")
+    source_type: Mapped[str] = mapped_column(String(20), default="other")
+    evidence_url: Mapped[str] = mapped_column(String(500), default="")
+    evidence_date: Mapped[str] = mapped_column(String(40), default="")
+    evidence: Mapped[list] = mapped_column(JSON, default=list)  # كل المصادر التي ظهر فيها
+    status: Mapped[str] = mapped_column(String(20), default="needs_check")  # verified / needs_check
+    status_reason: Mapped[str] = mapped_column(String(200), default="")
+    email: Mapped[Optional[str]] = mapped_column(String(200))   # بريد مهني منشور باسمه
+    email_url: Mapped[Optional[str]] = mapped_column(String(500))
+    phone: Mapped[Optional[str]] = mapped_column(String(40))    # هاتف مهني منشور باسمه
+    phone_url: Mapped[Optional[str]] = mapped_column(String(500))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
