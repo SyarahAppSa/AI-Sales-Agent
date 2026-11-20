@@ -22,7 +22,7 @@
   <div class="head2"><h2>ملخص اليوم</h2>
   {% if user.role in ('admin','manager') %}
     {% if last and last.status in ('pending','running') %}
-      <form method="post" action="/prospects/stop" class="row" style="flex:0 0 auto"><span class="pill info" style="align-self:center">دفعة #{{ last.id }} تعمل الآن — {{ ((last.stats or {}).bluepages or {}).ready or 0 }} من {{ last.target }}</span><button class="btn sm">إيقاف</button></form>
+      <form method="post" action="/prospects/stop" class="row" style="flex:0 0 auto"><span class="pill info" style="align-self:center">دفعة #{{ last.id }} تعمل الآن — {{ ((last.stats or {}).bluepages or {}).ready|default(0) + ((last.stats or {}).earabicmarket or {}).ready|default(0) }} من {{ last.target }}</span><button class="btn sm">إيقاف</button></form>
     {% else %}
       <form method="post" action="/prospects/run" class="row" style="flex:0 0 auto;align-items:center"><label style="margin:0">عدد المنشآت</label><input name="target" type="number" min="10" max="5000" value="100" style="width:110px"><button class="btn p sm">تشغيل دفعة</button></form>
     {% endif %}
@@ -33,7 +33,9 @@
     <div>لها هاتف: <b>{{ sm.with_phone }}</b> — لها بريد: <b>{{ sm.with_email }}</b></div>
     <div>موثّقة من موقع المنشأة: <b>{{ sm.website_verified }}</b> — تكلفة البيانات: <b>${{ sm.cost }}</b></div>
   </div>
-  <p class="small muted" style="margin:10px 0 0">المصدر: دليل الصفحات الزرقاء (صفحات عامة يسمح الموقع بزحفها)، ثم زيارة موقع كل منشأة للتحقق من الهاتف والبريد. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
+  {% if sm.by_source %}<table class="small" style="margin-top:10px"><tr><th>المصدر</th><th>صفحات</th><th>سجلات فُحصت</th><th>جاهزة</th><th>تحتاج استكمال</th><th>مكررة</th><th>عملاء حاليون</th></tr>
+  {% for x in sm.by_source %}<tr><td>{{ x.label }}</td><td>{{ x.pages or 0 }}</td><td>{{ x.examined or 0 }}</td><td><b>{{ x.ready or 0 }}</b></td><td>{{ x.needs or 0 }}</td><td>{{ x.duplicate or 0 }}</td><td>{{ x.existing_customer or 0 }}</td></tr>{% endfor %}</table>{% endif %}
+  <p class="small muted" style="margin:10px 0 0">المصادر: أدلة شركات عامة يسمح أصحابها بزحفها (الصفحات الزرقاء، دليل الشركات السعودية في السوق العربي)، ثم زيارة موقع كل منشأة للتحقق من الهاتف والبريد. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
 </div>
 
 <form class="card row" method="get">

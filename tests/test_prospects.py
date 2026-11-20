@@ -115,3 +115,16 @@ def test_pilot_batch_counts_contactable_dedupes_and_ranks(monkeypatch):
     with session_scope() as s:
         st = s.get(ProspectRun, rid2).stats["bluepages"]
         assert st.get("ready", 0) == 0 and st["duplicate"] >= 4
+
+
+def test_earabicmarket_listing_parse_and_pagination():
+    from mandoob import prospects as P
+    html = ('<span id="dlCompanies_lblCompanyName_0">شركة التقنية للأنظمة</span><span id="dlCompanies_lblCity_0">الرياض</span>'
+            '<span id="dlCompanies_lblAddress_0">ص.ب. 5285 - الرياض 11422</span><span id="dlCompanies_lblTelephone_0">٠٠٩٦٦٠١١٤١٢٢٢١١</span>'
+            '<a id="dlCompanies_lnkWebSite_0" class="website" href="http://www.techgroup-sa.example" target="_blank">x</a>'
+            '<span id="lblPromotionCompanyName">شركتك هنا</span>'
+            '<a href="https://www.earabicmarket.com/ar/companies/saudi-arabia/all/search?page=2&amp;qry=abc">2</a>')
+    items, nxt = P.parse_eam(html, "https://www.earabicmarket.com/ar/companies/saudi-arabia/all")
+    assert len(items) == 1 and items[0]["name"] == "شركة التقنية للأنظمة" and items[0]["city"] == "الرياض"
+    assert items[0]["website"] == "http://www.techgroup-sa.example" and items[0]["phones"]
+    assert nxt == ["https://www.earabicmarket.com/ar/companies/saudi-arabia/all/search?page=2&qry=abc"]

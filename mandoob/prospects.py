@@ -37,7 +37,10 @@ DAILY_TARGET = 1000
 BP = "https://bluepages.com.sa"
 UA = "Mozilla/5.0 (compatible; SyarahAppSalesAgent/1.0; +https://mandoob.live)"
 DELAY = 1.2  # ثانية بين طلبات الدليل (زحف مهذب)
-SOURCE_LABEL = {"bluepages": "دليل الصفحات الزرقاء (bluepages.com.sa)"}
+SOURCE_LABEL = {"bluepages": "دليل الصفحات الزرقاء (bluepages.com.sa)",
+                "earabicmarket": "دليل الشركات السعودية — السوق العربي (earabicmarket.com)"}
+EAM = "https://www.earabicmarket.com"
+EAM_START = EAM + "/ar/companies/saudi-arabia/all"
 LEVELS = {"high": "عالية", "medium": "متوسطة", "low": "منخفضة"}
 CONTACT_LEVELS = {"website": "موثّقة من موقع المنشأة", "directory": "منشورة في الدليل باسم المنشأة"}
 
@@ -145,6 +148,28 @@ def _plan(urls: list[str], day: date) -> list[str]:
             if by_city[c]:
                 out.append(by_city[c].pop())
     return out
+
+
+def parse_eam(page: str, url: str) -> tuple[list[dict], list[str]]:
+    """بطاقات «دليل الشركات السعودية» في السوق العربي + روابط الصفحات التالية."""
+    fields: dict[int, dict] = {}
+    for m in re.finditer(r'id="dlCompanies_(\w+?)_(\d+)"[^>]*>([^<]*)<', page):
+        fields.setdefault(int(m.group(2)), {})[m.group(1)] = _html.unescape(m.group(3)).strip()
+    for m in re.finditer(r'id="dlCompanies_lnkWebSite_(\d+)"[^>]*href="([^"]+)"', page):
+        fields.setdefault(int(m.group(1)), {})["_web"] = _html.unescape(m.group(2))
+    out = []
+    for i, f in sorted(fields.items()):
+        name = next((v for k, v in f.items() if "name" in k.lower() and v), "")
+        if not name or "شركتك هنا" in name:
+            continue
+        web = f.get("_web")
+        out.append({"external_id": f"eam:{normalize_name(name)}:{f.get('lblCity', '')}", "name": name[:300], "name_en": None,
+                    "website": web if web and web.startswith("http") else (("http://" + web) if web else None),
+                    "email": None, "phones": [f["lblTelephone"]] if f.get("lblTelephone") else [],
+                    "city": f.get("lblCity", ""), "activity": next((v for k, v in f.items() if "activ" in k.lower() or "categ" in k.lower()), ""),
+                    "description": f.get("lblAddress", ""), "listing_url": url, "verified_by_directory": False})
+    nxt = [_html.unescape(h) for h in re.findall(r'href="(https://www\.earabicmarket\.com/ar/companies/saudi-arabia/all/search\?page=\d+[^"]*)"', page)]
+    return out, nxt
 
 
 # ---------------------------------------------------------------- التصنيف والأولوية
@@ -290,7 +315,7 @@ def _is_customer(s, rec, phones, email) -> bool:
     return is_existing_customer(s, cand, fcs)
 
 
-def process(rec: dict, crawler, stats: dict, day: date) -> str:
+def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") -> str:
     """يعيد: ready / needs / duplicate / existing_customer / rejected."""
     from .companies import _add_contact, _refresh_preferred, find_hq, is_complete, log_activity
     from .discovery.base import FoundContact
@@ -343,7 +368,7 @@ def process(rec: dict, crawler, stats: dict, day: date) -> str:
         sector = sector_of(rec.get("activity") or rec["name"])
         c = Company(name=rec["name"], name_en=rec.get("name_en"), name_norm=normalize_name(rec["name"]),
                     activity=(rec.get("activity") or "")[:200], sector_key=sector, city=city, region_id=(PLACES[pid]["region"] if pid else None),
-                    place_id=pid, website=rec.get("website"), domain=site_dom, lead_source="directory:bluepages",
+                    place_id=pid, website=rec.get("website"), domain=site_dom, lead_source=f"directory:{src}",
                     first_found_at=now_utc(), last_seen_at=now_utc(), prospect_on=day, unified_number=unified, cr_number=cr,
                     vehicles_estimate=fleet, fit_reason="", data_status="incomplete")
         hq = find_hq(s, rec["name"], city)
@@ -378,7 +403,7 @@ def process(rec: dict, crawler, stats: dict, day: date) -> str:
         score(c, strength, sentence, ev_url, where)
         c.fit_reason = c.priority_reason or ""
         c.fit_evidence_url = c.priority_url
-        log_activity(s, c.id, "discovered", "أُضيفت إلى «العملاء المحتملون» من دليل الصفحات الزرقاء",
+        log_activity(s, c.id, "discovered", f"أُضيفت إلى «العملاء المحتملون» من {SOURCE_LABEL.get(src, src)}",
                      f"صفحة الدليل: {rec['listing_url']}\nالأولوية: {LEVELS[c.priority_level]} — {c.priority_reason}"
                      + (f"\nفرع لـ «{hq.name}»" if hq else ""))
         return "ready" if c.contactable else "needs"
@@ -395,12 +420,12 @@ def _log(r: ProspectRun, msg: str) -> None:
     r.log = (r.log or [])[-300:] + [f"{now_utc():%H:%M:%S} {msg}"]
 
 
-def request_run(s, user: User | None, target: int = 100) -> ProspectRun:
+def request_run(s, user: User | None, target: int = 100, sources: str = "bluepages,earabicmarket") -> ProspectRun:
     s.flush()
     busy = s.scalar(select(ProspectRun).where(ProspectRun.status.in_(["pending", "running"])))
     if busy:
         return busy
-    r = ProspectRun(status="pending", target=max(1, min(int(target), 5000)), stats={}, log=[],
+    r = ProspectRun(status="pending", target=max(1, min(int(target), 5000)), stats={}, log=[], source=sources,
                     created_by=user.id if user else None)
     s.add(r)
     s.flush()
@@ -416,18 +441,11 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
         r = s.get(ProspectRun, run_id)
         r.status, r.started_at, r.heartbeat = "running", r.started_at or now_utc(), now_utc()
         target = r.target
+        src_list = r.source
         stats = dict(r.stats or {})
         done_pages = set(stats.get("_pages") or [])
-        _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصدر: {SOURCE_LABEL['bluepages']}")
-    st = stats.setdefault("bluepages", {})
-    try:
-        pages = _plan(listing_pages(client), day)
-    except Exception as e:  # noqa: BLE001
-        with session_scope() as s:
-            r = s.get(ProspectRun, run_id)
-            r.status, r.finished_at = "failed", now_utc()
-            _log(r, f"فشل: تعذّر قراءة خريطة الدليل — {type(e).__name__}: {str(e)[:160]}")
-        return
+        _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصادر: {r.source}")
+    sources = [x for x in (src_list or "bluepages").split(",") if x in SOURCE_LABEL]
 
     def beat(msg=None):
         with session_scope() as s:
@@ -438,43 +456,71 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
                 _log(r, msg)
             return r.status
 
-    for url in pages:
-        if st.get("ready", 0) >= target:
-            break
-        if url in done_pages:
-            continue
-        if beat() == "stopped":
-            return
-        try:
-            items = parse_listing(_get(url, client), url)
-        except Exception as e:  # noqa: BLE001
-            _bump(stats, "page_errors")
-            beat(f"تعذّرت صفحة {unquote(url)[len(BP):][:80]}: {type(e).__name__}")
-            done_pages.add(url)
-            continue
-        done_pages.add(url)
-        _bump(stats, "pages")
+    def ready_total():
+        return sum((stats.get(x) or {}).get("ready", 0) for x in SOURCE_LABEL)
+
+    def handle(src, url, items):
+        st = stats.setdefault(src, {})
         took = 0
         for rec in items:
-            if took >= per_page or st.get("ready", 0) >= target:
+            if took >= per_page or ready_total() >= target:
                 break
-            _bump(stats, "examined")
+            st["examined"] = st.get("examined", 0) + 1
             try:
-                out = process(rec, crawler, stats, day)
+                out = process(rec, crawler, stats, day, src)
             except Exception as e:  # noqa: BLE001
                 out = "error"
                 log.warning("prospect failed: %s", type(e).__name__)
-            _bump(stats, out)
+            st[out] = st.get(out, 0) + 1
             if out in ("ready", "needs"):
                 took += 1
-        beat(f"{unquote(url)[len(BP):][:80]}: {len(items)} بطاقة — جاهزة {st.get('ready', 0)} من {target}")
+        beat(f"[{src}] {unquote(url).split('.com', 1)[-1][:80]}: {len(items)} بطاقة — جاهزة {ready_total()} من {target}")
+
+    for src in sources:
+        if ready_total() >= target:
+            break
+        st = stats.setdefault(src, {})
+        if src == "bluepages":
+            try:
+                queue = _plan(listing_pages(client), day)
+            except Exception as e:  # noqa: BLE001
+                beat(f"تعذّرت خريطة {SOURCE_LABEL[src]} — {type(e).__name__}: {str(e)[:120]} — انتقال للمصدر التالي")
+                continue
+        else:
+            queue = [EAM_START]
+        seen_q = set(queue)
+        while queue and ready_total() < target:
+            url = queue.pop(0)
+            if url in done_pages:
+                continue
+            if beat() == "stopped":
+                return
+            try:
+                page = _get(url, client)
+                if src == "bluepages":
+                    items = parse_listing(page, url)
+                else:
+                    items, nxt = parse_eam(page, url)
+                    for n in nxt:
+                        if n not in seen_q:
+                            seen_q.add(n)
+                            queue.append(n)
+            except Exception as e:  # noqa: BLE001
+                st["page_errors"] = st.get("page_errors", 0) + 1
+                beat(f"[{src}] تعذّرت صفحة: {type(e).__name__}")
+                done_pages.add(url)
+                continue
+            done_pages.add(url)
+            st["pages"] = st.get("pages", 0) + 1
+            handle(src, url, items if src == "bluepages" else items[:50])
     with session_scope() as s:
         r = s.get(ProspectRun, run_id)
         r.status, r.finished_at = "done", now_utc()
         r.stats = {**stats, "_pages": sorted(done_pages),
                    "_minutes": round((r.finished_at - r.started_at).total_seconds() / 60, 1)}
-        _log(r, f"انتهت الدفعة: جاهزة {st.get('ready', 0)} — تحتاج استكمال {st.get('needs', 0)} — مكررة {st.get('duplicate', 0)}"
-                f" — فُحص {st.get('examined', 0)} سجلًا")
+        agg = {k: sum((stats.get(x) or {}).get(k, 0) for x in SOURCE_LABEL) for k in ("ready", "needs", "duplicate", "examined")}
+        _log(r, f"انتهت الدفعة: جاهزة {agg['ready']} — تحتاج استكمال {agg['needs']} — مكررة {agg['duplicate']}"
+                f" — فُحص {agg['examined']} سجلًا")
 
 
 def tick() -> bool:
@@ -533,11 +579,14 @@ def summary(s, day: date) -> dict:
     needs = s.scalar(base.where(Company.contactable.is_(False))) or 0
     a, b = riyadh_day_bounds_utc(day)
     agg: dict[str, int] = {}
+    by_src: dict[str, dict] = {}
     runs = list(s.scalars(select(ProspectRun).where(ProspectRun.created_at >= a - timedelta(hours=3),
                                                     ProspectRun.created_at < b)))
     for r in runs:
-        for k, v in ((r.stats or {}).get("bluepages") or {}).items():
-            agg[k] = agg.get(k, 0) + int(v or 0)
+        for src in SOURCE_LABEL:
+            for k, v in ((r.stats or {}).get(src) or {}).items():
+                agg[k] = agg.get(k, 0) + int(v or 0)
+                by_src.setdefault(src, {})[k] = by_src.setdefault(src, {}).get(k, 0) + int(v or 0)
     web = s.scalar(base.where(Company.contactable.is_(True), Company.contact_level == "website")) or 0
     phone = s.scalar(select(func.count(func.distinct(Contact.company_id))).join(Company, Company.id == Contact.company_id)
                      .where(Company.prospect_on == day, Contact.kind == "phone")) or 0
@@ -549,4 +598,5 @@ def summary(s, day: date) -> dict:
             "pages": agg.get("pages", 0), "website_verified": web, "with_phone": phone, "with_email": mail,
             "ready_rate": round(100 * ready / created, 1) if created else 0.0,
             "high": s.scalar(base.where(Company.priority_level == "high", Company.contactable.is_(True))) or 0,
-            "cost": 0.0, "runs": runs}
+            "cost": 0.0, "runs": runs,
+            "by_source": [{"label": SOURCE_LABEL[k], **v} for k, v in by_src.items()]}
