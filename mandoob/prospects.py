@@ -157,28 +157,84 @@ def sector_of(activity: str) -> str:
     return "community"
 
 
+STRONG_RX = [
+    re.compile(r"(?:أسطول|اسطول)\w*\s+(?:من|يضم|يتجاوز|يزيد|مكون|حديث|كبير|متكامل|خاص|ضخم|متنوع|مجهز)", re.I),
+    re.compile(r"(?:نمتلك|نملك|لدينا|لدينا|نشغل|نشغّل|نوفر|تمتلك|تملك|تشغّل|تشغل|يضم)\s+(?:\S+\s+){0,2}(?:أسطول|اسطول|شاحنات|حافلات|مركبات|سيارات|صهاريج|برادات|سطحات)", re.I),
+    re.compile(r"(?:إدارة|ادارة|الإدارة|الادارة|تشغيل)\s+(?:\S+\s+){0,4}(?:ل|ب|لل|ال)?(?:أسطول|اسطول|أساطيل|اساطيل)", re.I),
+    re.compile(r"\b(?:our|a|own|operate|operates|operating|modern|large)\s+fleet\b|\bfleet\s+of\b", re.I),
+    re.compile(r"(?:سيارات|شاحنات|مركبات)\s+(?:مبردة|مجهزة|نقل|توصيل|خدمة)", re.I),
+]
+WEAK_RX = [re.compile(r"(?:خدمة|خدمات)\s+(?:التوصيل|النقل)|نوصل|فرق\s+ميدانية|فريق\s+ميداني|زيارات\s+ميدانية|"
+                      r"\bdelivery\s+service|\bfield\s+(?:team|service)", re.I)]
+MENU_WORDS = ["من نحن", "تواصل معنا", "الرئيسية", "المدونة", "اتصل بنا", "Home", "About", "Contact", "Blog", "En "]
+
+
+def _window(text: str, i: int, j: int) -> str:
+    a = max(text.rfind(ch, 0, i) for ch in ".!؟?\n|•")
+    a = max(a + 1, i - 140)
+    ends = [k for k in (text.find(ch, j) for ch in ".!؟?\n|•") if k != -1]
+    b = min(min(ends) + 1 if ends else len(text), j + 140)
+    return re.sub(r"\s+", " ", text[a:b]).strip()
+
+
 def _evidence(texts: list[tuple[str, str]]) -> tuple[str | None, str | None, str | None, int | None]:
-    """(قوة الدليل strong/weak، الجملة، رابطها، عدد الأسطول المنشور) من نصوص (الرابط، النص)."""
+    """(قوة الدليل strong/weak، الجملة، رابطها، عدد الأسطول المنشور) — جملة حقيقية فقط، لا قوائم التنقل."""
     best = (None, None, None)
     fleet = None
     for url, text in texts:
         if not text:
             continue
-        for sent in re.split(r"(?<=[.!؟?\n])\s+|\s{2,}|[|•]", text):
-            s = sent.strip()
-            if not (12 <= len(s) <= 400):
+        for strength, rxs in (("strong", STRONG_RX), ("weak", WEAK_RX)):
+            if best[0] == "strong" or (best[0] == "weak" and strength == "weak"):
                 continue
-            low = s.lower()
-            if any(w.lower() in low for w in STRONG):
-                if best[0] != "strong":
-                    best = ("strong", s[:220], url)
-            elif best[0] is None and any(w.lower() in low for w in WEAK):
-                best = ("weak", s[:220], url)
-            if fleet is None and (m := FLEET_RX.search(s)):
+            for rx in rxs:
+                for m in rx.finditer(text):
+                    sent = _window(text, m.start(), m.end())
+                    if len(sent.split()) < 6 or sum(w in sent for w in MENU_WORDS) >= 2:
+                        continue
+                    best = (strength, sent[:220], url)
+                    break
+                if best[0] == strength:
+                    break
+        if fleet is None:
+            for m in FLEET_RX.finditer(text):
                 n = int(m.group(1))
-                if 2 <= n <= 20000:
+                if 2 <= n <= 20000 and len(_window(text, m.start(), m.end()).split()) >= 5:
                     fleet = n
+                    break
     return best[0], best[1], best[2], fleet
+
+
+def rescore(ids: list[int], crawler=None) -> int:
+    """إعادة حساب الأولوية بالقاعدة الحالية (يعيد زيارة موقع المنشأة — دون تكلفة)."""
+    from .discovery.crawler import Crawler
+    crawler = crawler or Crawler(max_pages=5)
+    n = 0
+    for cid in ids:
+        with session_scope() as s:
+            c = s.get(Company, cid)
+            web, desc_src = c.website, next((x for x in c.sources if x.source_type == "directory"), None)
+        texts = []
+        if web:
+            try:
+                site = crawler.crawl(web)
+                texts = [(p.url, " ".join([p.title or "", p.description or "", p.text or ""])) for p in site.pages]
+            except Exception:  # noqa: BLE001
+                pass
+        strength, sentence, url, fleet = _evidence(texts)
+        where = "موقعها"
+        if strength != "strong" and desc_src is not None:
+            s2, sen2, url2, f2 = _evidence([(desc_src.url, desc_src.snippet or "")])
+            if s2 == "strong" or (s2 and not strength):
+                strength, sentence, url, where = s2, sen2, url2, "صفحتها في الدليل"
+            fleet = fleet or f2
+        with session_scope() as s:
+            c = s.get(Company, cid)
+            c.vehicles_estimate = fleet
+            score(c, strength, sentence, url, where)
+            c.fit_reason, c.fit_evidence_url = c.priority_reason or "", c.priority_url
+            n += 1
+    return n
 
 
 def score(c: Company, strength: str | None, sentence: str | None, url: str | None, where: str) -> None:
