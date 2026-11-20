@@ -37,6 +37,7 @@ SYSTEM = """أنت باحث مبيعات B2B لشركة «سيارة آب» (ح�
 المطلوب: تحديد صاحب القرار الأقرب لخدماتنا في منشأة معيّنة، من الصفحات العامة فقط:
 صفحات «فريق الإدارة/من نحن» في موقع الشركة، الملفات المهنية العامة وصفحات الشركات على لينكدإن (كما تظهر في نتائج البحث)،
 منشورات التعيين والترقية على إكس وحسابات الشركة الرسمية، الأخبار والمقابلات الصحفية، وصفحات المتحدثين في المؤتمرات.
+افتح (web_fetch) الصفحة التي تثبت كل اسم إن أمكن؛ وإن تعذّر فتحها (مثل لينكدإن) فاعتمد عنوان نتيجة البحث الذي يذكر الاسم والمنصب والشركة.
 ابحث باسم المنشأة بالعربية والإنجليزية مع: مدير الأسطول، مدير التشغيل، مدير النقل، مدير الخدمات اللوجستية، مدير المشتريات،
 Fleet Manager, Operations Manager, Transport Manager, Logistics Manager, Procurement Manager.
 الأولوية لمن يتولى المركبات أو تشغيلها. في المنشأة الصغيرة: المدير العام أو المالك إن وُجد ما يثبت دوره.
@@ -65,22 +66,40 @@ SCHEMA = {
             "professional_email": {"type": "string"}, "professional_phone": {"type": "string"}}}}}}
 
 
+STOP = {"bin", "ibn", "abu", "بن", "ابن", "ابو", "al", "el", "the", "and", "of"}
+
+
+def _canon(t: str) -> str:
+    """توحيد للمطابقة: حروف صغيرة، بلا «ال/al-» في بداية الكلمات، بلا شرطات أو نقاط."""
+    t = normalize_arabic(t or "").lower()
+    t = re.sub(r"[-‐–—_.'’`]", " ", t)
+    t = re.sub(r"\b(?:al|el)\s+(?=\w)", "al", t)  # al drees → aldrees
+    return re.sub(r"\s+", " ", t)
+
+
 def _toks(t: str) -> list[str]:
-    return [w for w in normalize_name(t or "").split() if len(w) >= 3]
+    out = []
+    for w in _canon(t).split():
+        w2 = w[2:] if w.startswith("ال") and len(w) > 4 else w
+        if len(w2) >= 3 and w2 not in STOP:
+            out.append(w2)
+    return out
 
 
 def _hit(text: str, toks: list[str], need: int) -> bool:
-    t = normalize_arabic(text or "").lower()
-    return sum(1 for w in toks if w in t) >= need
+    t = _canon(text)
+    flat = t.replace(" ", "")
+    return sum(1 for w in toks if w in t or w in flat or (w.startswith("al") and w[2:] in t)) >= need
 
 
 def _company_keys(c: Company) -> list[list[str]]:
     keys = []
     for nm in (c.name, c.name_en):
-        tk = [w for w in _toks(nm) if w not in ("شركه", "شركة", "مؤسسه", "مؤسسة", "company", "co", "ltd", "llc", "group",
-                                                  "مجموعه", "للتجاره", "trading", "est")]
+        tk = [w for w in _toks(nm) if w not in ("شركه", "شركة", "مؤسسه", "مؤسسة", "company", "ltd", "llc", "group",
+                                                  "مجموعه", "للتجاره", "trading", "est", "services", "international",
+                                                  "خدمات", "للخدمات", "العالميه", "الدوليه", "transport", "contracting")]
         if tk:
-            keys.append(tk)
+            keys.append(tk[:2])  # الكلمتان المميزتان الأوليان (اسم العلامة)
     if c.domain:
         keys.append([c.domain.split(".")[0].lower()])
     return keys
@@ -95,7 +114,7 @@ def verify(c: Company, it: dict, pages, results) -> tuple[str | None, str, str]:
     ckeys = _company_keys(c)
 
     def comp_ok(text):
-        return any(_hit(text, k, max(1, (len(k) + 1) // 2)) for k in ckeys)
+        return any(_hit(text, k, 1) for k in ckeys)
     url = it.get("evidence_url") or ""
     dom = domain_of(url)
     texts = [(p.url, p.text) for p in pages if p.url == url or (dom and domain_of(p.url) == dom)]
@@ -130,8 +149,8 @@ def find_for(company_id: int) -> dict:
     prompt = (f"المنشأة: {name}" + (f" / {name_en}" if name_en else "") + f"\nالمدينة: {city or 'السعودية'}\n"
               f"الموقع: {web or 'غير معروف'}\n"
               + ("قد تكون منشأة صغيرة: إن لم تجد مسؤول أسطول/تشغيل فابحث عن المدير العام أو المالك.\n" if small else ""))
-    out, blocks, _ = ai.ai_agent(SYSTEM, prompt, SCHEMA, max_searches=5, max_fetches=6, note="officials",
-                                 effort="low", deadline_s=300)
+    out, blocks, _ = ai.ai_agent(SYSTEM, prompt, SCHEMA, max_searches=8, max_fetches=8, note="officials",
+                                 effort="medium", deadline_s=360)
     pages, extra = _collect_pages(blocks)
     results = _search_results(blocks)
     accepted, rejected = [], []
