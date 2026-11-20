@@ -38,7 +38,7 @@ def setup_module():
 
 
 def _total(html):
-    m = re.search(r"(\d+) سجل", html)
+    m = re.search(r"(\d+) (?:سجل|متابعة)", html)
     return int(m.group(1)) if m else None
 
 
@@ -57,11 +57,9 @@ def test_four_cards_match_their_lists_and_branding():
         assert "من 400" in html
         for href, key, n in cards:
             page = c.get(href.replace("&amp;", "&")).text
+            assert _total(page) == int(n), (key, _total(page), n)
             if key == "followups":
-                assert page.count('href="/companies/') >= int(n) >= 1
-                assert "لوحة مسند" in page
-            else:
-                assert _total(page) == int(n), (key, _total(page), n)
+                assert int(n) >= 1 and "لوحة مسند" in page
         nums = {k: int(n) for _, k, n in cards}
         assert nums["new"] >= 3 and nums["incomplete"] >= 2
         for p in ("today", "7d", "30d", "month", "all"):

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>تحتاج متابعة اليوم</h1><p class="sub">الشركات التي حان موعد متابعتها، مع آخر رد واسم المسؤول والإجراء المطلوب. من طلب عدم التواصل مستبعد.</p></div>
+<div class="top"><div><h1>متابعات اليوم</h1><p class="sub"><b class="pill info">{{ items|length }} متابعة</b> الشركات التي حان موعد متابعتها، مع آخر رد واسم المسؤول والإجراء المطلوب. من طلب عدم التواصل مستبعد.</p></div>
 <div class="row" style="flex:0 0 auto"><a class="btn p" href="/followups.xlsx">تنزيل Excel</a></div></div>
 <div class="card tablewrap"><table>
 <tr><th>الشركة</th><th>الإجراء المطلوب</th><th>الموعد</th><th>آخر رد</th><th>العرض الذي وصلها</th><th>المسؤول</th><th></th></tr>
