@@ -142,7 +142,7 @@ def test_3_reply_creates_task_for_owner_on_sunday():
         due = to_riyadh(task.due_at)
         assert due.weekday() == 6 and due.hour == 13  # الأحد 1:00 م بتوقيت الرياض
         assert task.owner.name == "سارة المندوبة"
-        assert "+966 11 410 2030" in task.details and "مهتم، اتصلوا بي الأحد بعد الظهر" in task.details
+        assert "+966114102030" in task.details and "مهتم، اتصلوا بي الأحد بعد الظهر" in task.details
         note = s.scalar(select(Notification).where(Notification.company_id == c.id))
         assert "مهتم" in note.body
         reply = s.scalar(select(InboundMessage).where(InboundMessage.company_id == c.id,

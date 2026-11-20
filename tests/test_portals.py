@@ -76,7 +76,7 @@ def test_2_each_employee_sees_only_own_customer_and_permissions_enforced():
         assert c1.post(f"/portal/companies/{S['a']}/status", data={"stage": "won"}).status_code == 403
         assert c1.get("/portal/export.xlsx").status_code == 403
         assert c1.post(f"/portal/companies/{S['a']}/send-offer").status_code == 403
-        assert "+966 11 444 0001" in c1.get(f"/portal/companies/{S['a']}").text
+        assert "+966114440001" in c1.get(f"/portal/companies/{S['a']}").text
         # منى: تحديث المتابعة مسموح
         r = c2.post(f"/portal/companies/{S['b']}/status",
                     data={"stage": "interested", "next_title": "اتصال الأحد", "next_at": "2026-11-22T13:00"},

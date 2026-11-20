@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_contact.html" import panel %}{% block content %}
+{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import panel %}{% block content %}
 <div class="top"><div><h1><span translate="no">{{ c.name }}</span></h1>
 <p class="sub">{{ c.activity }} — {{ c.city }}{% if c.website %} — <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a>{% endif %}</p>
 <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>
@@ -17,7 +17,7 @@
 {% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/enrich"><button class="btn p sm">ابحث عن الهاتف والبريد الآن</button></form>{% endif %}</div>{% endif %}
 {% if c.contacts %}<table><tr><th>النوع</th><th>القيمة</th><th>المصدر</th></tr>
 {% for ct in c.contacts %}<tr><td>{{ 'هاتف' if ct.kind=='phone' else 'بريد' }}{% if ct.preferred %} <span class="pill ok">مفضل</span>{% endif %}{% if not ct.verified %} <span class="pill err">مرتد/غير صالح</span>{% endif %}</td>
-<td class="ltr">{{ phone(ct.value) if ct.kind=='phone' else ct.value }}</td><td class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url[:60] }}</a><div class="muted">{{ fmt(ct.found_at, False) }}{% if ct.label %} · {{ ct.label }}{% endif %}</div></td></tr>{% endfor %}</table>{% endif %}
+<td>{% if ct.kind=='phone' %}<a class="tel" dir="ltr" href="tel:{{ ct.value }}">{{ phone(ct.value) }}</a>{% else %}<span class="ltr">{{ ct.value }}</span>{% endif %}</td><td class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url[:60] }}</a><div class="muted">{{ fmt(ct.found_at, False) }}{% if ct.label %} · {{ ct.label }}{% endif %}</div></td></tr>{% endfor %}</table>{% endif %}
 <p class="small" style="margin-top:10px"><b>سبب الترشيح:</b> {{ c.fit_reason }} {% if c.fit_evidence_url %}<a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الدليل)</a>{% endif %}</p>
 <p class="small muted">اكتُشفت {{ fmt(c.first_found_at) }} — الحملة: {{ c.campaign.name if c.campaign else '—' }} — الفئة: {{ c.category.label if c.category else '—' }} — شوهدت {{ c.times_seen }} مرة</p>
 <details><summary>المصادر ({{ c.sources|length }})</summary><ul class="small">{% for src in c.sources %}<li>{{ SOURCE_LABELS.get(src.source_type, src.source_type) }}: <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.url[:80] }}</a> — {{ fmt(src.found_at, False) }}</li>{% endfor %}</ul></details>

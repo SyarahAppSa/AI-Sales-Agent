@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_icons.html" import icon %}{% from "_vehicle.html" import vind %}{% from "_contact.html" import inline %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_icons.html" import icon %}{% from "_vehicle.html" import vind %}{% from "_contact.html" import inline %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
 {% set period = (fmt_date(a) if a == b else 'من ' ~ fmt_date(a) ~ ' إلى ' ~ fmt_date(b)) %}
 {% if t and t.running %}<meta http-equiv="refresh" content="20">{% endif %}
 <div class="top"><div><h1>عملاء اليوم</h1><p class="sub" style="margin:0">{{ period }} — حسب تاريخ جمع العميل بتوقيت الرياض{% if t and t.running %} — <b style="color:var(--brand)">البحث يعمل الآن، تتحدث الصفحة تلقائيًا بنفس الاختيار</b>{% endif %}</p></div>
@@ -44,7 +44,7 @@ pmode();
   {% if c.entity_type %}<div class="small muted">{{ ENTITY_TYPES.get(c.entity_type, c.entity_type) }}{% if c.category %} — {{ c.category.label }}{% endif %}</div>{% endif %}
   {% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>
 <td class="small" style="min-width:160px">{{ c.activity }}<div class="muted">{{ c.city }}</div>{{ inline(csum[c.id], '/companies/%d' % c.id) }}</td>
-<td class="small" style="min-width:130px">{% if r.phone %}<span class="ltr">{{ phone(r.phone.value) }}</span><div><a href="{{ r.phone.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.phone.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
+<td class="small telcol">{{ phone_lines(r.c) }}</td>
 <td class="small" style="min-width:150px">{% if r.email %}<span class="ltr">{{ r.email.value }}</span><div><a href="{{ r.email.source_url }}" target="_blank" rel="noopener" class="ltr">{{ r.email.source_url.split('//')[-1][:34] }}</a></div>{% else %}<span class="pill warn">ناقص</span>{% endif %}</td>
 <td class="small" style="min-width:220px;max-width:380px">{{ c.fit_reason }}{% if c.fit_phrase %}<div class="muted">«{{ c.fit_phrase[:140] }}»</div>{% endif %}
   <div class="muted">{{ OPERATOR_LABELS.get(c.operator_status, '') }}</div>{{ vind(c) }}</td>

@@ -175,3 +175,10 @@ details summary{cursor:pointer;color:var(--brand);font-weight:700}
 .nav .gitems a:hover{background:var(--brand-hover);color:var(--ink);text-decoration:none}
 .nav .gitems a.on{background:var(--brand-soft);color:var(--brand)}
 body.mini .nav .chev,body.mini .nav .gitems{display:none}body.mini .nav .ghead,body.mini .nav a.top1{justify-content:center}
+
+/* الهاتف: الرقم كاملًا متصلًا في سطر واحد، من اليسار إلى اليمين في اللغتين */
+.tel{direction:ltr;unicode-bidi:isolate;white-space:nowrap;display:inline-block;font-variant-numeric:tabular-nums;overflow-wrap:normal;word-break:keep-all;font-weight:700}
+td.telcol{white-space:nowrap;overflow-wrap:normal;width:1%}
+td.telcol .small{white-space:nowrap}
+.telrow+.telrow{margin-top:6px}
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}

@@ -309,6 +309,13 @@ def owned_contact(company: Company, kind: str):
     return cands[0] if cands else None
 
 
+def owned_phones(company: Company) -> list:
+    """كل هواتف المنشأة الموثّقة التي تخصها (المفضّل أولًا) — لعرض كل رقم في سطر مع مصدره."""
+    cands = [c for c in company.contacts if _good_phone(company, c)]
+    cands.sort(key=lambda c: (not c.preferred, c.id or 0))
+    return cands
+
+
 def is_complete(company: Company) -> bool:
     """قاعدة الاحتساب: الاسم والنشاط ومدينة سعودية وهاتف عمل وبريد، ولكل وسيلة رابط مصدرها، وكلاهما يخص المنشأة نفسها."""
     from .segments import saudi_city

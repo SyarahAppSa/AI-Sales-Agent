@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_contact.html" import inline %}{% block title %}العملاء المحتملون — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% block title %}العملاء المحتملون — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
 {% if last and last.status in ('pending','running') %}<meta http-equiv="refresh" content="30">{% endif %}
 <div class="dash-head">
   <div><h1>العملاء المحتملون</h1><div class="date">{{ fmt_date(d) }} — منشآت سعودية جديدة قابلة للتواصل، مرتبة حسب ملاءمتها لسيارة آب</div></div>
@@ -62,7 +62,7 @@
   <div class="small muted">{{ (c.activity or '—')|truncate(60, True, '…') }} · {{ c.city or '—' }}</div>
   {% if c.parent_id and parents.get(c.id) %}{% set hq = parents[c.id] %}<div class="small">فرع لـ <a href="/companies/{{ hq.id }}"><span translate="no">{{ hq.name }}</span></a>{% if hq.owner %} — يتابعه <span translate="no">{{ hq.owner.name }}</span>{% endif %}</div>{% endif %}</td>
 <td class="small" style="max-width:340px">{{ c.priority_reason or '—' }}{% if c.priority_url %} <a href="{{ c.priority_url }}" target="_blank" rel="noopener">(الرابط)</a>{% endif %}</td>
-<td class="small" style="min-width:170px">{% if ph %}<div class="ltr" style="display:block"><a href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a></div>{% endif %}{% if em %}<div class="ltr" style="display:block"><a href="mailto:{{ em.value }}">{{ em.value }}</a></div>{% endif %}
+<td class="small telcol">{% if ph %}{{ phone_lines(c) }}{% endif %}{% if em %}<div class="ltr" style="display:block"><a href="mailto:{{ em.value }}">{{ em.value }}</a></div>{% endif %}
   {% if c.website %}<div class="ltr" style="display:block"><a href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
   <div class="muted">{{ CONTACT_LEVELS.get(c.contact_level, 'لا توجد وسيلة بعد') }}</div></td>
 <td>{% if c.owner %}<span translate="no">{{ c.owner.name }}</span>{% else %}<span class="pill warn">غير مسند</span>{% endif %}{{ inline(csum[c.id], '/companies/' ~ c.id) }}</td>

@@ -1,10 +1,10 @@
-{% extends "base.html" %}{% from "_contact.html" import panel %}{% from "_vehicle.html" import vind %}{% block content %}
+{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import panel %}{% from "_vehicle.html" import vind %}{% block content %}
 <div class="top"><div><h1><span translate="no">{{ c.name }}</span></h1><p class="sub" style="margin:0">{{ c.activity }} — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></p></div>
 <div class="row"><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
 <div class="grid g2"><div>
 <div class="card"><h2>بيانات العميل</h2>
 {% set ph = c.primary('phone') %}{% set em = c.primary('email') %}
-{% if can('see_phone') and ph %}<div class="kv"><span class="k">الهاتف</span><span><span class="ltr">{{ phone(ph.value) }}</span> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ ph.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ ph.source_url }}" target="_blank" rel="noopener" class="ltr">{{ ph.source_url.split('//')[-1][:50] }}</a></div>{% endif %}
+{% if can('see_phone') and ph %}<div class="kv"><span class="k">الهاتف</span><span><a class="tel" dir="ltr" href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ ph.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ ph.source_url }}" target="_blank" rel="noopener" class="ltr">{{ ph.source_url.split('//')[-1][:50] }}</a></div>{% endif %}
 {% if can('see_email') and em %}<div class="kv" style="margin-top:6px"><span class="k">البريد</span><span><span class="ltr">{{ em.value }}</span> <button type="button" class="btn sm" onclick="navigator.clipboard.writeText('{{ em.value }}');this.textContent='نُسخ ✓'">نسخ</button></span></div><div class="small muted">المصدر: <a href="{{ em.source_url }}" target="_blank" rel="noopener" class="ltr">{{ em.source_url.split('//')[-1][:50] }}</a></div>{% endif %}
 {% if c.website %}<div class="small" style="margin-top:6px">الموقع: <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain or c.website }}</a></div>{% endif %}
 {% if c.offer_sent_at %}<p class="small"><span class="pill ok">أُرسل عرض</span> {{ fmt(c.offer_sent_at) }}{% if c.offer_sent_by %} — {{ c.offer_sent_by.name }}{% endif %}{% if c.offer_note %} — {{ c.offer_note }}{% endif %}</p>{% endif %}

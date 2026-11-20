@@ -151,16 +151,10 @@ def _validate_sa(e164: str) -> str | None:
 
 
 def format_phone_display(e164: str | None) -> str:
+    """الرقم كاملًا متصلًا كما حُفظ (مثل +966539555610) — برمز الدولة ودون مسافات حتى لا ينقسم على سطرين."""
     if not e164:
         return ""
-    if e164.startswith("+966"):
-        nat = e164[4:]
-        if nat.startswith("5"):
-            return f"+966 {nat[:2]} {nat[2:5]} {nat[5:]}"
-        if nat.startswith("9") or nat.startswith("8"):
-            return f"+966 {nat[:3]} {nat[3:6]} {nat[6:]}"
-        return f"+966 {nat[:2]} {nat[2:5]} {nat[5:]}"
-    return e164
+    return re.sub(r"[\s\-()]", "", e164)
 
 
 def names_similar(a: str, b: str) -> bool:

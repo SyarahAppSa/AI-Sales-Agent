@@ -175,7 +175,7 @@ def test_3_bulk_assign_portal_copy_export_status_and_offers_report():
         otp_login(c, R1, "portal")
         home = c.get("/portal").text
         assert "شركة المسار للنقل" in home and "مؤسسة الوفاق للتوصيل" in home and "مصنع الندى" not in home
-        assert "+966 55 000 0100" in home or "550000100" in home.replace(" ", "")
+        assert "+966550000100" in home or "550000100" in home.replace(" ", "")
         assert "نسخ كل الأرقام" in home and "https://masar-trans.example/contact" in home
         x = c.get("/portal/export.xlsx")
         assert x.status_code == 200

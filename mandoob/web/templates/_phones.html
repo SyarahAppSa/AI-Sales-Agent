@@ -1,0 +1,7 @@
+{# كل رقم كاملًا متصلًا في سطر، من اليسار إلى اليمين، ومصدره تحته — في كل جداول العملاء #}
+{% macro phone_lines(c, src=True) -%}
+{% set ps = owned_phones(c) %}{% for ct in ps %}<div class="telrow"><a class="tel" dir="ltr" href="tel:{{ ct.value }}">{{ phone(ct.value) }}</a>{% if src %}<div class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% endif %}</div>{% else %}<span class="pill warn">ناقص</span>{% endfor %}
+{%- endmacro %}
+{% macro phone_pairs(pairs) -%}
+{% for v, s in pairs %}<div class="telrow"><a class="tel" dir="ltr" href="tel:{{ v }}">{{ v }}</a>{% if s %}<div class="small"><a href="{{ s }}" target="_blank" rel="noopener" class="muted">المصدر</a></div>{% endif %}</div>{% else %}—{% endfor %}
+{%- endmacro %}

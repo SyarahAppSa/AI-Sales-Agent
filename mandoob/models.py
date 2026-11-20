@@ -692,3 +692,17 @@ class ProspectRun(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class ProspectPool(Base):
+    """صفوف ملف مزوّد بيانات مرخّص — تُعالج يوميًا بمسار «العملاء المحتملون» (تكرار ← تحقق من الموقع ← أولوية)."""
+    __tablename__ = "prospect_pool"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_name: Mapped[str] = mapped_column(String(200))
+    license_note: Mapped[str] = mapped_column(String(500), default="")  # مصدر الملف وحق الاستخدام
+    row: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued / done
+    result: Mapped[Optional[str]] = mapped_column(String(30))
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

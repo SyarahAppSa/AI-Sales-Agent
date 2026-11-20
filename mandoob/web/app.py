@@ -113,6 +113,8 @@ from ..activities import ENTITY_TYPES, VEHICLE_INDICATOR  # noqa: E402
 templates.env.globals.update(ENTITY_TYPES=ENTITY_TYPES, VEHICLE_INDICATOR=VEHICLE_INDICATOR)
 from ..i18n import current_lang as _cur_lang  # noqa: E402
 templates.env.globals.update(cur_lang=_cur_lang)
+from ..companies import owned_phones as _owned_phones  # noqa: E402
+templates.env.globals.update(owned_phones=_owned_phones)
 
 
 def _startup() -> None:
@@ -2104,6 +2106,7 @@ def _portal_rows(s, u: User, q: str = ""):
         rows.append({"c": c, "phone": format_phone_display(ph.value) if ph and can(u, "see_phone") else None,
                      "email": em.value if em and can(u, "see_email") else None,
                      "phone_src": ph.source_url if ph and can(u, "see_phone") else None,
+                     "phones": [(format_phone_display(x.value), x.source_url) for x in _owned_phones(c)] if can(u, "see_phone") else [],
                      "email_src": em.source_url if em and can(u, "see_email") else None, "offer": last_offer, "reply": last_reply,
                      "next": nxt})
     return rows

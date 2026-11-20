@@ -39,7 +39,7 @@ def test_switch_keeps_page_and_user_text_and_direction():
         assert '<html lang="en" dir="ltr">' in en
         assert "مؤسسة اللغتين للنقل" in en                                              # اسم الشركة كما أُدخل
         assert re.search(r'translate="no">\s*' + NOTE, en)                               # الملاحظة كما كُتبت
-        assert "+966 55 730 4418" in en or "966557304418" in en.replace(" ", "")          # الهاتف واضح
+        assert "+966557304418" in en or "966557304418" in en.replace(" ", "")          # الهاتف واضح
         assert "info@i18n.example" in en
         assert "Start contact" in en and "Dashboard" in en and "بدء التواصل" not in en
         q = c.get("/companies?status=complete&q=اللغتين").text                         # الفلاتر تبقى في الرابط
