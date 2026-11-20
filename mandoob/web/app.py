@@ -885,11 +885,18 @@ async def admin_lists_upload(request: Request, file: UploadFile = File(...), not
 
 @app.post("/admin-lists/{lid}/delete")
 def admin_lists_delete(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
-    from ..models import AdminList
+    from ..auth import audit
+    from ..models import AdminList, AdminListAssignment, AdminListContact
     al = s.get(AdminList, lid)
     if al:
+        n = len(al.rows or [])
+        for model in (AdminListContact, AdminListAssignment):
+            for x in s.scalars(select(model).where(model.list_id == lid)):
+                s.delete(x)
+        s.flush()
         s.delete(al)
-        flash(request, f"حُذفت القائمة «{al.name}».")
+        audit(s, user, "admin_list_delete", None, file=al.name[:100], rows=n)
+        flash(request, f"حُذفت القائمة «{al.name}» ({n} صف) مع إسناداتها وحالات التواصل.")
     return back("/admin-lists")
 
 

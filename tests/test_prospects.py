@@ -360,3 +360,32 @@ def test_admin_list_assign_by_count_10_50_100():
         otp_login(rep_, "assign.rep@syarahapp.test", "portal")
         page = rep_.get("/portal/lists").text
         assert "مؤسسة الإسناد 0" in page and "الكل (12)" in page
+
+
+
+def test_admin_list_delete_with_x_removes_assignments():
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, AdminListAssignment, AdminListContact, User
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["اسم المؤسسة", "رقم الجوال"])
+    ws.append(["مؤسسة الحذف", "0551231231"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        adm.post("/admin-lists/upload", files={"file": ("del.xlsx", buf.getvalue(), "application/octet-stream")})
+        with session_scope() as s:
+            lid = s.query(AdminList).order_by(AdminList.id.desc()).first().id
+            rid = s.query(User).filter(User.role == "rep").first().id
+        adm.post(f"/admin-lists/{lid}/assign", data={"owner_id": str(rid), "rows": "0"})
+        adm.post(f"/admin-lists/{lid}/row/0/contact", data={"status": "no_answer"})
+        page = adm.get(f"/admin-lists?lid={lid}").text
+        assert f'action="/admin-lists/{lid}/delete"' in page and 'class="x"' in page
+        r = adm.post(f"/admin-lists/{lid}/delete", follow_redirects=True)
+        assert "حُذفت القائمة «del.xlsx»" in r.text
+        with session_scope() as s:
+            assert s.get(AdminList, lid) is None
+            assert not s.query(AdminListAssignment).filter_by(list_id=lid).count()
+            assert not s.query(AdminListContact).filter_by(list_id=lid).count()

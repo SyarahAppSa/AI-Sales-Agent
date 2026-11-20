@@ -222,3 +222,9 @@ td.telcol .small{white-space:nowrap}
 @media print{.wmk .tablewrap::after,.wmk .card::after{opacity:1}}
 .nav a.top1 .count{background:var(--err);color:#fff;border-radius:999px;font-size:11px;padding:0 7px;line-height:18px}
 .nav a.top1.emerg .ic{color:var(--err)}.nav a.top1.emerg.on{background:var(--err-soft);color:var(--err)}
+.lchip{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 4px 2px 12px;font-size:13px;font-weight:700;flex:0 0 auto}
+.lchip a{color:var(--ink);padding:4px 2px}.lchip a:hover{text-decoration:none;color:var(--brand)}
+.lchip.on{background:var(--brand);border-color:var(--brand)}.lchip.on a{color:#fff}
+.lchip form{display:inline}.lchip .x{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;width:24px;height:24px;border-radius:50%;cursor:pointer}
+.lchip .x:hover{background:var(--err-soft);color:var(--err)}.lchip.on .x{color:#fff}.lchip.on .x:hover{background:rgba(255,255,255,.2)}
+[dir="ltr"] .lchip{padding:2px 12px 2px 4px}
