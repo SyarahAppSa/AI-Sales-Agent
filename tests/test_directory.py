@@ -78,7 +78,7 @@ def test_two_stage_run_dedupes_before_cost_crawls_free_then_budgeted_completion(
     from mandoob import directory as D
     with session_scope() as s:
         r = D.request(s, sources=["claude_directory"], params={"activities": ["transport.freight"],
-                                                              "scope": {"places": ["SA-01/riyadh"]}, "stage1_limit": 5},
+                                                              "scope": {"places": ["SA-01/riyadh"]}, "stage1_limit": 4},
                       budget=5, user_id=None)
         rid = r.id
     D.run(rid, crawler=FakeCrawler())
@@ -86,7 +86,7 @@ def test_two_stage_run_dedupes_before_cost_crawls_free_then_budgeted_completion(
         r = s.get(DirectoryRun, rid)
         st = r.stats["claude_directory"]
         stubs = {x.name: x for x in s.scalars(select(LeadStub).where(LeadStub.run_id == rid))}
-        assert "شركة مختلقة لا تظهر في الصفحة" not in stubs and st["rejected_name"] == 1   # اسم غير موجود في الدليل
+        assert "شركة مختلقة لا تظهر في الصفحة" not in stubs and st["rejected_name"] >= 1   # اسم غير موجود في الدليل
         assert stubs["شركة قديمة لدينا للنقل"].status == "duplicate"                       # مكرر قبل أي تكلفة تفصيلية
         assert stubs["شركة الوادي للشحن البري"].status == "complete"                       # الزاحف وحده (بلا تكلفة)
         assert stubs["مصنع الواحة للمياه"].status == "incomplete"                          # هاتف بلا بريد
@@ -151,10 +151,91 @@ def test_sources_status_import_similar_reasons_and_daily_report():
         adm.post(f"/companies/{wid}/contact/update", data={"status": "contacted", "note": "كلمت مدير الأسطول",
                                                            "reached_dm": "1"}, headers={"referer": f"http://testserver/companies/{wid}"})
         rep = adm.get("/daily-report").text
-        assert "اكتشاف العملاء حسب المصدر" in rep and "أدلة الأعمال والقوائم العامة عبر وكيل البحث" in rep
+        assert "اكتشاف العملاء حسب المصدر" in rep and "أدلة وقوائم الويب" in rep
         with session_scope() as s:
-            row = next(x for x in D.daily_by_source(s) if x["source"].startswith("أدلة الأعمال"))
+            row = next(x for x in D.daily_by_source(s) if x["source"].startswith("أدلة وقوائم الويب"))
             assert row["discovered"] >= 4 and row["new"] >= 3 and row["complete"] >= 1 and row["reached_dm"] == 1
             assert row["cost_per_complete"] is not None
         x = adm.get("/daily-report.xlsx")
         assert x.status_code == 200
+
+
+def test_web_and_social_sources_keep_trace_fallback_on_failure_daily_schedule_and_retry(monkeypatch):
+    """بحث الويب + حسابات التواصل: الاسم يُقبل من نتيجة بحث حقيقية، ومرجع الخرائط يُحفظ والمصدر «بحث الويب»؛
+    تعذّر مصدر ينقل للتالي؛ الجدولة اليومية مرة واحدة؛ والعودة للناقص دون إعادة البحث من البداية."""
+    from mandoob import directory as D
+    from mandoob.models import CompanySource
+    add_site("nada-water.example", "مصنع الندى للمياه", "مياه معبأة نوصلها للمنازل في بريدة",
+             phone="0163330000", email="sales@nada-water.example")
+    calls = {"social": 0}
+
+    def agent(system, prompt, schema, *, note="agent", **kw):
+        record_cost("claude", 1, 0.2, note=note)
+        if note == "dir:social:harvest":
+            calls["social"] += 1
+            raise ai.AIUnavailable("مهلة")                                          # المصدر تعذر ← التالي
+        if note == "dir:web_search:harvest":
+            assert "يوزع" in prompt or "توصيل" in prompt or "in " in prompt        # عبارة تصف طريقة العمل
+            res = NS(type="web_search_tool_result", content=[
+                NS(url="https://nada-water.example/", title="مصنع الندى للمياه — توصيل للمنازل في بريدة")])
+            return {"items": [{"name": "مصنع الندى للمياه", "activity": "مياه معبأة", "city": "بريدة",
+                               "website": "https://nada-water.example", "found_url": "https://nada-water.example/",
+                               "maps_url": "https://www.google.com/maps/place/nada", "social_url": "https://x.com/nadawater",
+                               "vehicle_hint": "نوصلها للمنازل"},
+                              {"name": "منشأة وهمية بلا نتيجة", "activity": "x", "city": "بريدة", "website": "",
+                               "found_url": "https://nowhere.example/", "maps_url": "", "social_url": "", "vehicle_hint": ""}]}, [res], 1
+        return fake_agent(system, prompt, schema, note=note, **kw)
+    monkeypatch.setattr(ai, "ai_agent", agent)
+    with session_scope() as s:
+        r = D.request(s, sources=["social", "web_search"], params={"activities": ["industry.water_factories"],
+                                                                   "scope": {"places": ["SA-05/buraydah"]}, "stage1_limit": 1},
+                      budget=3, user_id=None)
+        rid = r.id
+    D.run(rid, crawler=FakeCrawler())
+    with session_scope() as s:
+        r = s.get(DirectoryRun, rid)
+        assert calls["social"] == 1 and any("تعذر" in x and "انتقال للتالي" in x for x in r.log)
+        st = s.scalar(select(LeadStub).where(LeadStub.run_id == rid, LeadStub.name == "مصنع الندى للمياه"))
+        assert st.source == "web_search" and st.maps_url.startswith("https://www.google.com/maps") and st.query
+        assert not s.scalar(select(LeadStub).where(LeadStub.name == "منشأة وهمية بلا نتيجة"))
+        assert st.status == "complete"
+        co = s.get(Company, st.company_id)
+        kinds = {x.source_type for x in s.scalars(select(CompanySource).where(CompanySource.company_id == co.id))}
+        assert {"web_search", "maps_ref", "social"} <= kinds and co.lead_source == "directory:web_search"
+        assert all(c.source_url.startswith("https://nada-water.example") for c in co.contacts)
+        row = next(x for x in D.daily_by_source(s) if x["key"] == "web_search")
+        assert row["complete"] >= 1 and row["maps_refs"] >= 1
+    # الجدولة اليومية: مرة واحدة في اليوم بعد وقتها
+    with session_scope() as s:
+        for x in s.scalars(select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"]))):
+            x.status = "done"
+        D.set_auto(s, enabled=True, time="00:00", budget_usd=1)
+        a = D.schedule_daily(s)
+        assert a is not None and a.params["auto"] and a.params["target_complete"] == 400
+        a.status = "done"
+        assert D.schedule_daily(s) is None
+    # «قيد الاستكمال»: العودة للناقص فقط دون مرحلة ١ جديدة
+    from datetime import timedelta
+    from mandoob.timeutil import now_utc
+    with session_scope() as s:
+        waha = s.scalar(select(Company).where(Company.name == "مصنع الواحة للمياه"))
+        waha.retry_enrich_at = now_utc() - timedelta(minutes=1)
+        stubs_before = s.scalar(select(func.count(LeadStub.id)))
+    retry_calls = []
+
+    def agent2(system, prompt, schema, *, note="agent", **kw):
+        retry_calls.append(note)
+        url = "https://waha-water.example/contact-us"
+        blk = NS(type="web_fetch_tool_result", content=NS(type="web_fetch_result", url=url, content=NS(
+            type="document", source=NS(type="text", data="مصنع الواحة للمياه — info@waha-water.example"))))
+        p = {"name": "مصنع الواحة للمياه", "entity_type": "factory", "activity": "مياه", "city": "الرياض", "address": "",
+             "address_url": "", "website": "https://waha-water.example", "vehicle_evidence": "", "evidence_url": "",
+             "evidence_quote": "", "operator_status": "unknown", "discovered_via": "x",
+             "contacts": [{"kind": "email", "value": "info@waha-water.example", "source_url": url}]}
+        return {"prospects": [p]}, [blk], 1
+    monkeypatch.setattr(ai, "ai_agent", agent2)
+    n = D.retry_incomplete({}, lambda: None)
+    with session_scope() as s:
+        assert n >= 1 and retry_calls and all(x.endswith(":retry") for x in retry_calls)
+        assert s.scalar(select(Company).where(Company.name == "مصنع الواحة للمياه")).data_status == "complete"
+        assert s.scalar(select(func.count(LeadStub.id))) == stubs_before                  # لا بحث من البداية

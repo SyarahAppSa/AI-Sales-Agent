@@ -123,7 +123,8 @@ def ai_json(system: str, prompt: str, schema: dict, *, web_search: bool = False,
 
 
 def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, max_fetches: int = 20,
-             note: str = "agent", campaign_id: int | None = None) -> tuple[dict, list, int]:
+             note: str = "agent", campaign_id: int | None = None, effort: str | None = None,
+             deadline_s: int = 420) -> tuple[dict, list, int]:
     """نداء وكيل بأداتي البحث وقراءة الصفحات. يعيد (JSON، كل كتل الاستجابة عبر الجولات، عدد عمليات البحث).
 
     الكتل تُعاد كاملة ليتحقق المستدعي أن كل هاتف/بريد ظهر نصًا في صفحة قرأها الوكيل فعلًا."""
@@ -140,13 +141,20 @@ def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, m
     messages: list[dict] = [{"role": "user", "content": prompt}]
     all_blocks: list = []
     searches = 0
+    import time as _time
+    t_end = _time.time() + deadline_s  # مهلة كلية للنداء: لا يعلق البحث اليومي على نداء واحد
     for _ in range(8):  # جولات pause_turn للأدوات الخادمية
         try:
             with c.beta.messages.stream(
                 model=model, max_tokens=32000, system=system, messages=messages, tools=tools,
-                output_config={"effort": settings.ai_agent_effort, "format": {"type": "json_schema", "schema": schema}},
+                output_config={"effort": effort or settings.ai_agent_effort,
+                               "format": {"type": "json_schema", "schema": schema}},
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+                timeout=min(180, deadline_s),
             ) as stream:
+                for _ev in stream:
+                    if _time.time() > t_end:
+                        raise AIUnavailable("تجاوز النداء مهلته — يُنتقل للمصدر/العبارة التالية")
                 resp = stream.get_final_message()
         except anthropic.RateLimitError as e:
             raise AIUnavailable(f"تجاوز حد الطلبات: {e}") from e
