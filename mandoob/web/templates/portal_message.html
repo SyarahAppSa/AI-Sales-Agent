@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>{{ m.subject }}</h1><p class="sub" style="margin:0"><a href="/portal/companies/{{ m.company_id }}">{{ m.company.name }}</a> — {{ fmt(m.sent_at) if m.sent_at else '' }}</p></div></div>
+<div class="top"><div><h1><span translate="no">{{ m.subject }}</span></h1><p class="sub" style="margin:0"><a href="/portal/companies/{{ m.company_id }}"><span translate="no">{{ m.company.name }}</span></a> — {{ fmt(m.sent_at) if m.sent_at else '' }}</p></div></div>
 <div class="card"><div class="email">{{ mask(m.body_text)|e|replace('\n', '<br>')|safe }}</div>
 {% if m.attachment_name %}<p class="small">المرفق: {{ m.attachment_name }}</p>{% endif %}</div>
 {% endblock %}

@@ -4,7 +4,7 @@
 <div class="card tablewrap"><table>
 <tr><th>الشركة</th><th>الإجراء المطلوب</th><th>الموعد</th><th>آخر رد</th><th>العرض الذي وصلها</th><th>المسؤول</th><th></th></tr>
 {% for it in items %}<tr>
-<td><a href="/companies/{{ it.company.id }}"><b>{{ it.company.name }}</b></a><div class="small muted">{{ it.company.activity }} — {{ it.company.city }}</div><div class="ltr small">{{ it.phone }}</div></td>
+<td><a href="/companies/{{ it.company.id }}"><b><span translate="no">{{ it.company.name }}</span></b></a><div class="small muted">{{ it.company.activity }} — {{ it.company.city }}</div><div class="ltr small">{{ it.phone }}</div></td>
 <td>{{ it.task.title.split(' — ')[0] }}{% if it.signal %}<div class="small"><span class="pill warn">لماذا الآن: {{ it.signal.label }}</span> <a href="{{ it.signal.url }}" target="_blank" rel="noopener">{{ fmt_date(it.signal.announced_on) if it.signal.announced_on else 'الرابط' }}</a></div>{% endif %}{% if it.company.decision_unit %}<div class="small muted">الجهة: {{ it.company.decision_unit }}</div>{% endif %}</td>
 <td class="small">{{ it.task.window_label or '' }}<div>{{ fmt(it.task.due_at) }}</div>{% if it.overdue %}<span class="pill err">متأخرة</span>{% endif %}</td>
 <td class="small" style="max-width:300px">{% if it.last_reply %}<span class="pill info">{{ it.last_reply.intent_label }}</span> «{{ it.last_reply.body_text[:160] }}»{% else %}—{% endif %}</td>

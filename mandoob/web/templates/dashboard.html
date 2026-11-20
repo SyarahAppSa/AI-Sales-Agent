@@ -38,7 +38,7 @@
 <div class="card">
   <div class="head2"><h2>أحدث العملاء</h2><a class="btn sm" href="/today">عملاء اليوم</a></div>
   {% for c in recent %}<div class="list-row">
-    <div style="min-width:0"><a class="n" href="/companies/{{ c.id }}">{{ c.name }}</a>
+    <div style="min-width:0"><a class="n" href="/companies/{{ c.id }}"><span translate="no">{{ c.name }}</span></a>
       <div class="meta">{{ (c.activity or '—')|truncate(48, True, '…') }} · {{ c.city or '—' }} · {{ fmt(c.first_found_at) }}</div></div>
     <div style="flex:0 0 auto;text-align:left">{% if c.data_status == 'complete' %}<span class="pill ok">مكتمل</span>{% else %}<span class="pill warn">قيد الاستكمال</span>{% endif %}
       <div class="meta">{{ c.owner.name if c.owner else 'غير مسند' }}</div></div>
@@ -47,7 +47,7 @@
 <div class="card">
   <div class="head2"><h2>متابعات الفريق</h2><a class="btn sm" href="/followups">كل المتابعات ({{ cards.followups }})</a></div>
   {% for it in follow %}<div class="list-row">
-    <div style="min-width:0"><a class="n" href="/companies/{{ it.company.id }}">{{ it.company.name }}</a>
+    <div style="min-width:0"><a class="n" href="/companies/{{ it.company.id }}"><span translate="no">{{ it.company.name }}</span></a>
       <div class="meta">{{ it.task.title.split(' — ')[0] }} · {{ it.task.window_label or fmt(it.task.due_at) }}</div></div>
     <div style="flex:0 0 auto;text-align:left">{% if it.overdue %}<span class="pill err">متأخرة</span>{% else %}<span class="pill info">اليوم</span>{% endif %}
       <div class="meta">{{ it.owner }}</div></div>

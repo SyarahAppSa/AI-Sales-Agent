@@ -22,6 +22,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(300))
     # admin = مدير المنصة، manager = مدير المبيعات، rep = مندوب
     role: Mapped[str] = mapped_column(String(20), default="rep")
+    lang: Mapped[Optional[str]] = mapped_column(String(5))  # لغة الواجهة المختارة: ar (الافتراضية) / en
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # قواعد التوزيع: قوائم مفاتيح القطاعات والمدن التي يغطيها المندوب (فارغة = الكل)
     sectors: Mapped[list] = mapped_column(JSON, default=list)

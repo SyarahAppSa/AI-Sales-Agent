@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% from "_contact.html" import panel %}{% block content %}
-<div class="top"><div><h1>{{ c.name }}</h1>
+<div class="top"><div><h1><span translate="no">{{ c.name }}</span></h1>
 <p class="sub">{{ c.activity }} — {{ c.city }}{% if c.website %} — <a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a>{% endif %}</p>
 <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span>
 <span class="pill {{ 'ok' if c.data_status=='complete' else 'warn' }}">{{ 'مكتملة البيانات' if c.data_status=='complete' else 'قيد استكمال البيانات' }}</span>
@@ -71,7 +71,7 @@
 
 <div class="card"><h2>العروض المرسلة</h2>
 {% for m in msgs %}<div style="border-bottom:1px solid var(--line);padding:8px 0">
-<a href="/messages/{{ m.id }}"><b>{{ m.subject }}</b></a> <span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err','failed':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>
+<a href="/messages/{{ m.id }}"><b><span translate="no">{{ m.subject }}</span></b></a> <span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err','failed':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>
 <div class="small muted">{{ {'offer':'عرض','followup':'متابعة','confirmation':'تأكيد موعد'}[m.kind] }} — {{ fmt(m.sent_at) if m.sent_at else 'لم يُرسل بعد' }} — إلى <span class="ltr">{{ m.to_address }}</span>{% if m.attachment_name %} — مرفق: {{ m.attachment_name }}{% endif %}</div>
 {% if m.bounce_reason %}<div class="small" style="color:var(--err)">{{ m.bounce_reason }}</div>{% endif %}</div>{% else %}<p class="muted">لم يُرسل أي عرض.</p>{% endfor %}
 </div>

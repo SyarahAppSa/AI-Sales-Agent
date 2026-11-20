@@ -1,4 +1,4 @@
 {% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>معاينة: {{ o.service_name }}</h1><p class="sub">مثال لشركة: {{ c.name }}</p></div><a class="btn" href="/offers" style="flex:0 0 auto">رجوع</a></div>
+<div class="top"><div><h1>معاينة: {{ o.service_name }}</h1><p class="sub">مثال لشركة: <span translate="no">{{ c.name }}</span></p></div><a class="btn" href="/offers" style="flex:0 0 auto">رجوع</a></div>
 <div class="card"><p><b>العنوان:</b> {{ subject }}</p>{% if o.attachment %}<p><b>المرفق:</b> {{ o.attachment.filename }}</p>{% endif %}<div class="email">{{ html|safe }}</div></div>
 {% endblock %}

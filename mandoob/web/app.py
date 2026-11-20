@@ -48,6 +48,60 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="المندوب الذكي لسيارة اب", docs_url=None, redoc_url=None, lifespan=_lifespan)
+
+
+class LangMiddleware:
+    """لغة الطلب (الجلسة ← ملف تعريف الارتباط ← العربية) + ترجمة صفحات HTML إلى الإنجليزية عند اختيارها."""
+
+    def __init__(self, app_):
+        self.app = app_
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        from http.cookies import SimpleCookie
+        from ..i18n import LANGS, reset_lang, set_lang, translate_html
+        lang = (scope.get("session") or {}).get("lang")
+        if lang not in LANGS:
+            ck = SimpleCookie()
+            for k, v in scope.get("headers") or []:
+                if k == b"cookie":
+                    ck.load(v.decode("latin-1"))
+            lang = ck["lang"].value if "lang" in ck and ck["lang"].value in LANGS else "ar"
+        token = set_lang(lang)
+        if lang == "ar":
+            try:
+                return await self.app(scope, receive, send)
+            finally:
+                reset_lang(token)
+        start, chunks = {}, []
+
+        async def _send(msg):
+            if msg["type"] == "http.response.start":
+                start.update(msg)
+                ctype = dict(msg.get("headers") or []).get(b"content-type", b"")
+                start["_html"] = ctype.startswith(b"text/html")
+                if not start["_html"]:
+                    await send(msg)
+                return
+            if msg["type"] == "http.response.body" and start.get("_html"):
+                chunks.append(msg.get("body", b""))
+                if msg.get("more_body"):
+                    return
+                body = translate_html(b"".join(chunks).decode("utf-8")).encode("utf-8")
+                hdrs = [(k, v) for k, v in start.get("headers", []) if k != b"content-length"]
+                hdrs.append((b"content-length", str(len(body)).encode()))
+                await send({"type": "http.response.start", "status": start["status"], "headers": hdrs})
+                await send({"type": "http.response.body", "body": body})
+                return
+            await send(msg)
+        try:
+            await self.app(scope, receive, _send)
+        finally:
+            reset_lang(token)
+
+
+app.add_middleware(LangMiddleware)  # داخل الجلسة: يقرأ لغة المستخدم المحفوظة فيها
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 12, same_site="lax",
                    https_only=settings.public_base_url.startswith("https"))
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -57,6 +111,8 @@ templates.env.globals.update(fmt=fmt, fmt_date=fmt_date, STATUS_LABELS=STATUS_LA
                              INTENT_LABELS=INTENT_LABELS, SOURCE_LABELS=SOURCE_LABELS, phone=format_phone_display)
 from ..activities import ENTITY_TYPES, VEHICLE_INDICATOR  # noqa: E402
 templates.env.globals.update(ENTITY_TYPES=ENTITY_TYPES, VEHICLE_INDICATOR=VEHICLE_INDICATOR)
+from ..i18n import current_lang as _cur_lang  # noqa: E402
+templates.env.globals.update(cur_lang=_cur_lang)
 
 
 def _startup() -> None:
@@ -240,7 +296,8 @@ def _verify_code(request: Request, portal: str, code: str, s):
         flash(request, str(e), "err")
         return None
     request.session.clear()
-    request.session.update({"uid": user.id, "sv": user.session_version, "portal": portal})
+    request.session.update({"uid": user.id, "sv": user.session_version, "portal": portal,
+                            "lang": _remember_lang(request, user)})
     return user
 
 
@@ -291,8 +348,36 @@ def admin_bootstrap_password(request: Request, email: str = Form(...), password:
         return back("/admin/login")
     audit(s, u, "login", u, portal="admin", method="bootstrap_password")
     request.session.clear()
-    request.session.update({"uid": u.id, "sv": u.session_version, "portal": "admin"})
+    request.session.update({"uid": u.id, "sv": u.session_version, "portal": "admin", "lang": _remember_lang(request, u)})
     return back("/")
+
+
+def _remember_lang(request: Request, user: User) -> str:
+    """لغة المستخدم المحفوظة في حسابه تتقدّم؛ وإن لم يختر بعد فاختيار شاشة الدخول يُحفظ له."""
+    from ..i18n import LANGS, current_lang
+    if user.lang not in LANGS:
+        user.lang = current_lang()
+    return user.lang
+
+
+@app.get("/lang")
+def switch_lang(request: Request, to: str = "ar", next: str = "/", s=Depends(get_db)):
+    """«العربية | English»: يحفظ الاختيار (الحساب + الجلسة + المتصفح) ويعيد الصفحة نفسها بفلاترها."""
+    from ..i18n import LANGS
+    to = to if to in LANGS else "ar"
+    if not next.startswith("/") or next.startswith("//"):
+        next = "/"
+    if request.session.get("uid"):
+        request.session["lang"] = to
+        u = s.get(User, request.session["uid"])
+        if u is not None:
+            u.lang = to
+    else:
+        request.session.pop("lang", None)
+    r = back(next)
+    r.set_cookie("lang", to, max_age=60 * 60 * 24 * 365, samesite="lax", httponly=True,
+                 secure=settings.public_base_url.startswith("https"))
+    return r
 
 
 @app.get("/logout")
@@ -1991,6 +2076,8 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
             if isinstance(cell.value, str):
                 cell.data_type = "s"  # نص لا صيغة
     buf = _io.BytesIO()
+    from ..i18n import localize_workbook
+    localize_workbook(wb)
     wb.save(buf)
     audit(s, user, "export", user, rows=ws.max_row - 1)
     return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

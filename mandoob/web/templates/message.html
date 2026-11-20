@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>{{ m.subject }}</h1><p class="sub"><a href="/companies/{{ m.company_id }}">{{ m.company.name }}</a></p></div>
+<div class="top"><div><h1><span translate="no">{{ m.subject }}</span></h1><p class="sub"><a href="/companies/{{ m.company_id }}"><span translate="no">{{ m.company.name }}</span></a></p></div>
 <span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err'}.get(m.status,'') }}" style="flex:0 0 auto">{{ STATUS_LABELS.get(m.status, m.status) }}</span></div>
 <div class="card small grid g2">
 <div><b>من:</b> <span class="ltr">{{ m.from_address }}</span></div><div><b>إلى:</b> <span class="ltr">{{ m.to_address }}</span>{% if m.intended_to and m.intended_to != m.to_address %} <span class="pill warn">وضع التجربة — بريد الشركة: {{ m.intended_to }}</span>{% endif %}</div>

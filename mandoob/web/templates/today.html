@@ -12,7 +12,7 @@
     <div id="f-day"><label>اليوم</label><input type="date" name="day" value="{{ a }}"></div>
     <div id="f-from"><label>من تاريخ</label><input type="date" name="from" value="{{ a }}" oninput="pcheck()"></div>
     <div id="f-to"><label>إلى تاريخ</label><input type="date" name="to" value="{{ b }}" oninput="pcheck()"></div>
-    <div><label>البحث / الحملة</label><select name="campaign"><option value="">الكل</option>{% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id==campaign }}>{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>البحث / الحملة</label><select name="campaign"><option value="">الكل</option>{% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id==campaign }}><span translate="no">{{ c.name }}</span></option>{% endfor %}</select></div>
     <div style="flex:0 0 auto"><button class="btn p" id="showbtn">عرض</button></div>
   </div>
   <div id="perr" class="flash err" style="display:{{ 'block' if err else 'none' }};margin:10px 0 0">{{ err or 'تاريخ النهاية قبل تاريخ البداية — عدّل الفترة ثم اضغط «عرض».' }}</div>
@@ -39,7 +39,7 @@ pmode();
 <tr><th>اسم العميل</th><th>النشاط والمدينة</th><th>الهاتف ومصدره</th><th>البريد ومصدره</th><th>سبب الاستهداف</th><th>روابط المصادر</th><th>تاريخ الجمع</th></tr>
 {% for r in t.rows %}{% set c = r.c %}
 <tr>
-<td style="min-width:160px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a>
+<td style="min-width:160px"><a href="/companies/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a>
   <div>{% if r.complete %}<span class="pill ok">مكتمل</span>{% elif r.branch %}<span class="pill">فرع</span>{% else %}<span class="pill warn">قيد الاستكمال</span>{% endif %}</div>
   {% if c.entity_type %}<div class="small muted">{{ ENTITY_TYPES.get(c.entity_type, c.entity_type) }}{% if c.category %} — {{ c.category.label }}{% endif %}</div>{% endif %}
   {% if c.website %}<div class="small"><a href="{{ c.website }}" target="_blank" rel="noopener" class="ltr">{{ c.domain }}</a></div>{% endif %}</td>

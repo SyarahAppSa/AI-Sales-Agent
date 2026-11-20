@@ -228,6 +228,8 @@ def export_offers_xlsx(rep: OffersReport) -> bytes:
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
     buf = io.BytesIO()
+    from .i18n import localize_workbook
+    localize_workbook(wb)
     wb.save(buf)
     return buf.getvalue()
 
@@ -496,6 +498,8 @@ def export_today_xlsx(t: dict, s: Session | None = None) -> bytes:
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
     buf = io.BytesIO()
+    from .i18n import localize_workbook
+    localize_workbook(wb)
     wb.save(buf)
     return buf.getvalue()
 

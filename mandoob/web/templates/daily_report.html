@@ -20,6 +20,6 @@
 {% for k,v in r.by_source.items() %}<tr><td>{{ SOURCE_LABELS.get(k,k) }}</td><td>{{ v.candidates }}</td><td>{{ v.complete_count }}</td><td>{{ v.incomplete_count }}</td><td>{{ v.duplicate_count }}</td></tr>{% else %}<tr><td colspan="5" class="muted">لا يوجد تشغيل في هذا اليوم.</td></tr>{% endfor %}</table>
 <p class="small muted">التكلفة حسب الخدمة: {% for k,v in r.costs.items() %}{{ k }} ${{ v }}{{ '، ' if not loop.last }}{% else %}—{% endfor %}</p></div>
 <div class="card"><h2>فرص تحتاج إجراء من الفريق غدًا</h2><table><tr><th>الشركة</th><th>الإجراء</th><th>الموعد</th><th>المسؤول</th></tr>
-{% for t in r.actions %}<tr><td><a href="/companies/{{ t.company_id }}">{{ t.company.name }}</a></td><td>{{ t.title.split(' — ')[0] }}</td><td class="small">{{ t.window_label or fmt(t.due_at) }}</td><td>{{ t.owner.name if t.owner else '—' }}</td></tr>{% else %}<tr><td colspan="4" class="muted">لا يوجد.</td></tr>{% endfor %}</table></div>
+{% for t in r.actions %}<tr><td><a href="/companies/{{ t.company_id }}"><span translate="no">{{ t.company.name }}</span></a></td><td>{{ t.title.split(' — ')[0] }}</td><td class="small">{{ t.window_label or fmt(t.due_at) }}</td><td>{{ t.owner.name if t.owner else '—' }}</td></tr>{% else %}<tr><td colspan="4" class="muted">لا يوجد.</td></tr>{% endfor %}</table></div>
 </div>
 {% endblock %}

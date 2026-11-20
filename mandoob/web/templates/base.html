@@ -1,5 +1,5 @@
-{% from "_icons.html" import icon %}<!doctype html>
-<html lang="ar" dir="rtl">
+{% from "_icons.html" import icon %}{% macro langsw() %}<div class="langsw" translate="no" role="group" aria-label="Language / اللغة"><a href="/lang?to=ar" data-lang="ar" class="{{ 'on' if cur_lang() == 'ar' }}" lang="ar">العربية</a><span aria-hidden="true">|</span><a href="/lang?to=en" data-lang="en" class="{{ 'on' if cur_lang() == 'en' }}" lang="en">English</a></div>{% endmacro %}<!doctype html>
+{% set L = cur_lang() %}<html lang="{{ L }}" dir="{{ 'rtl' if L == 'ar' else 'ltr' }}">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}المندوب الذكي لسيارة اب{% endblock %}</title>
@@ -48,6 +48,7 @@
 </aside>
 <main class="main">
   <div class="topbar">
+    {{ langsw() }}
     <a class="chip" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="{{ user.name }} — {{ ROLE_LABELS[user.role] }}" style="color:inherit;text-decoration:none"><span>{{ user.email }}</span>{{ icon('user', 30) }}</a>
     <a class="round" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
     <span class="flag" title="المملكة العربية السعودية"><i></i></span>
@@ -60,7 +61,24 @@
 </main>
 </div>
 {% else %}
+<div class="pubbar">{{ langsw() }}</div>
 {% if flash %}<div class="flash {{ flash.kind }}" style="max-width:420px;margin:20px auto 0">{{ flash.msg }}</div>{% endif %}
 {% block public %}{% endblock %}
 {% endif %}
+<script>
+/* تبديل اللغة: يحفظ ما كُتب في الصفحة (الفلاتر والملاحظات) ثم يعيد الصفحة نفسها باللغة المختارة ويعيده كما كان */
+(function(){var K='keep:'+location.pathname+location.search;
+function fields(){return Array.prototype.slice.call(document.querySelectorAll('form input[name],form textarea[name],form select[name]')).filter(function(e){var t=(e.type||'').toLowerCase();return ['hidden','pass'+'word','file','submit','button'].indexOf(t)<0;});}
+function key(e,i){var f=e.form,fi=Array.prototype.indexOf.call(document.forms,f);return fi+'|'+e.name+'|'+i;}
+document.querySelectorAll('.langsw a').forEach(function(a){a.addEventListener('click',function(ev){ev.preventDefault();
+  var data={};fields().forEach(function(e,i){data[key(e,i)]=(e.type==='checkbox'||e.type==='radio')?(e.checked?'1':'0'):e.value;});
+  try{sessionStorage.setItem(K,JSON.stringify({data:data,y:window.scrollY}))}catch(e){}
+  location.href='/lang?to='+a.getAttribute('data-lang')+'&next='+encodeURIComponent(location.pathname+location.search);});});
+var saved=null;try{saved=JSON.parse(sessionStorage.getItem(K)||'null');sessionStorage.removeItem(K)}catch(e){}
+if(saved&&saved.data){fields().forEach(function(e,i){var v=saved.data[key(e,i)];if(v===undefined)return;
+  if(e.type==='checkbox'||e.type==='radio'){e.checked=(v==='1')}else{e.value=v}});
+  document.querySelectorAll('details').forEach(function(d){if(d.querySelector('textarea')&&Array.prototype.some.call(d.querySelectorAll('textarea'),function(t){return t.value})){d.open=true}});
+  if(saved.y)window.scrollTo(0,saved.y);}
+})();
+</script>
 </body></html>

@@ -10,7 +10,7 @@
   <div><label>إلى تاريخ</label><input type="date" name="to" value="{{ f.date_to or '' }}"></div>
   <div><label>المدينة</label><select name="city"><option value="">الكل</option>{% for c in CITIES %}<option {{ 'selected' if c==f.city }}>{{ c }}</option>{% endfor %}</select></div>
   <div><label>القطاع</label><select name="sector"><option value="">الكل</option>{% for k,v in SECTORS.items() %}<option value="{{ k }}" {{ 'selected' if k==f.sector }}>{{ v.label }}</option>{% endfor %}</select></div>
-  <div><label>الحملة</label><select name="campaign"><option value="">الكل</option>{% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id==f.campaign_id }}>{{ c.name }}</option>{% endfor %}</select></div>
+  <div><label>الحملة</label><select name="campaign"><option value="">الكل</option>{% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id==f.campaign_id }}><span translate="no">{{ c.name }}</span></option>{% endfor %}</select></div>
 </div><div class="row">
   {% if user.role != 'rep' %}<div><label>المندوب</label><select name="owner"><option value="">الكل</option>{% for r in reps %}<option value="{{ r.id }}" {{ 'selected' if r.id==f.owner_id }}>{{ r.name }}</option>{% endfor %}</select></div>{% endif %}
   <div><label>نوع العرض</label><select name="offer"><option value="">الكل</option>{% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if o.id==f.offer_id }}>{{ o.service_name }}</option>{% endfor %}</select></div>
@@ -22,7 +22,7 @@
 </div></form>
 <div class="card tablewrap"><h2>عروض أرسلها الموظفون ({{ rep.manual|length }})</h2><table>
 <tr><th>المنشأة</th><th>الموظف الذي أرسل</th><th>تاريخ الإرسال المسجّل</th><th>العرض</th><th>الحالة الآن</th><th>المسؤول الحالي</th></tr>
-{% for c in rep.manual %}<tr><td><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div></td>
+{% for c in rep.manual %}<tr><td><a href="/companies/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div></td>
 <td>{{ c.offer_sent_by.name if c.offer_sent_by else '—' }}</td><td class="small">{{ fmt(c.offer_sent_at) }}</td><td class="small">{{ c.offer_note or '—' }}</td>
 <td><span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></td><td>{{ c.owner.name if c.owner else '—' }}</td></tr>
 {% else %}<tr><td colspan="6" class="muted">لم يسجّل الموظفون عروضًا مرسلة بعد.</td></tr>{% endfor %}</table></div>
@@ -30,9 +30,9 @@
 <tr><th>الشركة</th><th>تفاصيل الإرسال</th><th>العرض المرسل</th><th>حالة البريد</th><th>رد العميل</th><th>المتابعة</th></tr>
 {% for r in rep.rows %}{% set m = r.msg %}{% set c = r.company %}
 <tr>
-<td style="min-width:140px"><a href="/companies/{{ c.id }}"><b>{{ c.name }}</b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div><div class="small ltr">{{ r.phone }}</div></td>
+<td style="min-width:140px"><a href="/companies/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div><div class="small ltr">{{ r.phone }}</div></td>
 <td class="small" style="min-width:160px"><div>من: <span class="ltr">{{ m.from_address }}</span></div><div>إلى: <span class="ltr">{{ m.to_address }}</span></div><div>{{ fmt(m.sent_at) }}</div></td>
-<td class="small" style="min-width:160px"><b>{{ r.offer_name }}</b><div class="muted">{{ r.campaign_name }}</div><div>{{ m.subject }}</div><a href="/messages/{{ m.id }}">نسخة النص</a>{% if m.attachment_id %} · <a href="/messages/{{ m.id }}/attachment" target="_blank">{{ m.attachment_name }}</a>{% endif %}</td>
+<td class="small" style="min-width:160px"><b>{{ r.offer_name }}</b><div class="muted">{{ r.campaign_name }}</div><div><span translate="no">{{ m.subject }}</span></div><a href="/messages/{{ m.id }}">نسخة النص</a>{% if m.attachment_id %} · <a href="/messages/{{ m.id }}/attachment" target="_blank">{{ m.attachment_name }}</a>{% endif %}</td>
 <td><span class="pill {{ {'delivered':'ok','sent':'info','bounced':'err'}.get(m.status,'') }}">{{ STATUS_LABELS.get(m.status, m.status) }}</span>{% if m.bounce_reason %}<div class="small" style="color:var(--err)">{{ m.bounce_reason[:120] }}</div>{% endif %}</td>
 <td class="small" style="min-width:160px">{% if r.last_reply %}<span class="pill info">{{ r.last_reply.intent_label }}</span><div class="muted">{{ fmt(r.last_reply.received_at) }}</div><div>«{{ r.last_reply.body_text[:140] }}»</div>{% else %}<span class="muted">لا يوجد رد</span>{% endif %}</td>
 <td class="small" style="min-width:160px"><b>{{ r.owner_name }}</b><div>آخر إجراء: {{ c.last_action or '—' }}</div><div>القادم: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></td>

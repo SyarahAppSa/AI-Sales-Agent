@@ -12,7 +12,7 @@
 {% endif %}
 {% for c in camps %}{% set r = runs[c.id] %}
 <div class="card" id="camp-{{ c.id }}">
-  <div class="top" style="padding:0;min-height:0;margin-bottom:8px"><div><h2 style="margin:0">{{ c.name }}</h2>
+  <div class="top" style="padding:0;min-height:0;margin-bottom:8px"><div><h2 style="margin:0"><span translate="no">{{ c.name }}</span></h2>
   <p class="small muted" style="margin:4px 0 0">{{ c.request_text }}</p></div>
   {% if user.role in ('admin','manager') %}<form method="post" action="/auto-search/{{ c.id }}/run" class="row" style="align-items:center">
     <input type="number" name="batch" value="20" min="1" max="400" style="width:90px">

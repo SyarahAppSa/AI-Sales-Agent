@@ -6,7 +6,7 @@
 {% macro inline(x, base, can_act=True) -%}
 <div class="small" style="margin-top:4px">{{ badge(x) }}
 {% if x.attempt_at %}<div class="muted">آخر محاولة: {{ fmt(x.attempt_at) }} — {{ x.attempt_by }}{% if x.attempt_today %} <b style="color:var(--warn)">(اليوم)</b>{% endif %}</div>{% endif %}
-{% if x.note %}<div title="{{ x.note }}">«{{ x.note[:90] }}{{ '…' if x.note|length > 90 }}» <span class="muted">— {{ x.note_by }}، {{ fmt(x.note_at) }}</span></div>{% endif %}
+{% if x.note %}<div>«<span translate="no" title="{{ x.note }}">{{ x.note[:90] }}</span>{{ '…' if x.note|length > 90 }}» <span class="muted">— {{ x.note_by }}، {{ fmt(x.note_at) }}</span></div>{% endif %}
 {% if x.next_at %}<div class="muted">المتابعة القادمة: {{ fmt(x.next_at) }} — {{ x.next_owner }}</div>{% endif %}
 {% if can_act %}<div class="row" style="margin-top:4px;gap:6px">
   {% if x.status != 'do_not_contact' %}<form method="post" action="{{ base }}/contact/start" style="flex:0 0 auto"><button class="btn sm" {{ 'disabled' if x.locked }}>بدء التواصل</button></form>{% endif %}
@@ -17,6 +17,7 @@
 {% macro panel(cs, chist, STATUSES, UPDATE_CHOICES, owners, base, me) -%}
 <div class="card" id="followup"><h2>حالة التواصل</h2>
 <p>{{ badge(cs) }}{% if cs.by %} <span class="small muted">آخر تحديث: {{ cs.by }} — {{ fmt(cs.at) }}</span>{% endif %}</p>
+{% if cs.note %}<p class="small"><b>آخر ملاحظة:</b> «<span translate="no">{{ cs.note }}</span>»{% if cs.note_by %} <span class="muted">— <span translate="no">{{ cs.note_by }}</span>، {{ fmt(cs.note_at) }}</span>{% endif %}</p>{% endif %}
 {% if cs.attempt_at %}<p class="small">آخر محاولة: <b>{{ fmt(cs.attempt_at) }}</b> بواسطة {{ cs.attempt_by }} — عدد المحاولات: {{ cs.attempts }}{% if cs.attempt_today %} — <b style="color:var(--warn)">تمت محاولة اليوم، لا تكرر الاتصال اليوم</b>{% endif %}</p>{% endif %}
 {% if cs.status != 'do_not_contact' %}
 <form method="post" action="{{ base }}/contact/start" style="margin-bottom:10px"><button class="btn p" {{ 'disabled' if cs.locked and cs.locked_by_id != me }}>بدء التواصل</button>
@@ -31,6 +32,6 @@
   <button class="btn p">حفظ المتابعة</button>
 </form>
 <h2 style="margin-top:14px">سجل التواصل</h2>
-<ul class="timeline">{% for h in chist %}<li><div class="k">{{ fmt(h.at) }} — {{ h.user_name }}</div><b>{{ 'بدء التواصل' if h.kind == 'start' else STATUSES.get(h.status, h.status) }}</b>{% if h.note %}<pre>{{ h.note }}</pre>{% endif %}{% if h.next_at %}<div class="small muted">المتابعة: {{ fmt(h.next_at) }}{% if h.next_owner_name %} — {{ h.next_owner_name }}{% endif %}</div>{% endif %}</li>{% else %}<li class="muted">لا يوجد تواصل مسجل بعد.</li>{% endfor %}</ul>
+<ul class="timeline">{% for h in chist %}<li><div class="k">{{ fmt(h.at) }} — <span translate="no">{{ h.user_name }}</span></div><b>{{ 'بدء التواصل' if h.kind == 'start' else STATUSES.get(h.status, h.status) }}</b>{% if h.note %}<pre><span translate="no">{{ h.note }}</span></pre>{% endif %}{% if h.next_at %}<div class="small muted">المتابعة: {{ fmt(h.next_at) }}{% if h.next_owner_name %} — {{ h.next_owner_name }}{% endif %}</div>{% endif %}</li>{% else %}<li class="muted">لا يوجد تواصل مسجل بعد.</li>{% endfor %}</ul>
 </div>
 {%- endmacro %}

@@ -14,7 +14,7 @@
 <div class="card"><h2>{{ 'إيقاف الحساب' if u.active else 'إعادة التفعيل' }}</h2>
 {% if u.active %}<form method="post" action="/staff/{{ u.id }}/deactivate" onsubmit="return confirm('إيقاف الحساب وإغلاق جلساته المفتوحة؟')">
   <p class="small">يُغلق الإيقاف جلساته المفتوحة فورًا، ويُلغي رموز الدخول المعلقة. لديه {{ assigned|length }} عميل و{{ open_tasks }} متابعة مفتوحة.</p>
-  <div class="row"><div><label>نقل عملائه ومتابعاته إلى (يبقى سجل العروض والمحادثات كما هو)</label><select name="transfer_to"><option value="">بدون نقل</option>{% for c in colleagues %}<option value="{{ c.id }}">{{ c.name }}{{ ' — ' + c.team if c.team }}</option>{% endfor %}</select></div>
+  <div class="row"><div><label>نقل عملائه ومتابعاته إلى (يبقى سجل العروض والمحادثات كما هو)</label><select name="transfer_to"><option value="">بدون نقل</option>{% for c in colleagues %}<option value="{{ c.id }}"><span translate="no">{{ c.name }}</span>{{ ' — ' + c.team if c.team }}</option>{% endfor %}</select></div>
   <div style="flex:0 0 auto"><button class="btn d">إيقاف الحساب</button></div></div></form>
 {% else %}<form method="post" action="/staff/{{ u.id }}/activate"><button class="btn p">إعادة التفعيل</button></form>{% endif %}</div>
 </div>
@@ -22,9 +22,9 @@
 <div class="card"><h2>العملاء المسندون ({{ assigned|length }})</h2>
 <form method="get" class="row"><input name="q" value="{{ q }}" placeholder="ابحث عن عميل لإسناده"><button class="btn" style="flex:0 0 auto">بحث</button></form>
 {% if found %}<form method="post" action="/staff/{{ u.id }}/assign" style="margin-top:10px">
-{% for c in found %}<div class="chips"><label><input type="checkbox" name="company_ids" value="{{ c.id }}"> {{ c.name }} — {{ c.city }} <span class="muted">({{ c.owner.name if c.owner else 'غير مسند' }})</span></label></div>{% endfor %}
+{% for c in found %}<div class="chips"><label><input type="checkbox" name="company_ids" value="{{ c.id }}"> <span translate="no">{{ c.name }}</span> — {{ c.city }} <span class="muted">({{ c.owner.name if c.owner else 'غير مسند' }})</span></label></div>{% endfor %}
 <button class="btn p">إسناد المحدد إلى {{ u.name }}</button></form>{% endif %}
-<div style="margin-top:12px">{% for c in assigned %}<div class="small" style="border-bottom:1px solid var(--line);padding:5px 0"><a href="/companies/{{ c.id }}">{{ c.name }}</a> — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></div>{% else %}<p class="muted small">لا يوجد عملاء مسندون.</p>{% endfor %}</div></div>
+<div style="margin-top:12px">{% for c in assigned %}<div class="small" style="border-bottom:1px solid var(--line);padding:5px 0"><a href="/companies/{{ c.id }}"><span translate="no">{{ c.name }}</span></a> — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></div>{% else %}<p class="muted small">لا يوجد عملاء مسندون.</p>{% endfor %}</div></div>
 <div class="card"><h2>سجل هذا الموظف</h2>
 {% for a in audit_rows %}<div class="small" style="border-bottom:1px solid var(--line);padding:5px 0"><b>{{ fmt(a.at) }}</b> — {{ a.actor_name }}: {{ {'add_user':'أضافه','update_permissions':'غيّر صلاحياته','deactivate':'أوقف الحساب','activate':'أعاد التفعيل','assign_customers':'أسند عملاء','invite':'أرسل دعوة','login':'دخول','export':'تصدير'}.get(a.action, a.action) }}</div>{% else %}<p class="muted small">—</p>{% endfor %}</div>
 </div></div>

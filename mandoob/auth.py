@@ -175,10 +175,28 @@ LOGIN_SUBJECT = "رمز دخولك إلى منصة المندوب الذكي ل�
 RESEND_AFTER_SECONDS = 60
 
 
-def login_email(user: User, code: str, portal: str) -> tuple[str, str, str]:
-    """(العنوان، النص، HTML) لرسالة كود الدخول — الكود بخط كبير مع مدة صلاحيته."""
+LOGIN_SUBJECT_EN = "Your sign-in code for Syarah App Smart Sales Agent"
+
+
+def login_email(user: User, code: str, portal: str, lang: str | None = None) -> tuple[str, str, str]:
+    """(العنوان، النص، HTML) لرسالة كود الدخول — الكود بخط كبير مع مدة صلاحيته، بلغة المستخدم."""
     from html import escape
+    from .i18n import current_lang
     link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
+    if (lang or current_lang()) == "en":
+        where = "the Admin portal" if portal == "admin" else "the Staff portal"
+        text = (f"Hello {user.name},\n\nYour sign-in code for {where} of Syarah App Smart Sales Agent:\n\n    {code}\n\n"
+                f"Valid for 5 minutes and for one use only. Any previous code no longer works.\n"
+                f"If you did not request this code, ignore this email and do not share it with anyone.\n\n{link}")
+        html = (f"<div dir='ltr' style='font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#292431'>"
+                f"<p style='font-size:16px'>Hello {escape(user.name)},</p>"
+                f"<p style='font-size:15px'>Your sign-in code for {where} of <b>Syarah App Smart Sales Agent</b>:</p>"
+                f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
+                f"background:#EFE8F8;border-radius:12px;padding:18px 8px;margin:16px 0;color:#6941A5'>{code}</div>"
+                f"<p style='font-size:15px;text-align:center'><b>Valid for 5 minutes, one use only</b></p>"
+                f"<p style='font-size:13px;color:#6F6879'>Any previous code no longer works. If you did not request "
+                f"this code, ignore this email and do not share it with anyone.</p></div>")
+        return LOGIN_SUBJECT_EN, text, html
     where = "بوابة الإدارة" if portal == "admin" else "بوابة الموظفين"
     text = (f"مرحبًا {user.name}،\n\nرمز دخولك إلى {where} في منصة المندوب الذكي لسيارة اب:\n\n    {code}\n\n"
             f"صالح لمدة ٥ دقائق ولمرة واحدة فقط. أي رمز سابق لم يعد صالحًا.\n"
@@ -187,7 +205,7 @@ def login_email(user: User, code: str, portal: str) -> tuple[str, str, str]:
             f"<p style='font-size:16px'>مرحبًا {escape(user.name)}،</p>"
             f"<p style='font-size:15px'>رمز دخولك إلى {where} في منصة <b>المندوب الذكي لسيارة اب</b>:</p>"
             f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
-            f"background:#f3f0ff;border-radius:12px;padding:18px 8px;margin:16px 0;color:#4c1d95'>{code}</div>"
+            f"background:#EFE8F8;border-radius:12px;padding:18px 8px;margin:16px 0;color:#6941A5'>{code}</div>"
             f"<p style='font-size:15px;text-align:center'><b>صالح لمدة ٥ دقائق ولمرة واحدة فقط</b></p>"
             f"<p style='font-size:13px;color:#6b7280'>أي رمز سابق لم يعد صالحًا. إن لم تطلب هذا الرمز فتجاهل الرسالة "
             f"ولا تشاركه مع أحد.</p></div>")

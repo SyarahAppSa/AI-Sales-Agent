@@ -41,11 +41,26 @@ def riyadh_day_bounds_utc(d: date) -> tuple[datetime, datetime]:
     return riyadh_to_utc(start), riyadh_to_utc(start + timedelta(days=1))
 
 
+EN_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _en() -> bool:
+    try:
+        from .i18n import current_lang
+        return current_lang() == "en"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def fmt(dt: datetime | None, with_day: bool = True) -> str:
     r = to_riyadh(dt)
     if r is None:
         return "—"
     hour = r.hour % 12 or 12
+    if _en():
+        s = f"{r.day} {EN_MONTHS[r.month - 1]} {r.year}, {hour}:{r.minute:02d} {'AM' if r.hour < 12 else 'PM'}"
+        return f"{EN_DAYS[r.weekday()]} {s}" if with_day else s
     ampm = "ص" if r.hour < 12 else "م"
     s = f"{r.day} {AR_MONTHS[r.month - 1]} {r.year}، {hour}:{r.minute:02d} {ampm}"
     return f"{AR_DAYS[r.weekday()]} {s}" if with_day else s
@@ -54,4 +69,6 @@ def fmt(dt: datetime | None, with_day: bool = True) -> str:
 def fmt_date(d: date | None) -> str:
     if d is None:
         return "—"
+    if _en():
+        return f"{EN_DAYS[d.weekday()]} {d.day} {EN_MONTHS[d.month - 1]} {d.year}"
     return f"{AR_DAYS[d.weekday()]} {d.day} {AR_MONTHS[d.month - 1]} {d.year}"

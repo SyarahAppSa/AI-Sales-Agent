@@ -59,6 +59,8 @@ def workbook(sheets: list[tuple[str, list[str], list[list]]], title_rows: dict |
                     cell.data_type = "s"  # نص لا صيغة، ولو بدأ بـ =
                 cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
     buf = io.BytesIO()
+    from .i18n import localize_workbook
+    localize_workbook(wb)
     wb.save(buf)
     return buf.getvalue()
 

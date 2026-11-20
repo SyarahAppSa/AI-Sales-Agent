@@ -18,7 +18,7 @@
 {% endif %}
 {% for c in camps %}
 <div class="card">
-  <div class="top" style="margin:0"><div><h2><a href="/targets/{{ c.id }}">{{ c.name }}</a></h2>
+  <div class="top" style="margin:0"><div><h2><a href="/targets/{{ c.id }}"><span translate="no">{{ c.name }}</span></a></h2>
   <span class="pill {{ 'ok' if c.status=='active' else 'warn' }}">{{ {'active':'نشطة','paused':'موقوفة','draft':'مسودة'}[c.status] }}</span>
   <span class="pill">الهدف اليومي {{ c.daily_target }}</span>{% if c.allow_backfill %}<span class="pill info">تعويض النقص من فئة أخرى</span>{% endif %}
   {% if c.send_enabled %}<span class="pill ok">الإرسال مفعّل</span>{% else %}<span class="pill">الإرسال غير مفعّل</span>{% endif %}
