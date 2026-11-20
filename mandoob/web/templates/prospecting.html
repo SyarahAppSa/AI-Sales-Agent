@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_health.html" import health_bar %}{% from "_icons.html" import icon %}{% block title %}البحث عن العملاء{% endblock %}{% block content %}
 {% set cfg = st.cfg %}{% set run = st.run %}{% set req = st.request %}
-{% if req.state in ('pending','running') or (run and run.status == 'running') %}<meta http-equiv="refresh" content="30">{% endif %}
+{% if req.state in ('pending','running') or (run and run.status == 'running') %}<span data-autorefresh="30" hidden></span>{% endif %}
 <div class="top"><div><h1>البحث عن العملاء</h1>
 <p class="sub" style="margin:0">مهمة المنصة الآن: إيجاد منشآت داخل السعودية — من محل بسيارة توصيل واحدة إلى شركة بمئات المركبات، وجمع بياناتها مع مصدر كل معلومة. التواصل يتولاه فريقك بنفسه.</p></div>
 <div class="row" style="flex:0 0 auto"><a class="btn" href="/today{{ '?campaign=%d' % st.camp.id if st.camp else '' }}">عملاء اليوم</a><a class="btn" href="/companies?status=complete&kind=real&owner=none">إسناد للموظفين</a></div></div>

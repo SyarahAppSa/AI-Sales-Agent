@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_icons.html" import icon %}{% from "_vehicle.html" import vind %}{% from "_contact.html" import inline %}{% block title %}عملاء اليوم{% endblock %}{% block content %}
 {% set period = (fmt_date(a) if a == b else 'من ' ~ fmt_date(a) ~ ' إلى ' ~ fmt_date(b)) %}
-{% if t and t.running %}<meta http-equiv="refresh" content="20">{% endif %}
+{% if t and t.running %}<span data-autorefresh="20" hidden></span>{% endif %}
 <div class="top"><div><h1>عملاء اليوم</h1><p class="sub" style="margin:0">{{ period }} — حسب تاريخ جمع العميل بتوقيت الرياض{% if t and t.running %} — <b style="color:var(--brand)">البحث يعمل الآن، تتحدث الصفحة تلقائيًا بنفس الاختيار</b>{% endif %}</p></div>
 <div class="row">{% if t %}<a class="btn" href="/today.xlsx?{{ qs }}">تنزيل Excel</a>{% endif %}{% if user.role in ('admin','manager') %}<a class="btn p" href="/prospecting">البحث عن العملاء</a>{% endif %}</div></div>
 <form class="card" method="get" id="periodform">

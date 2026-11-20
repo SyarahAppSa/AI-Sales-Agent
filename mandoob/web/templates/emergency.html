@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}لوحة طوارئ — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
-<meta http-equiv="refresh" content="60">
+<span data-autorefresh="60" hidden></span>
 <div class="dash-head"><div><h1>لوحة طوارئ</h1><div class="date">محاولات التنزيل، وحالة الخوادم، وسجل النشاط — تتحدث كل دقيقة. آخر تحديث: {{ fmt(now) }}</div></div>
 <span class="pill {{ 'err' if blocked else 'warn' }}" style="align-self:center">{{ 'التنزيل محظور على كل الحسابات عدا مدير المنصة' if blocked else 'منع التنزيل غير مفعّل' }}</span></div>
 

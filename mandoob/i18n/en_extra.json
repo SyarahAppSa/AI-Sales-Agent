@@ -377,5 +377,7 @@
 "تاريخ الرفع": "Uploaded",
 "فتح": "Open",
 "مفتوحة": "Open",
-"إزالة المكرر من القوائم الحالية": "Remove duplicates from current lists"
+"إزالة المكرر من القوائم الحالية": "Remove duplicates from current lists",
+"مسند من قبل": "Already assigned",
+"التحديث التلقائي متوقف لأنك تعدّل الإعدادات — احفظ لتطبيقها": "Auto-refresh paused while you edit — save to apply"
 }

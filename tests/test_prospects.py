@@ -440,3 +440,34 @@ def test_admin_lists_no_duplicate_numbers_or_records():
             assert [x[0] for x in l2.rows] == ["قديمة ٣", "قديمة ٢"]
             idx = {a.row_idx: l2.rows[a.row_idx][0] for a in s.query(AdminListAssignment).filter_by(list_id=l2id)}
             assert sorted(idx.values()) == ["قديمة ٢", "قديمة ٣"]                          # الإسناد يتبع الصف الصحيح
+
+
+def test_assigning_already_assigned_customer_shows_who_has_it():
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, AdminListAssignment, User
+    with session_scope() as s:
+        l1 = AdminList(name="sameA.xlsx", headers=["اسم المؤسسة", "رقم الجوال"], rows=[["مؤسسة المسند المشترك", "0559990001"]])
+        l2 = AdminList(name="sameB.xlsx", headers=["اسم المؤسسة", "رقم الجوال"], rows=[["مؤسسة المسند المشترك فرع", "0559990001"],
+                                                                                     ["مؤسسة حرة", "0559990002"]])
+        s.add_all([l1, l2])
+        s.flush()
+        l1id, l2id = l1.id, l2.id
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        adm.post("/staff/add", data={"name": "الموظف الأول", "email": "first.rep@syarahapp.test", "team": "", "profile": "sales_rep"})
+        adm.post("/staff/add", data={"name": "الموظف الثاني", "email": "second.rep@syarahapp.test", "team": "", "profile": "sales_rep"})
+        with session_scope() as s:
+            r1 = s.query(User).filter(User.email == "first.rep@syarahapp.test").one().id
+            r2 = s.query(User).filter(User.email == "second.rep@syarahapp.test").one().id
+        adm.post(f"/admin-lists/{l1id}/assign", data={"owner_id": str(r1), "rows": "0"})
+        r = adm.post(f"/admin-lists/{l1id}/assign", data={"owner_id": str(r2), "rows": "0"}, follow_redirects=True)   # القائمة نفسها
+        assert "هذا العميل مسند من قبل" in r.text and "الموظف الأول" in r.text
+        r = adm.post(f"/admin-lists/{l2id}/assign", data={"owner_id": str(r2), "rows": "0"}, follow_redirects=True)   # الرقم نفسه في قائمة أخرى
+        assert "مسند من قبل إلى الموظف الأول" in r.text and "sameA.xlsx" in r.text
+        page = adm.get(f"/admin-lists?lid={l2id}").text
+        assert "مسند من قبل" in page
+        adm.post(f"/admin-lists/{l2id}/assign", data={"owner_id": str(r2), "count": "10"})                            # بالعدد: يتخطّاه
+        with session_scope() as s:
+            got = {a.row_idx for a in s.query(AdminListAssignment).filter_by(list_id=l2id)}
+            assert got == {1}

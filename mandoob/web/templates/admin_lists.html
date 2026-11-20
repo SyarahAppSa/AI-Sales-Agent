@@ -45,7 +45,7 @@
 {% elif k == 'url' %}<a class="btn sm" href="{{ v if v.startswith('http') else 'https://' ~ v }}" target="_blank" rel="noopener" title="{{ v }}">فتح ↗</a>
 {% elif k in ('date', 'num') %}<span class="ltr">{{ v }}</span>
 {% else %}{{ v }}{% endif %}</td>{% endfor %}
-<td class="cst">{% if as_ %}<span translate="no">{{ names.get(as_.owner_id, '—') }}</span><div class="small muted">{{ fmt(as_.assigned_at, False) }}</div>{% else %}<span class="pill warn">غير مسند</span>{% endif %}</td>
+<td class="cst">{% if as_ %}<span translate="no">{{ names.get(as_.owner_id, '—') }}</span><div class="small muted">{{ fmt(as_.assigned_at, False) }}</div>{% elif elsewhere.get(idx) %}{% set e_ = elsewhere[idx] %}<span class="pill err">مسند من قبل</span><div class="small muted"><span translate="no">{{ names.get(e_[0], '—') }}</span> — في «{{ e_[1] }}»</div>{% else %}<span class="pill warn">غير مسند</span>{% endif %}</td>
 <td class="cst">{% if x %}<span class="pill ok">نعم</span><div class="small muted"><span translate="no">{{ x.by_name }}</span> — {{ fmt(x.at) }}</div>{% else %}<span class="pill warn">لا</span>{% endif %}</td>
 <td class="cst">{% if x %}{% if x.status == 'replied' %}<span class="pill ok">رد</span>{% elif x.status == 'no_answer' %}<span class="pill warn">لم يرد</span>{% else %}<span class="pill err">{{ LIST_STATUS[x.status] }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
 <td class="cst k-long small">{% if x and x.note %}<span translate="no">{{ x.note }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>

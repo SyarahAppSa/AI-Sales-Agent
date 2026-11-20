@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% block title %}العملاء المحتملون — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
-{% if last and last.status in ('pending','running') %}<meta http-equiv="refresh" content="30">{% endif %}
+{% if last and last.status in ('pending','running') %}<span data-autorefresh="30" hidden></span>{% endif %}
 <div class="dash-head">
   <div><h1>العملاء المحتملون</h1><div class="date">{{ fmt_date(d) }} — منشآت سعودية جديدة قابلة للتواصل، مرتبة حسب ملاءمتها لسيارة آب</div></div>
   <div class="row" style="flex:0 0 auto"><a class="btn p" href="/prospects.xlsx?{{ qs }}">تنزيل Excel</a></div>

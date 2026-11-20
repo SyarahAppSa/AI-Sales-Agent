@@ -733,7 +733,18 @@ def _admin_lists_view(request, user, s, lid, q, page, cstate, base, owner=""):
     for l_, n_ in s.execute(cq.group_by(AdminListContact.list_id)):
         lstats.setdefault(l_, {})["done"] = n_
     names = {u.id: u.name for u in s.scalars(select(User))}
-    return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
+    elsewhere = {}
+    if cur is not None and not staff and rows:
+        other = _assigned_elsewhere(s, exclude_list=cur.id)
+        if other:
+            for idx, r in rows:
+                if idx in amap:
+                    continue
+                ps, _ = _row_keys(cur.headers or [], r, kinds)
+                hit = next((other[p] for p in ps if p in other), None)
+                if hit:
+                    elsewhere[idx] = hit
+    return render(request, "admin_lists.html", user, s, elsewhere=elsewhere, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
                   sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first, cmap=cmap, amap=amap, cstate=cstate,
                   counts=counts, LIST_STATUS=LIST_STATUS, base=base, can_manage=user.role in ("admin", "manager") and not staff,
                   staff_users=staff_users, names=names, owner=owner, staff_view=staff, lstats=lstats)
@@ -761,7 +772,23 @@ async def admin_lists_assign(lid: int, request: Request, user: User = Depends(re
         return back(ret)
     reassign = bool(form.get("reassign"))
     amap = {x.row_idx: x for x in s.scalars(select(AdminListAssignment).where(AdminListAssignment.list_id == lid))}
+    kinds = _col_kinds(al.headers or [], al.rows or [])
+    other = _assigned_elsewhere(s, exclude_list=lid)  # رقم ← (الموظف، القائمة، التاريخ) في القوائم الأخرى
+    names = {x.id: x.name for x in s.scalars(select(User))}
+
+    def prior(i):
+        """إسناد سابق لهذا العميل لموظف آخر: في هذه القائمة أو برقمه نفسه في قائمة أخرى."""
+        x = amap.get(i)
+        if x is not None and x.owner_id != u.id:
+            return names.get(x.owner_id, "موظف"), x.assigned_at, None
+        ps, _ = _row_keys(al.headers or [], al.rows[i], kinds)
+        for p in ps:
+            o = other.get(p)
+            if o and o[0] != u.id:
+                return names.get(o[0], "موظف"), o[2], o[1]
+        return None
     picked = [int(x) for x in form.getlist("rows") if str(x).isdigit()]
+    auto_skipped = []
     if not picked:
         n = int(form.get("count") or 0)
         if n not in (10, 50, 100):
@@ -776,24 +803,59 @@ async def admin_lists_assign(lid: int, request: Request, user: User = Depends(re
                 continue
             if cstate == "none" and i in cmap:
                 continue
+            if prior(i):  # مسند من قبل برقمه في قائمة أخرى ← يُتخطّى ويُذكر
+                auto_skipped.append(i)
+                continue
             picked.append(i)
-    done = skipped = 0
+    done, skipped = 0, []
     for i in picked:
         if not (0 <= i < len(al.rows or [])):
             continue
-        x = amap.get(i)
-        if x is not None and x.owner_id != u.id and not reassign:
-            skipped += 1
+        pr = prior(i)
+        if pr and not reassign:
+            skipped.append((i, pr))
             continue
+        x = amap.get(i)
         if x is None:
             s.add(AdminListAssignment(list_id=lid, row_idx=i, owner_id=u.id, assigned_by=user.id))
         else:
             x.owner_id, x.assigned_by, x.assigned_at = u.id, user.id, now_utc()
         done += 1
-    audit(s, user, "assign_customers", u, source="admin_list", list=lid, count=done)
-    flash(request, f"أُسند {done} عميل إلى {u.name}" + (f" — وتُرك {skipped} مسند لموظف آخر (فعّل «نقل المسند» لنقله)" if skipped else "")
-          + "." if done or skipped else "لا يوجد عملاء غير مسندين مطابقون.", "ok" if done else "err")
+    skipped += [(i, prior(i)) for i in auto_skipped]
+    audit(s, user, "assign_customers", u, source="admin_list", list=lid, count=done, already_assigned=len(skipped))
+    name_j = next((j for j, k in kinds.items() if k in ("text", "long")), 0)
+    lines = []
+    for i, (who, at, lst) in skipped[:5]:
+        cname = _cell(al.rows[i][name_j]) if name_j < len(al.rows[i]) else f"صف {i + 1}"
+        lines.append(f"«{cname}» مسند من قبل إلى {who} منذ {fmt(at, False)}" + (f" (في قائمة «{lst}»)" if lst else ""))
+    msg = f"أُسند {done} عميل إلى {u.name}." if done else "لم يُسند أي عميل."
+    if skipped:
+        msg += (f" هذا العميل مسند من قبل: " if len(skipped) == 1 else f" {len(skipped)} عميل مسندون من قبل لموظفين آخرين: ") + \
+            "؛ ".join(lines) + ("…" if len(skipped) > 5 else "") + ". لنقلهم فعّل «نقل المسند لموظف آخر»."
+    elif not done:
+        msg = "لا يوجد عملاء غير مسندين مطابقون."
+    flash(request, msg, "ok" if done and not skipped else "err")
     return back(ret)
+
+
+def _assigned_elsewhere(s, exclude_list: int | None = None) -> dict:
+    """رقم الهاتف ← (معرّف الموظف، اسم القائمة، تاريخ الإسناد) لكل عميل مسند في القوائم الإدارية."""
+    from ..models import AdminList, AdminListAssignment
+    out: dict = {}
+    by_list: dict = {}
+    for a in s.scalars(select(AdminListAssignment).where(AdminListAssignment.list_id != (exclude_list or 0))):
+        by_list.setdefault(a.list_id, []).append(a)
+    for lid_, items in by_list.items():
+        al = s.get(AdminList, lid_)
+        if al is None:
+            continue
+        kinds = _col_kinds(al.headers or [], al.rows or [])
+        for a in items:
+            if 0 <= a.row_idx < len(al.rows or []):
+                ps, _ = _row_keys(al.headers or [], al.rows[a.row_idx], kinds)
+                for p in ps:
+                    out.setdefault(p, (a.owner_id, al.name, a.assigned_at))
+    return out
 
 
 @app.get("/portal/lists", response_class=HTMLResponse)

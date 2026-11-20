@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}اكتشاف عملاء جدد{% endblock %}{% block content %}
-{% if busy %}<meta http-equiv="refresh" content="30">{% endif %}
+{% if busy %}<span data-autorefresh="30" hidden></span>{% endif %}
 <div class="top"><div><h1>اكتشاف عملاء جدد</h1><p class="sub" style="margin:0">أدلة النقل والمقاولين والمصانع — على مرحلتين: أسماء ومدن وأنشطة تُطابق مع قاعدتنا أولًا، ثم الهاتف والبريد من موقع المنشأة للجديد فقط.</p></div>
 <form method="post" action="/discover/probe" style="flex:0 0 auto"><button class="btn">افحص الوصول للمصادر الآن</button></form></div>
 

@@ -98,5 +98,13 @@ document.querySelectorAll('.ngrp .ghead').forEach(function(b){b.addEventListener
   document.querySelectorAll('.ngrp.open').forEach(function(x){x.classList.remove('open');x.querySelector('.ghead').setAttribute('aria-expanded','false')});
   if(open){g.classList.add('open');b.setAttribute('aria-expanded','true')}});});
 document.querySelectorAll('.nav a').forEach(function(a){a.addEventListener('click',function(){document.body.classList.remove('navopen')})});
+/* تحديث تلقائي ذكي: يُوقف ما دام المستخدم يعدّل أي خانة (حتى لا يضيع اختياره قبل الحفظ) */
+(function(){var el=document.querySelector('[data-autorefresh]');if(!el)return;var sec=parseInt(el.getAttribute('data-autorefresh'),10)||30,dirty=false;
+document.addEventListener('input',function(e){if(e.target.closest('form'))dirty=true},true);
+document.addEventListener('change',function(e){if(e.target.closest('form'))dirty=true},true);
+var note=document.createElement('div');note.className='small muted autonote';note.style.cssText='position:fixed;bottom:12px;left:12px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;z-index:20;display:none';
+note.textContent='التحديث التلقائي متوقف لأنك تعدّل الإعدادات — احفظ لتطبيقها';document.body.appendChild(note);
+setInterval(function(){var a=document.activeElement;var editing=a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName);
+ if(dirty||editing){note.style.display='block';return}location.reload()},sec*1000)})();
 </script>
 </body></html>
