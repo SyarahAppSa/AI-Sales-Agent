@@ -269,5 +269,13 @@
 "مسؤول موثّق": "Verified decision maker",
 "لم يُعثر على مسؤول": "No decision maker found",
 "لم يُبحث بعد": "Not searched yet",
-"عرض الكل": "Show all"
+"عرض الكل": "Show all",
+"مصدر الملف (اختياري)": "File source (optional)",
+"من جهازي": "From my device",
+"رابط": "Link",
+"المصدر: من جهازي": "Source: my device",
+"المصدر: رابط": "Source: link",
+"ملاحظة (اختياري)": "Note (optional)",
+"ملاحظة (اختياري): المزوّد أو رقم العقد": "Note (optional): provider or contract no.",
+"مثل: قائمة المقاولين في الدمام": "e.g. Dammam contractors list"
 }

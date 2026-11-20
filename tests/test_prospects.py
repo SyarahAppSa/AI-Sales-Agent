@@ -140,7 +140,7 @@ def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatc
                 "اسم بلا تواصل من الملف,تجارة,الرياض,,,,\n")
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
-        r = cl.post("/prospects/import", data={"license_note": "مزوّد تجريبي — عقد 1"},
+        r = cl.post("/prospects/import", data={},
                     files={"file": ("lic.csv", csv_text.encode("utf-8"), "text/csv")})
         assert r.status_code in (200, 303)
     with session_scope() as s:

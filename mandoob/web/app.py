@@ -499,14 +499,13 @@ def prospects_run(request: Request, target: int = Form(100), user: User = Depend
 
 
 @app.post("/prospects/import")
-async def prospects_import(request: Request, file: UploadFile = File(...), license_note: str = Form(...),
+async def prospects_import(request: Request, file: UploadFile = File(...), license_note: str = Form(""),
+                           src_kind: str = Form("device"), src_url: str = Form(""),
                            user: User = Depends(require_manager), s=Depends(get_db)):
     """ملف مزوّد بيانات مرخّص (CSV أو Excel): يُضاف إلى طابور المعالجة اليومية."""
     from .. import prospects as P
     from ..auth import audit
-    if len((license_note or "").strip()) < 5:
-        flash(request, "اكتب مصدر الملف وحق الاستخدام (مثل: اسم المزوّد ورقم العقد) قبل الرفع.", "err")
-        return back("/prospects")
+    license_note = _source_note(user, src_kind, src_url, license_note)
     data = await file.read()
     if len(data) > 30 * 1024 * 1024:
         flash(request, "الملف أكبر من ٣٠ ميغابايت — قسّمه إلى ملفات أصغر.", "err")
@@ -523,6 +522,15 @@ async def prospects_import(request: Request, file: UploadFile = File(...), licen
 
 
 # ---------------------------------------------------------------- عملاء عشوائيون (قوائم غير متحقق منها)
+
+def _source_note(user, kind: str, url: str, note: str) -> str:
+    """مصدر الملف اختياري: «من جهازي» افتراضيًا، أو رابط، مع ملاحظة إن كُتبت."""
+    url, note = (url or "").strip(), (note or "").strip()
+    if kind == "url" and url:
+        base = url
+    else:
+        base = f"ملف من جهاز {user.name}"
+    return (base + (f" — {note}" if note else ""))[:500]
 
 def _random_q(q: str, status: str):
     from ..models import ProspectPool
@@ -551,7 +559,8 @@ def random_leads(request: Request, q: str = "", status: str = "random", page: in
 
 
 @app.post("/random-leads/upload")
-async def random_leads_upload(request: Request, file: UploadFile = File(...), source_note: str = Form(...),
+async def random_leads_upload(request: Request, file: UploadFile = File(...), source_note: str = Form(""),
+                              src_kind: str = Form("device"), src_url: str = Form(""),
                               user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospects as P
     from ..auth import audit
@@ -561,7 +570,7 @@ async def random_leads_upload(request: Request, file: UploadFile = File(...), so
         return back("/random-leads")
     fname = file.filename or "list.csv"
     try:
-        n, cols = P.queue_upload(s, user, fname, data, (source_note or "").strip(), kind="random")
+        n, cols = P.queue_upload(s, user, fname, data, _source_note(user, src_kind, src_url, source_note), kind="random")
     except P.UploadError as e:
         flash(request, f"«{fname}»: {e}", "err")
         return back("/random-leads")

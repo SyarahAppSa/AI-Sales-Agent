@@ -12,7 +12,9 @@
 <div class="card"><h2>رفع قائمة</h2>
 <form method="post" action="/random-leads/upload" enctype="multipart/form-data" class="row">
   <div><label>الملف (PDF أو Excel أو CSV)</label><input type="file" name="file" accept=".pdf,.xlsx,.csv" required></div>
-  <div><label>مصدر القائمة</label><input name="source_note" required placeholder="مثل: ملف «630 شركة عقارية في الشرقية» من حسابنا في Scribd"></div>
+<div><label>مصدر الملف (اختياري)</label><select name="src_kind" onchange="this.form.querySelector('.srcurl').style.display=this.value=='url'?'block':'none'"><option value="device">من جهازي</option><option value="url">رابط</option></select>
+  <input name="src_url" class="srcurl ltr" placeholder="https://..." style="display:none;margin-top:6px"></div>
+  <div><label>ملاحظة (اختياري)</label><input name="source_note" placeholder="مثل: قائمة المقاولين في الدمام"></div>
   <button class="btn p">رفع</button></form>
 <p class="small muted" style="margin:8px 0 0">يُحفظ كما هو هنا. عند «النقل للتحقق» يمر كل سجل بمنع التكرار مع العملاء والعملاء الحاليين، ثم يُتحقق من الهاتف والبريد في موقع المنشأة، ثم يدخل «العملاء المحتملون» بأولويته.</p>
 {% if files %}<table class="small" style="margin-top:10px"><tr><th>الملف</th><th>مصدر القائمة</th><th>السجلات</th></tr>{% for f, n_, c_ in files %}<tr><td>{{ f }}</td><td>{{ n_ }}</td><td>{{ c_ }}</td></tr>{% endfor %}</table>{% endif %}

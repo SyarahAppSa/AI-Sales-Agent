@@ -45,7 +45,9 @@
       <div class="s">في الطابور: <b>{{ pool.queued }}</b> — عولج: <b>{{ pool.done }}</b></div>
       <form method="post" action="/prospects/import" enctype="multipart/form-data" style="margin-top:8px">
         <input type="file" name="file" accept=".csv,.xlsx" required>
-        <input name="license_note" placeholder="المزوّد وحق الاستخدام (مثل: اسم المزوّد — رقم العقد)" required style="margin-top:6px">
+        <select name="src_kind" style="margin-top:6px" onchange="this.form.querySelector('.srcurl').style.display=this.value=='url'?'block':'none'"><option value="device">المصدر: من جهازي</option><option value="url">المصدر: رابط</option></select>
+        <input name="src_url" class="srcurl ltr" placeholder="https://..." style="display:none;margin-top:6px">
+        <input name="license_note" placeholder="ملاحظة (اختياري): المزوّد أو رقم العقد" style="margin-top:6px">
         <button class="btn p sm" style="margin-top:6px">رفع الملف</button></form>
       <div class="s" style="margin-top:6px">CSV أو Excel. الأعمدة: الاسم، النشاط، المدينة، الموقع، الهاتف، البريد، الرقم الموحد، السجل التجاري، رابط المصدر.</div></div>
     <div class="stat"><div class="l">خرائط Google (الواجهة الرسمية)</div>
