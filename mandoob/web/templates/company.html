@@ -37,9 +37,27 @@
 {% else %}<form method="post" action="/companies/{{ c.id }}/action" class="row"><input type="hidden" name="action" value="set_parent"><input name="owner_id" type="number" placeholder="رقم سجل المقر الرئيسي"><button class="btn sm">ربط كفرع</button></form>{% endif %}</details>{% endif %}
 </div>
 
-{% if signals %}<div class="card"><h2>لماذا الآن؟</h2>
-{% for g in signals %}<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill warn">{{ g.label }}</span> <span class="small muted">{{ fmt_date(g.announced_on) if g.announced_on else 'تاريخ الإعلان غير مذكور' }}</span>
-<div class="small">{{ g.title[:220] }}</div>{% if g.url %}<a class="small" href="{{ g.url }}" target="_blank" rel="noopener">رابط الإعلان</a>{% endif %}</div>{% endfor %}</div>{% endif %}
+<div class="card" id="reasons"><h2>سبب ترشيح العميل</h2>
+<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill {{ 'ok' if c.fit_phrase else '' }}">دليل استخدام المركبات</span>
+ <span class="small muted">جُمع {{ fmt(c.first_found_at, False) }}</span>
+ <div class="small">{{ c.fit_reason or '—' }}{% if c.fit_phrase %}<div class="muted">«{{ c.fit_phrase[:220] }}»</div>{% endif %}</div>
+ {% if c.fit_evidence_url %}<a class="small ltr" href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">{{ c.fit_evidence_url.split('//')[-1][:60] }}</a>{% endif %}</div>
+{% for g in signals %}<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill warn">{{ g.label }}</span> <span class="small muted">{{ fmt_date(g.announced_on) if g.announced_on else 'التاريخ غير مذكور' }}</span>
+<div class="small">{{ g.title[:300] }}</div>{% if g.url %}<a class="small ltr" href="{{ g.url }}" target="_blank" rel="noopener">{{ g.url.split('//')[-1][:60] }}</a>{% endif %}</div>{% endfor %}
+{% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/reasons/find" style="margin-top:8px"><button class="btn sm">ابحث عن دليل ترشيح (توظيف مدير أسطول، افتتاح مركز توزيع…)</button></form>{% endif %}
+<details style="margin-top:8px"><summary class="small">أضف سببًا يدويًا</summary>
+<form method="post" action="/companies/{{ c.id }}/reasons/add"><div class="row"><div><label>النوع</label><select name="kind">{% for k, v in REASON_KINDS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+<div><label>التاريخ</label><input type="date" name="when"></div></div>
+<div class="field"><label>الدليل</label><input name="title" required placeholder="مثل: إعلان توظيف مدير أسطول على لينكدإن"></div>
+<div class="field"><label>الرابط</label><input name="url" class="ltr" placeholder="https://"></div><button class="btn sm">حفظ</button></form></details>
+</div>
+
+{% if user.role in ('admin','manager') %}<div class="card"><h2>ابحث عن شركات مشابهة</h2>
+<p class="small muted">حسب النشاط («{{ c.activity }}») وطريقة استخدام المركبات{% if c.fit_phrase %} («{{ c.fit_phrase[:80] }}»){% endif %}، في المناطق التي تختارها. المكرر يُستبعد قبل أي تكلفة تفصيلية.</p>
+<form method="post" action="/companies/{{ c.id }}/similar">
+<div class="chips"><label><input type="checkbox" name="all_regions" value="1"> كل المملكة</label>{% for rid, r in GEO_REGIONS.items() %}<label><input type="checkbox" name="regions" value="{{ rid }}" {{ 'checked' if c.region_id == rid }}> {{ r.ar }}</label>{% endfor %}</div>
+<div class="row"><div><label>عدد المنشآت (المرحلة ١)</label><input type="number" name="limit" value="15" min="5" max="300"></div><div><label>الميزانية ($)</label><input type="number" name="budget" value="3" min="0.5" max="100" step="0.5"></div>
+<div style="flex:0 0 auto;align-self:end"><button class="btn p">ابحث عن شركات مشابهة</button></div></div></form></div>{% endif %}
 
 <div class="card"><h2>العروض المرسلة</h2>
 {% for m in msgs %}<div style="border-bottom:1px solid var(--line);padding:8px 0">

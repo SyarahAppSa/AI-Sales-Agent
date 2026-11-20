@@ -212,6 +212,8 @@ class Company(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_attempt_by_id: Mapped[Optional[int]] = mapped_column(Integer)
     attempts_count: Mapped[int] = mapped_column(Integer, default=0)
+    reached_dm_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # وصل الفريق إلى المسؤول/صاحب القرار
+    reached_dm_by_id: Mapped[Optional[int]] = mapped_column(Integer)
     contact_lock_by_id: Mapped[Optional[int]] = mapped_column(Integer)  # «جارٍ التواصل بواسطة …»
     contact_lock_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     next_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -628,3 +630,46 @@ class ContactLog(Base):
     next_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     next_owner_name: Mapped[Optional[str]] = mapped_column(String(120))
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class DirectoryRun(Base):
+    """تشغيل «اكتشاف عملاء جدد»: مرحلة ١ (أسماء ومدن وأنشطة من الأدلة) ثم مرحلة ٢ (هاتف وبريد من موقع المنشأة)."""
+    __tablename__ = "directory_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/stopped/failed
+    sources: Mapped[list] = mapped_column(JSON, default=list)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)  # activities, scope, stage1_limit, budget_usd, similar_to
+    budget_usd: Mapped[float] = mapped_column(Float, default=5.0)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer)
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    log: Mapped[list] = mapped_column(JSON, default=list)
+    heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class LeadStub(Base):
+    """منشأة اكتُشفت في المرحلة الأولى (اسم/مدينة/نشاط + رابط الدليل) قبل صرف تكلفة البحث التفصيلي."""
+    __tablename__ = "lead_stubs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("directory_runs.id"), index=True)
+    source: Mapped[str] = mapped_column(String(40), index=True)
+    external_id: Mapped[Optional[str]] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(300))
+    name_norm: Mapped[str] = mapped_column(String(300), index=True)
+    city: Mapped[str] = mapped_column(String(120), default="")
+    activity: Mapped[str] = mapped_column(String(200), default="")
+    sector_key: Mapped[Optional[str]] = mapped_column(String(60))
+    website: Mapped[Optional[str]] = mapped_column(String(300))
+    phone_hint: Mapped[Optional[str]] = mapped_column(String(40))
+    source_url: Mapped[str] = mapped_column(String(500), default="")  # رابط الدليل/القائمة
+    vehicle_hint: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    # new / duplicate / existing_customer / complete / incomplete / failed / skipped
+    duplicate_of: Mapped[Optional[int]] = mapped_column(Integer)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

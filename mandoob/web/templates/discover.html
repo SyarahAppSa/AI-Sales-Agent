@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}اكتشاف عملاء جدد{% endblock %}{% block content %}
+{% if busy %}<meta http-equiv="refresh" content="30">{% endif %}
+<div class="top"><div><h1>اكتشاف عملاء جدد</h1><p class="sub" style="margin:0">أدلة النقل والمقاولين والمصانع — على مرحلتين: أسماء ومدن وأنشطة تُطابق مع قاعدتنا أولًا، ثم الهاتف والبريد من موقع المنشأة للجديد فقط.</p></div>
+<form method="post" action="/discover/probe" style="flex:0 0 auto"><button class="btn">افحص الوصول للمصادر الآن</button></form></div>
+
+<div class="card tablewrap"><h2>المصادر وحالة الوصول</h2><table>
+<tr><th>المصدر</th><th>يغطي</th><th>طريقة الوصول</th><th>الحالة</th><th>آخر فحص من الخادم</th><th>المطلوب</th></tr>
+{% for x in sources %}<tr><td><b>{{ x.label }}</b></td><td class="small">{{ x.covers }}</td><td class="small">{{ x.method }}</td>
+<td><span class="pill {{ KIND[x.status][0] }}">{{ KIND[x.status][1] }}</span>{% if x.why %}<div class="small muted">{{ x.why }}</div>{% endif %}</td>
+<td class="small ltr">{{ x.probe or '—' }}</td><td class="small">{{ '—' if x.status == 'works' else x.needs }}</td></tr>{% endfor %}
+</table></div>
+
+<div class="grid g2">
+<form class="card" method="post" action="/discover/run"><h2>دفعة جديدة</h2>
+<div class="field"><label>المصادر</label><div class="chips">{% for x in sources if x.kind != 'blocked' %}<label><input type="checkbox" name="sources" value="{{ x.key }}" {{ 'checked' if x.key == 'claude_directory' }} {{ 'disabled' if x.status in ('needs_key',) }}> {{ x.label }}</label>{% endfor %}</div></div>
+<div class="field"><label>الأنشطة</label>
+{% for sk in ['transport','construction','industry'] %}<div class="chips"><b class="small" style="width:100%">{{ DIR_SECTORS[sk].label }}</b>{% for ak in DIR_SECTORS[sk].activities %}<label><input type="checkbox" name="activities" value="{{ ak }}" {{ 'checked' if ak in defaults }}> {{ ACTIVITIES[ak].label }}</label>{% endfor %}</div>{% endfor %}</div>
+<div class="field"><label>المناطق (فارغ = الرياض وجدة والدمام)</label><div class="chips"><label><input type="checkbox" name="all_regions" value="1"> كل المملكة</label>{% for rid, r in GEO_REGIONS.items() %}<label><input type="checkbox" name="regions" value="{{ rid }}"> {{ r.ar }}</label>{% endfor %}</div></div>
+<div class="row"><div><label>عدد المنشآت في المرحلة ١</label><input type="number" name="limit" value="30" min="5" max="2000"></div>
+<div><label>ميزانية الدفعة ($)</label><input type="number" name="budget" value="5" min="0.5" max="500" step="0.5"></div></div>
+<button class="btn p" {{ 'disabled' if busy }}>{{ 'دفعة قيد التشغيل…' if busy else 'ابدأ الدفعة' }}</button>
+<p class="small muted">تتوقف الدفعة عند بلوغ ميزانيتها أو سقف الإنفاق اليومي أو «إيقاف البحث». لا يُرسل شيء ولا يُتصل بأحد.</p></form>
+
+<form class="card" method="post" action="/discover/import" enctype="multipart/form-data"><h2>رفع ملف بيانات رسمي</h2>
+<p class="small">CSV بالأعمدة: <span class="ltr">name, city, activity, website, phone, source_url</span> — مثل ملف المصانع من وزارة الصناعة/مدن، أو الناقلين المرخصين من هيئة النقل، أو المقاولين من الهيئة، بشرط حق استخدامه. يُطابق مع قاعدتنا فورًا بلا تكلفة.</p>
+<div class="field"><label>اسم المصدر</label><input name="label" placeholder="مثل: مدن-المصانع-٢٠٢٦" required></div>
+<div class="field"><input type="file" name="file" accept=".csv" required></div><button class="btn">رفع ومطابقة</button></form>
+</div>
+
+{% if runs %}<div class="card tablewrap"><h2>الدفعات</h2><table>
+<tr><th>#</th><th>الحالة</th><th>المصادر</th><th>المكتشفة</th><th>جديدة بعد استبعاد التكرار</th><th>مكتملة (هاتف + بريد)</th><th>قيد الاستكمال</th><th>التكلفة / الميزانية</th><th>تكلفة المكتملة</th><th>المدة</th></tr>
+{% for r in runs %}{% set st = r.stats or {} %}{% set srcs = st.items()|rejectattr('0','in',['_spent','_minutes'])|list %}
+{% set disc = srcs|map(attribute='1')|map(attribute='discovered')|sum %}{% set comp = srcs|map(attribute='1')|map(attribute='complete')|sum %}
+<tr><td><a href="?run={{ r.id }}">#{{ r.id }}</a>{% if r.params.similar_to %}<div class="small muted">مشابهة</div>{% endif %}</td>
+<td>{{ {'pending':'بانتظار الخادم','running':'يعمل','done':'اكتملت','stopped':'أُوقفت','failed':'فشلت'}.get(r.status, r.status) }}</td>
+<td class="small">{{ r.sources|join('، ') }}</td><td>{{ disc }}</td><td>{{ srcs|map(attribute='1')|map(attribute='new')|sum }}</td><td><b>{{ comp }}</b></td>
+<td>{{ srcs|map(attribute='1')|map(attribute='incomplete')|sum }}</td><td>${{ st._spent if st._spent is defined else '…' }} / ${{ r.budget_usd }}</td>
+<td>{% if comp and st._spent %}${{ (st._spent / comp)|round(2) }}{% else %}—{% endif %}</td><td class="small">{{ st._minutes ~ ' د' if st._minutes else '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
+
+{% if cur %}<div class="card"><h2>الدفعة #{{ cur.id }} — السجل</h2><pre class="small" style="white-space:pre-wrap;max-height:220px;overflow:auto">{{ (cur.log or [])|join('\n') }}</pre></div>
+<div class="card tablewrap"><h2>منشآت الدفعة #{{ cur.id }} ({{ stubs|length }})</h2><table>
+<tr><th>المنشأة</th><th>النشاط والمدينة</th><th>رابط الدليل</th><th>النتيجة</th></tr>
+{% for x in stubs %}<tr><td><b>{{ x.name }}</b>{% if x.website %}<div class="small ltr">{{ x.website.split('//')[-1][:40] }}</div>{% endif %}</td><td class="small">{{ x.activity }}<div class="muted">{{ x.city }}</div></td>
+<td class="small">{% if x.source_url %}<a class="ltr" href="{{ x.source_url }}" target="_blank" rel="noopener">{{ x.source_url.split('//')[-1][:45] }}</a>{% else %}—{% endif %}</td>
+<td>{% set lab = {'new':('','جديدة — بانتظار المرحلة ٢'),'duplicate':('','مكررة (لدينا مسبقًا)'),'existing_customer':('','من عملائنا الحاليين'),'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'failed':('err','تعذر'),'skipped':('','تُركت')} %}
+<span class="pill {{ lab.get(x.status, ('',''))[0] }}">{{ lab.get(x.status, ('', x.status))[1] }}</span>{% if x.company_id %} <a class="small" href="/companies/{{ x.company_id }}">السجل</a>{% elif x.duplicate_of %} <a class="small" href="/companies/{{ x.duplicate_of }}">السجل الموجود</a>{% endif %}</td></tr>{% endfor %}
+</table></div>{% endif %}
+{% endblock %}

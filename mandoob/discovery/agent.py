@@ -345,7 +345,8 @@ class AgentSource:
         yield from res.candidates
 
 
-def agent_complete(name: str, city: str, website: str | None, missing: list[str]) -> list[FoundContact]:
+def agent_complete(name: str, city: str, website: str | None, missing: list[str],
+                   note: str = "complete") -> list[FoundContact]:
     """يبحث عن البيان الناقص (هاتف/بريد) لشركة معروفة، ويقبله فقط إن ظهر نصًا في صفحة قرأها الوكيل."""
     if not settings.ai_enabled:
         return []
@@ -354,7 +355,7 @@ def agent_complete(name: str, city: str, website: str | None, missing: list[str]
               f"ابحث عن {kinds} المنشور لأعمال هذه الشركة (الموقع الرسمي، صفحة اتصل بنا، الفروع، أو صفحتها في دليل أعمال "
               "يسمح بنشر بيانات التواصل). افتح الصفحة وانقل القيمة حرفيًا مع رابطها. أعد عنصرًا واحدًا في prospects.")
     try:
-        out, blocks, _ = ai.ai_agent(AGENT_SYSTEM, prompt, AGENT_SCHEMA, max_searches=4, max_fetches=8, note="complete")
+        out, blocks, _ = ai.ai_agent(AGENT_SYSTEM, prompt, AGENT_SCHEMA, max_searches=4, max_fetches=8, note=note)
     except ai.AIUnavailable:
         return []
     res = parse_agent_output(out, blocks, "استكمال", city)
