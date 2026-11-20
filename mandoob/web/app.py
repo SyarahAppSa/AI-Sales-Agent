@@ -721,11 +721,22 @@ def _admin_lists_view(request, user, s, lid, q, page, cstate, base, owner=""):
         sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
     skip_first = bool(cur and cur.headers and str(cur.headers[0]).strip() in ("م", "#", "No", "no", "رقم", "ت", "مسلسل"))
     staff_users = list(s.scalars(select(User).where(User.active.is_(True), User.role == "rep").order_by(User.name))) if not staff else []
+    lstats: dict = {}
+    aq = select(AdminListAssignment.list_id, func.count(AdminListAssignment.id))
+    cq = select(AdminListContact.list_id, func.count(AdminListContact.id))
+    if staff:
+        aq = aq.where(AdminListAssignment.owner_id == user.id)
+        cq = cq.join(AdminListAssignment, (AdminListAssignment.list_id == AdminListContact.list_id)
+                     & (AdminListAssignment.row_idx == AdminListContact.row_idx)).where(AdminListAssignment.owner_id == user.id)
+    for l_, n_ in s.execute(aq.group_by(AdminListAssignment.list_id)):
+        lstats.setdefault(l_, {})["assigned"] = n_
+    for l_, n_ in s.execute(cq.group_by(AdminListContact.list_id)):
+        lstats.setdefault(l_, {})["done"] = n_
     names = {u.id: u.name for u in s.scalars(select(User))}
     return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
                   sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first, cmap=cmap, amap=amap, cstate=cstate,
                   counts=counts, LIST_STATUS=LIST_STATUS, base=base, can_manage=user.role in ("admin", "manager") and not staff,
-                  staff_users=staff_users, names=names, owner=owner, staff_view=staff)
+                  staff_users=staff_users, names=names, owner=owner, staff_view=staff, lstats=lstats)
 
 
 @app.get("/admin-lists", response_class=HTMLResponse)

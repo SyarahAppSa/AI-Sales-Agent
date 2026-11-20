@@ -368,5 +368,13 @@
 "ارفع ملف Excel من جهازك ثم أسند عملاءه للموظفين — الموظف يرى ما أُسند إليه فقط.": "Upload an Excel file, then assign its customers to employees — each employee sees only what is assigned to them.",
 "لا يوجد عملاء مسندون إليك من القوائم الإدارية بعد.": "No customers from admin lists are assigned to you yet.",
 "المسؤول": "Owner",
-"حذف القائمة": "Delete list"
+"حذف القائمة": "Delete list",
+"المفتوحة الآن": "Open now",
+"الملف": "File",
+"العملاء": "Customers",
+"مسندون": "Assigned",
+"تم التواصل": "Contacted",
+"تاريخ الرفع": "Uploaded",
+"فتح": "Open",
+"مفتوحة": "Open"
 }

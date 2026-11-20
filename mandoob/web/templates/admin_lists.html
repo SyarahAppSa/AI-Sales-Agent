@@ -7,8 +7,17 @@
   <div><label>ملاحظة (اختياري)</label><input name="note" placeholder="مثل: قائمة المؤسسات في الجبيل"></div>
   <button class="btn p">رفع وعرض</button></form></div>{% endif %}
 
-{% if lists %}<div class="card"><h2>القوائم المرفوعة ({{ lists|length }})</h2>
-<div class="row" style="gap:8px">{% for i, nm, sh, at, nt in lists %}<span class="lchip {{ 'on' if cur and cur.id == i }}"><a href="{{ base }}?lid={{ i }}" title="{{ nt }}">{{ nm }}{% if sh %} — {{ sh }}{% endif %} ({{ sizes[i] }})</a>{% if can_manage %}<form method="post" action="/admin-lists/{{ i }}/delete" onsubmit="return confirm('حذف القائمة «{{ nm|e }}» نهائيًا مع إسناداتها وحالات التواصل؟')"><button class="x" title="حذف القائمة" aria-label="حذف القائمة">×</button></form>{% endif %}</span>{% endfor %}</div></div>{% endif %}
+{% if lists %}<div class="card"><div class="head2"><h2>القوائم المرفوعة ({{ lists|length }})</h2>{% if cur %}<span class="small muted">المفتوحة الآن: <b translate="no">{{ cur.name }}</b></span>{% endif %}</div>
+<div class="tablewrap flist"><table><thead><tr><th>#</th><th>الملف</th><th>العملاء</th>{% if not staff_view %}<th>مسندون</th>{% endif %}<th>تم التواصل</th><th>تاريخ الرفع</th><th></th></tr></thead><tbody>
+{% for i, nm, sh, at, nt in lists %}{% set st_ = lstats.get(i, {}) %}<tr class="{{ 'cur' if cur and cur.id == i }}">
+<td class="muted small">{{ loop.index }}</td>
+<td><a href="{{ base }}?lid={{ i }}" translate="no"><b>{{ nm }}</b></a>{% if sh %}<span class="muted small"> — {{ sh }}</span>{% endif %}{% if nt %}<div class="small muted">{{ nt }}</div>{% endif %}</td>
+<td><b>{{ sizes[i] }}</b></td>{% if not staff_view %}<td>{{ st_.get('assigned', 0) }}</td>{% endif %}<td>{{ st_.get('done', 0) }}</td>
+<td class="small muted" style="white-space:nowrap">{{ fmt(at, False) }}</td>
+<td style="white-space:nowrap"><a class="btn sm {{ 'p' if cur and cur.id == i }}" href="{{ base }}?lid={{ i }}">{{ 'مفتوحة' if cur and cur.id == i else 'فتح' }}</a>
+{% if can_manage %}<form method="post" action="/admin-lists/{{ i }}/delete" style="display:inline" onsubmit="return confirm('حذف القائمة «{{ nm|e }}» نهائيًا مع إسناداتها وحالات التواصل؟')"><button class="xbtn" title="حذف القائمة" aria-label="حذف القائمة">×</button></form>{% endif %}</td></tr>
+{% endfor %}</tbody></table></div></div>{% endif %}
+
 
 {% if cur %}<div class="card">
 <div class="head2"><h2><span translate="no">{{ cur.name }}</span>{% if cur.sheet %} — {{ cur.sheet }}{% endif %} <span class="muted small">({{ total }} صف)</span></h2>

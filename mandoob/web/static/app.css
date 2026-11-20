@@ -228,3 +228,7 @@ td.telcol .small{white-space:nowrap}
 .lchip form{display:inline}.lchip .x{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;width:24px;height:24px;border-radius:50%;cursor:pointer}
 .lchip .x:hover{background:var(--err-soft);color:var(--err)}.lchip.on .x{color:#fff}.lchip.on .x:hover{background:rgba(255,255,255,.2)}
 [dir="ltr"] .lchip{padding:2px 12px 2px 4px}
+.flist{max-height:340px;overflow:auto}.flist td{vertical-align:middle;padding:8px 12px}.flist tr.cur td{background:var(--brand-soft)}
+.flist th{position:sticky;top:0;z-index:1}
+.xbtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:17px;line-height:1;width:30px;height:30px;border-radius:50%;cursor:pointer;margin-inline-start:6px;vertical-align:middle}
+.xbtn:hover{background:var(--err-soft);color:var(--err);border-color:var(--err-soft)}

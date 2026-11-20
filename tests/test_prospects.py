@@ -382,7 +382,7 @@ def test_admin_list_delete_with_x_removes_assignments():
         adm.post(f"/admin-lists/{lid}/assign", data={"owner_id": str(rid), "rows": "0"})
         adm.post(f"/admin-lists/{lid}/row/0/contact", data={"status": "no_answer"})
         page = adm.get(f"/admin-lists?lid={lid}").text
-        assert f'action="/admin-lists/{lid}/delete"' in page and 'class="x"' in page
+        assert f'action="/admin-lists/{lid}/delete"' in page and 'class="xbtn"' in page and "تاريخ الرفع" in page
         r = adm.post(f"/admin-lists/{lid}/delete", follow_redirects=True)
         assert "حُذفت القائمة «del.xlsx»" in r.text
         with session_scope() as s:
