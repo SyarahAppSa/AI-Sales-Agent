@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>مواقع التواصل الاجتماعي</h1>
+<p class="sub">ارفع ملف Excel أمام كل مصدر، راجع الأسماء والأرقام داخل المنصة، ثم اضغط «اعتماد واستيراد العملاء». التواصل يدوي من فريق المبيعات.</p></div></div>
+<div class="card">
+<form method="get" action="/social" class="row" style="align-items:flex-end;margin-bottom:6px">
+  <div style="flex:0 1 340px"><label for="soc-c">ربط الملفات بحملة <span class="small muted">(اختياري)</span></label>
+  <select id="soc-c" name="c" onchange="this.form.submit()">
+    <option value="{{ home.id }}" {{ 'selected' if camp.id == home.id }}>بدون حملة — مستقل</option>
+    {% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if camp.id == c.id }}>{{ c.name }}</option>{% endfor %}</select></div>
+  {% if camp.id != home.id %}<div class="small"><a href="/targets/{{ camp.id }}">فتح إعدادات الحملة</a></div>{% endif %}
+</form>
+<form method="post" action="/social/settings">
+<input type="hidden" name="cid" value="{{ camp.id }}">
+{% include "_social.html" %}
+<div style="margin-top:10px"><button class="btn">حفظ المكان والمصادر</button></div>
+</form>
+</div>
+{% include "_social_forms.html" %}
+{% if leads_all %}
+<div class="card" id="leads" style="margin-top:16px"><h2>العملاء المستوردون من مواقع التواصل الاجتماعي</h2>
+<form method="get" action="/social" class="row" style="align-items:flex-end;margin-bottom:8px">
+  <input type="hidden" name="c" value="{{ camp.id }}">
+  <div style="flex:0 1 260px"><label for="lead-src">مصدر العميل</label><select id="lead-src" name="src" onchange="this.form.submit()">
+    <option value="">كل المصادر</option>{% for k, lbl in SOCIAL.items() %}<option value="{{ k }}" {{ 'selected' if lead_src == k }}>{{ lbl }}</option>{% endfor %}</select></div>
+  <div class="small muted">{{ leads|length }} من {{ leads_all }} عميل</div></form>
+<div class="tablewrap"><table><tr><th>العميل</th><th>رقم التواصل</th><th>مصدر العميل</th><th>المكان المستهدف</th><th>المسؤول</th></tr>
+{% for d in leads %}{% set c = d.company %}<tr><td><a href="/companies/{{ c.id }}" translate="no">{{ c.name }}</a></td>
+<td class="phcell">{% for ct in c.contacts if ct.kind == 'phone' %}<div class="ph" translate="no" dir="ltr">{{ ct.raw_value or ct.value }}</div>{% endfor %}</td>
+<td>{% for k in d.sources %}<span class="pill info">{{ SOCIAL.get(k, k) }}</span> {% endfor %}</td>
+<td>{{ d.place or '—' }}</td><td>{{ lead_owners.get(c.owner_id, '—') if c.owner_id else '—' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endblock %}

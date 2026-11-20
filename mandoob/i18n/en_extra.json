@@ -408,5 +408,13 @@
  "أسباب الفشل": "Failure reasons",
  "المكان: {x}": "Location: {x}",
  "عرض كل العملاء ({x})": "Show all customers ({x})",
- "{x} من {x} عميل": "{1} of {2} customers"
+ "{x} من {x} عميل": "{1} of {2} customers",
+ "ربط الملفات بحملة": "Link files to a campaign",
+ "(اختياري)": "(optional)",
+ "بدون حملة — مستقل": "No campaign — standalone",
+ "حفظ المكان والمصادر": "Save location & sources",
+ "فتح إعدادات الحملة": "Open campaign settings",
+ "العملاء المستوردون من مواقع التواصل الاجتماعي": "Customers imported from social media",
+ "حُفظ المكان المستهدف والمصادر المختارة": "Target location and selected sources saved",
+ "افتح مواقع التواصل الاجتماعي لهذه الحملة": "Open social media for this campaign"
 }

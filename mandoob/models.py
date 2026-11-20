@@ -127,6 +127,7 @@ class Campaign(Base):
     allow_backfill: Mapped[bool] = mapped_column(Boolean, default=False)
     exclusions: Mapped[list] = mapped_column(JSON, default=list)  # أنشطة مستبعدة (وسطاء...)
     exclude_existing_customers: Mapped[bool] = mapped_column(Boolean, default=True)
+    kind: Mapped[Optional[str]] = mapped_column(String(20))  # None = حملة عادية، social = حاوية «مواقع التواصل الاجتماعي» المستقلة
     target_place: Mapped[Optional[str]] = mapped_column(String(200))  # «المكان المستهدف» كما كتبه المدير
     social_sources: Mapped[Optional[list]] = mapped_column(JSON)  # مفاتيح «مواقع التواصل الاجتماعي» المختارة
     # الإرسال

@@ -14,6 +14,7 @@
 {% if user.role in ('admin','manager') %}{% set groups = [
   ('dash', 'grid', 'لوحة التحكم', '/', []),
 ] + ([('emerg', 'bell', 'لوحة طوارئ', '/emergency', [])] if can_emergency else []) + [
+  ('social', 'users', 'مواقع التواصل الاجتماعي', '/social', []),
   ('find', 'search', 'البحث عن العملاء', None, [('/prospects', 'العملاء المحتملون'), ('/prospecting', 'البحث عن العملاء'),
       ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
   ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),

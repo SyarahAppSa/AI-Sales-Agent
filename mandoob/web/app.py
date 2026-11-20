@@ -1282,7 +1282,8 @@ def company_enrich_now(cid: int, request: Request, user: User = Depends(require_
 
 @app.get("/targets", response_class=HTMLResponse)
 def targets(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
-    camps = list(s.scalars(select(Campaign).order_by(Campaign.id.desc())))
+    camps = list(s.scalars(select(Campaign).where(func.coalesce(Campaign.kind, "") != "social")
+                           .order_by(Campaign.id.desc())))
     today = riyadh_today()
     progress = {}
     for c in camps:
@@ -1408,6 +1409,38 @@ def _social_ctx(s, camp, user, src: str = "") -> dict:
             "staged_n": sum(1 for v in files.values() for x in v if x["f"].status == "staged")}
 
 
+def _social_home(s) -> Campaign:
+    """الحاوية المستقلة لصفحة «مواقع التواصل الاجتماعي» (لا تظهر في الحملات ولا تعمل يوميًا)."""
+    camp = s.scalar(select(Campaign).where(Campaign.kind == "social").order_by(Campaign.id).limit(1))
+    if camp is None:
+        camp = Campaign(name="مواقع التواصل الاجتماعي", kind="social", status="draft", daily_target=0)
+        s.add(camp)
+        s.flush()
+    return camp
+
+
+@app.get("/social", response_class=HTMLResponse)
+def social_page(request: Request, c: int = 0, src: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    home = _social_home(s)
+    camp = s.get(Campaign, c) if c else home
+    camp = camp or home
+    camps = list(s.scalars(select(Campaign).where(func.coalesce(Campaign.kind, "") != "social")
+                           .order_by(Campaign.id.desc())))
+    return render(request, "social.html", user, s, camp=camp, home=home, camps=camps, **_social_ctx(s, camp, user, src))
+
+
+@app.post("/social/settings")
+async def social_settings(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..campaign_sources import SOCIAL_SOURCES
+    form = await request.form()
+    camp = s.get(Campaign, int(form.get("cid") or 0)) or _social_home(s)
+    camp.target_place = (form.get("target_place") or "").strip()[:200] or None
+    picked = form.getlist("social_sources")
+    camp.social_sources = [k for k in SOCIAL_SOURCES if k in picked]
+    flash(request, "حُفظ المكان المستهدف والمصادر المختارة")
+    return back(f"/social?c={camp.id}")
+
+
 @app.post("/targets/{cid}/social/upload")
 async def social_upload(cid: int, request: Request, source: str = Form(...), file: UploadFile = File(...),
                         replace_id: int = Form(0), target_place: str = Form(""),
@@ -1422,12 +1455,12 @@ async def social_upload(cid: int, request: Request, source: str = Form(...), fil
     name = (file.filename or "ملف").strip()[:200]
     if not data:
         flash(request, "اختر ملف Excel أولًا", "err")
-        return back(f"/targets/{cid}#src-{source}")
+        return back(f"/social?c={cid}#src-{source}")
     try:
         headers, rows, cols = parse_file(name, data)
     except UploadError as e:
         flash(request, f"تعذّر قراءة «{name}»: {e}", "err")
-        return back(f"/targets/{cid}#src-{source}")
+        return back(f"/social?c={cid}#src-{source}")
     if target_place.strip():
         camp.target_place = target_place.strip()[:200]
     picked = list(camp.social_sources or [])
@@ -1440,7 +1473,7 @@ async def social_upload(cid: int, request: Request, source: str = Form(...), fil
                              headers=headers, rows=rows, cols=cols, uploaded_by=user.id))
     flash(request, f"رُفع «{name}» أمام {SOCIAL_SOURCES[source]}: {len(rows)} عميل للمعاينة. راجع الأسماء والأرقام "
                    "ثم اضغط «اعتماد واستيراد العملاء».")
-    return back(f"/targets/{cid}?open={source}#src-{source}")
+    return back(f"/social?c={cid}&open={source}#src-{source}")
 
 
 @app.post("/targets/{cid}/social/{fid}/delete")
@@ -1454,7 +1487,7 @@ def social_delete(cid: int, fid: int, request: Request, user: User = Depends(req
     else:
         s.delete(f)
         flash(request, f"حُذف «{f.file_name}»")
-    return back(f"/targets/{cid}#src-{f.source_key}")
+    return back(f"/social?c={cid}#src-{f.source_key}")
 
 
 @app.post("/targets/{cid}/social/import")
@@ -1468,7 +1501,7 @@ def social_import(cid: int, request: Request, user: User = Depends(require_manag
         flash(request, "استُورد العملاء: " + " — ".join(
             f"{SOCIAL_SOURCES.get(f.source_key, f.source_key)} «{f.file_name}»: {st['new']} جديد، {st['duplicate']} مكرر، "
             f"{st['failed']} فشل" for f, st in done))
-    return back(f"/targets/{cid}#social")
+    return back(f"/social?c={cid}#social")
 
 
 @app.get("/targets/{cid}/social/{fid}", response_class=HTMLResponse)
@@ -2201,7 +2234,7 @@ def offers_report_page(request: Request, user: User = Depends(current_user), s=D
     f = _filters(request)
     rep = offers_report(s, user, f)
     return render(request, "offers_report.html", user, s, rep=rep, f=f, qs=str(request.query_params),
-                  camps=list(s.scalars(select(Campaign))), offers=list(s.scalars(select(Offer))),
+                  camps=list(s.scalars(select(Campaign).where(func.coalesce(Campaign.kind, "") != "social"))), offers=list(s.scalars(select(Offer))),
                   reps=list(s.scalars(select(User).where(User.role == "rep"))))
 
 
@@ -2727,7 +2760,8 @@ def today_page(request: Request, mode: str = "day", day: str = "", date_from: st
     t = customers_in_period(s, user, a, b, campaign) if not err else None
     return render(request, "today.html", user, s, t=t, err=err, mode=mode, a=a, b=b, campaign=campaign,
                   csum=_csum(s, [r["c"] for r in t["rows"]]) if t else {},
-                  qs=str(request.query_params), camps=list(s.scalars(select(Campaign).order_by(Campaign.id.desc()))))
+                  qs=str(request.query_params), camps=list(s.scalars(select(Campaign).where(
+                      func.coalesce(Campaign.kind, "") != "social").order_by(Campaign.id.desc()))))
 
 
 @app.get("/today.xlsx")

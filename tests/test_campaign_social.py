@@ -47,10 +47,10 @@ def test_social_sources_preview_import_dedupe_and_filter():
                  ["مصنع جوجل فقط", "0533334444", "صناعة"]])
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
-        r = cl.post(f"/targets/{cid}", data={"name": "حملة تجريبية سوشال", "target_place": "الرياض", "social_present": "1",
-                                             "social_sources": ["snapchat", "google"], "cat_count": "0"})
+        r = cl.post("/social/settings", data={"cid": str(cid), "target_place": "الرياض",
+                                             "social_sources": ["snapchat", "google"]})
         assert r.status_code in (200, 303)
-        html = cl.get(f"/targets/{cid}").text
+        html = cl.get(f"/social?c={cid}").text
         assert "مواقع التواصل الاجتماعي" in html and "المكان المستهدف" in html
         for lbl in ("سناب شات", "تيك توك", "الموقع الإلكتروني لسيارة اب", "فيس بوك", "إنستغرام", "إكس", "شات جي بي تي",
                     "جوجل", "لينكدإن"):
@@ -72,7 +72,7 @@ def test_social_sources_preview_import_dedupe_and_filter():
             assert s.query(CampaignLead).count() == 0  # المعاينة لا تستورد
             assert s.query(CampaignSourceFile).filter_by(campaign_id=cid, status="staged").count() == 2
         # بعد «إغلاق» الحملة وفتحها من جديد يبقى الملف وجدوله
-        html = cl.get(f"/targets/{cid}").text
+        html = cl.get(f"/social?c={cid}").text
         assert "snap.xlsx" in html and "google.xlsx" in html and "متجر سناب فقط" in html
         assert "اعتماد واستيراد العملاء" in html
         r = cl.post(f"/targets/{cid}/social/import", follow_redirects=True)
@@ -88,11 +88,11 @@ def test_social_sources_preview_import_dedupe_and_filter():
             assert o.last_note == "ملاحظة قديمة" and (o.owner_id is None or o.owner_id == (admin.id if admin else None))
             assert all(f.place == "الرياض" for f in s.query(CampaignSourceFile).filter_by(campaign_id=cid))
         for src in ("snapchat", "google"):
-            t = cl.get(f"/targets/{cid}?src={src}").text.split('id="leads"')[1]
+            t = cl.get(f"/social?c={cid}&src={src}").text.split('id="leads"')[1]
             assert t.count("مؤسسة النقل المشتركة") == 1
-        t = cl.get(f"/targets/{cid}?src=snapchat").text.split('id="leads"')[1]
+        t = cl.get(f"/social?c={cid}&src=snapchat").text.split('id="leads"')[1]
         assert "متجر سناب فقط" in t and "مصنع جوجل فقط" not in t
-        t = cl.get(f"/targets/{cid}").text.split('id="leads"')[1]
+        t = cl.get(f"/social?c={cid}").text.split('id="leads"')[1]
         assert t.count("مؤسسة النقل المشتركة") == 1 and "سناب شات" in t and "جوجل" in t
         # صفحة الملف الكامل داخل المنصة
         with session_scope() as s:
@@ -114,3 +114,28 @@ def test_social_upload_requires_manager():
         assert r.status_code in (303, 401, 403)
     with session_scope() as s:
         assert s.query(CampaignSourceFile).filter_by(campaign_id=cid).count() == 0
+
+
+def test_social_page_standalone_in_nav_and_not_a_campaign():
+    init_db()
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        home = cl.get("/").text
+        assert 'href="/social"' in home and "مواقع التواصل الاجتماعي" in home
+        html = cl.get("/social").text
+        assert "بدون حملة — مستقل" in html and "المكان المستهدف" in html
+        with session_scope() as s:
+            hid = s.query(Campaign).filter_by(kind="social").one().id
+        cl.post("/social/settings", data={"cid": str(hid), "target_place": "جدة", "social_sources": ["tiktok"]})
+        cl.post(f"/targets/{hid}/social/upload", data={"source": "tiktok"},
+                files={"file": ("tt.xlsx", xlsx([["الاسم", "الجوال"], ["متجر تيك توك المستقل", "0547770011"]]),
+                                "application/octet-stream")})
+        html = cl.get("/social").text
+        assert "متجر تيك توك المستقل" in html and "0547770011" in html
+        cl.post(f"/targets/{hid}/social/import")
+        assert "الحاوية" not in cl.get("/targets").text and "بدون حملة" not in cl.get("/targets").text
+        with session_scope() as s:
+            comp = s.query(Company).filter_by(name="متجر تيك توك المستقل").one()
+            assert comp.campaign_id is None
+            assert s.query(CampaignLead).filter_by(company_id=comp.id, source_key="tiktok", place="جدة").count() == 1
+        assert "متجر تيك توك المستقل" in cl.get("/social?src=tiktok").text.split('id="leads"')[1]

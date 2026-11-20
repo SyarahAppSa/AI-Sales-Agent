@@ -175,7 +175,10 @@ def _existing(s, phones: list[str], email: str | None, name_norm: str) -> Compan
 def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None) -> dict:
     """يستورد صفوف الملف إلى الحملة. يعيد {new, duplicate, failed, failures}."""
     from .companies import log_activity
+    from .models import Campaign
     c = f.cols or {}
+    camp = s.get(Campaign, f.campaign_id)
+    real_cid = None if camp is not None and camp.kind == "social" else f.campaign_id  # الصفحة المستقلة ليست حملة
     label = SOCIAL_SOURCES.get(f.source_key, f.source_key)
     stats = {"new": 0, "duplicate": 0, "failed": 0, "failures": []}
     url = f"campaign:{f.campaign_id}/file:{f.id}"
@@ -205,7 +208,7 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
         comp = _existing(s, phones, email, nn)
         if comp is None:
             comp = Company(name=name[:300], name_norm=nn[:300], city=(get("city") or place)[:80],
-                           activity=get("activity")[:200], campaign_id=f.campaign_id,
+                           activity=get("activity")[:200], campaign_id=real_cid,
                            data_status="complete" if phones else "incomplete", stage="new",
                            last_note=get("note") or None, last_note_at=now_utc() if get("note") else None)
             s.add(comp)
@@ -214,8 +217,8 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
             log_activity(s, comp.id, "import", f"أُضيف من {label}", f"الملف: {f.file_name} — صف {i + 1}", user_id=user_id)
         else:
             stats["duplicate"] += 1
-            if comp.campaign_id is None:
-                comp.campaign_id = f.campaign_id
+            if comp.campaign_id is None and real_cid:
+                comp.campaign_id = real_cid
         found = [("phone", v, raw) for v, raw in pairs.items()] + ([("email", email, get("email"))] if email else [])
         for kind, v, raw in found:
             if s.scalar(select(Contact.id).where(Contact.kind == kind, Contact.value == v)) is None:
