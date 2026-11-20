@@ -60,8 +60,8 @@
   <div class="small muted">{{ (c.activity or '—')|truncate(60, True, '…') }} · {{ c.city or '—' }}</div>
   {% if c.parent_id and parents.get(c.id) %}{% set hq = parents[c.id] %}<div class="small">فرع لـ <a href="/companies/{{ hq.id }}"><span translate="no">{{ hq.name }}</span></a>{% if hq.owner %} — يتابعه <span translate="no">{{ hq.owner.name }}</span>{% endif %}</div>{% endif %}</td>
 <td class="small" style="max-width:340px">{{ c.priority_reason or '—' }}{% if c.priority_url %} <a href="{{ c.priority_url }}" target="_blank" rel="noopener">(الرابط)</a>{% endif %}</td>
-<td class="small" style="min-width:170px">{% if ph %}<div class="ltr"><a href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a></div>{% endif %}{% if em %}<div class="ltr"><a href="mailto:{{ em.value }}">{{ em.value }}</a></div>{% endif %}
-  {% if c.website %}<div class="ltr"><a href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
+<td class="small" style="min-width:170px">{% if ph %}<div class="ltr" style="display:block"><a href="tel:{{ ph.value }}">{{ phone(ph.value) }}</a></div>{% endif %}{% if em %}<div class="ltr" style="display:block"><a href="mailto:{{ em.value }}">{{ em.value }}</a></div>{% endif %}
+  {% if c.website %}<div class="ltr" style="display:block"><a href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
   <div class="muted">{{ CONTACT_LEVELS.get(c.contact_level, 'لا توجد وسيلة بعد') }}</div></td>
 <td>{% if c.owner %}<span translate="no">{{ c.owner.name }}</span>{% else %}<span class="pill warn">غير مسند</span>{% endif %}{{ inline(csum[c.id], '/companies/' ~ c.id) }}</td>
 </tr>{% else %}<tr><td colspan="6" class="muted">لا توجد منشآت لهذا اليوم بعد. شغّل دفعة من الأعلى.</td></tr>{% endfor %}
