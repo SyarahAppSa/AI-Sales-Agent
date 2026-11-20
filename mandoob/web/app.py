@@ -448,7 +448,11 @@ def prospects_page(request: Request, day: str = "", city: str = "", sector: str 
     cities = [c for (c,) in s.execute(select(Company.city).where(Company.prospect_on == d).distinct()) if c]
     last = s.scalar(select(ProspectRun).order_by(ProspectRun.id.desc()))
     parents = {c.id: s.get(Company, c.parent_id) for c in rows if c.parent_id}
-    return render(request, "prospects.html", user, s, sm=P.summary(s, d), rows=rows, parents=parents, total=total, d=d, city=city,
+    from ..models import ProspectPool
+    pool = {st_: s.scalar(select(func.count(ProspectPool.id)).where(ProspectPool.status == st_)) or 0 for st_ in ("queued", "done")}
+    with_key = bool(settings.google_places_api_key)
+    return render(request, "prospects.html", user, s, sm=P.summary(s, d), rows=rows, parents=parents, pool=pool,
+                  gkey=with_key, gspent=round(P.google_spent_today(s), 2), auto=P.get_auto(s), SOURCE_LABEL=P.SOURCE_LABEL, total=total, d=d, city=city,
                   sector=sector, level=level, state=state, q=q, owner=owner, all=all, cities=sorted(cities),
                   ASECTORS=ASECTORS, LEVELS=P.LEVELS, CONTACT_LEVELS=P.CONTACT_LEVELS, last=last,
                   csum=_csum(s, rows), qs=str(request.query_params),
@@ -488,9 +492,47 @@ def prospects_xlsx(request: Request, day: str = "", city: str = "", sector: str 
 @app.post("/prospects/run")
 def prospects_run(request: Request, target: int = Form(100), user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospects as P
-    r = P.request_run(s, user, target)
+    r = P.request_run(s, user, target, P.get_auto(s)["sources"])
     flash(request, f"بدأت دفعة «العملاء المحتملون» #{r.id} على الخادم — الهدف {r.target} منشأة قابلة للتواصل. "
                    "تتحدث الصفحة تلقائيًا.")
+    return back("/prospects")
+
+
+@app.post("/prospects/import")
+async def prospects_import(request: Request, file: UploadFile = File(...), license_note: str = Form(...),
+                           user: User = Depends(require_manager), s=Depends(get_db)):
+    """ملف مزوّد بيانات مرخّص (CSV أو Excel): يُضاف إلى طابور المعالجة اليومية."""
+    from .. import prospects as P
+    from ..auth import audit
+    if len((license_note or "").strip()) < 5:
+        flash(request, "اكتب مصدر الملف وحق الاستخدام (مثل: اسم المزوّد ورقم العقد) قبل الرفع.", "err")
+        return back("/prospects")
+    data = await file.read()
+    if len(data) > 30 * 1024 * 1024:
+        flash(request, "الملف أكبر من ٣٠ ميغابايت — قسّمه إلى ملفات أصغر.", "err")
+        return back("/prospects")
+    n, cols = P.queue_upload(s, user, file.filename or "upload.csv", data, license_note.strip())
+    audit(s, user, "import", user, kind="prospects", rows=n, file=(file.filename or "")[:100])
+    if not n:
+        flash(request, "لم أجد عمود «الاسم» في الصف الأول. الأعمدة المقبولة: الاسم، النشاط، المدينة، الموقع، الهاتف، البريد، "
+                       "الرقم الموحد، السجل التجاري، رابط المصدر (بالعربية أو الإنجليزية).", "err")
+    else:
+        flash(request, f"أُضيف {n} سجلًا إلى طابور المعالجة. الأعمدة المعروفة: {', '.join(cols)}. "
+                       "تُعالج ضمن الدفعة اليومية أو عند «تشغيل دفعة».")
+    return back("/prospects")
+
+
+@app.post("/prospects/auto")
+def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form("05:30", alias="time"),
+                   target: int = Form(1000), google_budget_usd: float = Form(10.0),
+                   user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospects as P
+    if not re.fullmatch(r"\d{2}:\d{2}", time_ or ""):
+        time_ = "05:30"
+    cfg = P.set_auto(s, enabled=bool(enabled), time=time_, target=max(10, min(int(target), 5000)),
+                     google_budget_usd=max(0.0, min(float(google_budget_usd), 500.0)))
+    flash(request, (f"التشغيل اليومي مفعّل الساعة {cfg['time']} بتوقيت الرياض — الهدف {cfg['target']} منشأة، "
+                    f"وميزانية خرائط Google ${cfg['google_budget_usd']:.2f} يوميًا.") if cfg["enabled"] else "التشغيل اليومي متوقف.")
     return back("/prospects")
 
 

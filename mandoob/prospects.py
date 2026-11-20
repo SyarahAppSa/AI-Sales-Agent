@@ -37,12 +37,18 @@ DAILY_TARGET = 1000
 BP = "https://bluepages.com.sa"
 UA = "Mozilla/5.0 (compatible; SyarahAppSalesAgent/1.0; +https://mandoob.live)"
 DELAY = 1.2  # ثانية بين طلبات الدليل (زحف مهذب)
-SOURCE_LABEL = {"bluepages": "دليل الصفحات الزرقاء (bluepages.com.sa)",
+SOURCE_LABEL = {"import": "ملف مزوّد بيانات مرخّص",
+                "google_places": "خرائط Google (الواجهة الرسمية) — الاكتشاف فقط، والتواصل من موقع المنشأة",
+                "bluepages": "دليل الصفحات الزرقاء (bluepages.com.sa)",
                 "earabicmarket": "دليل الشركات السعودية — السوق العربي (earabicmarket.com)"}
 EAM = "https://www.earabicmarket.com"
 EAM_START = EAM + "/ar/companies/saudi-arabia/all"
 LEVELS = {"high": "عالية", "medium": "متوسطة", "low": "منخفضة"}
-CONTACT_LEVELS = {"website": "موثّقة من موقع المنشأة", "directory": "منشورة في الدليل باسم المنشأة"}
+CONTACT_LEVELS = {"website": "موثّقة من موقع المنشأة", "directory": "منشورة في الدليل باسم المنشأة",
+                  "provider": "من ملف المزوّد المرخّص"}
+AUTO_KEY = "prospects_auto"
+AUTO_DEFAULT = {"enabled": False, "time": "05:30", "target": DAILY_TARGET, "google_budget_usd": 10.0,
+                "sources": "import,google_places,bluepages,earabicmarket"}
 
 # تصنيف نشاط الدليل إلى قطاعات المنصة (كل القطاعات مقبولة؛ هذا للتصفية والترتيب فقط)
 SECTOR_WORDS = [
@@ -170,6 +176,151 @@ def parse_eam(page: str, url: str) -> tuple[list[dict], list[str]]:
                     "description": f.get("lblAddress", ""), "listing_url": url, "verified_by_directory": False})
     nxt = [_html.unescape(h) for h in re.findall(r'href="(https://www\.earabicmarket\.com/ar/companies/saudi-arabia/all/search\?page=\d+[^"]*)"', page)]
     return out, nxt
+
+
+# ---------------------------------------------------------------- ملف مزوّد مرخّص
+
+COLS = {"name": ["name", "company", "company_name", "trade_name", "الاسم", "اسم المنشأة", "الاسم التجاري", "اسم الشركة", "المنشأة"],
+        "name_en": ["name_en", "english_name", "الاسم بالإنجليزية", "الاسم الانجليزي"],
+        "activity": ["activity", "sector", "industry", "category", "النشاط", "القطاع", "التصنيف"],
+        "city": ["city", "المدينة", "location", "الموقع الجغرافي"],
+        "website": ["website", "web", "url", "site", "الموقع", "الموقع الإلكتروني", "الموقع الالكتروني"],
+        "phone": ["phone", "telephone", "tel", "mobile", "الهاتف", "رقم الهاتف", "الجوال", "هاتف"],
+        "email": ["email", "e-mail", "mail", "البريد", "البريد الإلكتروني", "البريد الالكتروني"],
+        "unified": ["unified_number", "unified", "national_number", "الرقم الموحد", "الرقم الوطني الموحد"],
+        "cr": ["cr", "cr_number", "commercial_registration", "السجل التجاري", "رقم السجل", "رقم السجل التجاري"],
+        "source_url": ["source_url", "source", "link", "رابط المصدر", "المصدر"]}
+
+
+def _map_headers(headers: list[str]) -> dict[str, int]:
+    norm = [re.sub(r"\s+", " ", (h or "").strip().lower()) for h in headers]
+    out = {}
+    for key, names in COLS.items():
+        for i, h in enumerate(norm):
+            if h in [n.lower() for n in names]:
+                out[key] = i
+                break
+    return out
+
+
+def parse_upload(filename: str, data: bytes) -> tuple[list[dict], dict]:
+    """CSV أو Excel بعناوين عربية أو إنجليزية ← صفوف موحدة. يعيد أيضًا الأعمدة التي تعرّف عليها."""
+    rows: list[list] = []
+    if filename.lower().endswith((".xlsx", ".xlsm")):
+        from openpyxl import load_workbook
+        import io
+        ws = load_workbook(io.BytesIO(data), read_only=True, data_only=True).active
+        rows = [[("" if v is None else str(v)) for v in r] for r in ws.iter_rows(values_only=True)]
+    else:
+        import csv
+        import io
+        text = data.decode("utf-8-sig", errors="replace")
+        rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return [], {}
+    m = _map_headers(rows[0])
+    if "name" not in m:
+        return [], m
+    out = []
+    for r in rows[1:]:
+        get = lambda k: (r[m[k]].strip() if k in m and m[k] < len(r) and r[m[k]] else "")  # noqa: E731
+        if not get("name"):
+            continue
+        out.append({k: get(k) for k in COLS})
+    return out, m
+
+
+def queue_upload(s, user, filename: str, data: bytes, license_note: str) -> tuple[int, dict]:
+    from .models import ProspectPool
+    rows, m = parse_upload(filename, data)
+    for r in rows:
+        s.add(ProspectPool(file_name=filename[:200], license_note=license_note[:500], row=r,
+                           uploaded_by=user.id if user else None))
+    return len(rows), m
+
+
+def _pool_records(n: int) -> list[tuple[int, dict]]:
+    from .models import ProspectPool
+    with session_scope() as s:
+        items = list(s.scalars(select(ProspectPool).where(ProspectPool.status == "queued").order_by(ProspectPool.id).limit(n)))
+        out = []
+        for p in items:
+            r = p.row or {}
+            uni = re.sub(r"\D", "", normalize_arabic_digits(r.get("unified") or ""))
+            out.append((p.id, {"external_id": f"import:{p.id}", "name": r.get("name", "")[:300], "name_en": r.get("name_en") or None,
+                               "website": r.get("website") or None, "email": r.get("email") or None,
+                               "phones": [x for x in re.split(r"[;,/|]", r.get("phone") or "") if x.strip()],
+                               "city": r.get("city") or "", "activity": r.get("activity") or "", "description": "",
+                               "listing_url": (r.get("source_url") or f"file://{p.file_name}#{p.id}")[:500],
+                               "unified": uni if re.fullmatch(r"7\d{9}", uni) else None,
+                               "cr": re.sub(r"\D", "", r.get("cr") or "") or None}))
+        return out
+
+
+def normalize_arabic_digits(t: str) -> str:
+    return t.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+
+
+# ---------------------------------------------------------------- خرائط Google (الاكتشاف فقط)
+
+def google_pairs(day: date) -> list[tuple[str, str]]:
+    """(النشاط، المدينة) لكل الأنشطة والمدن، بترتيب يتغير يوميًا ويتناوب بين القطاعات."""
+    from .activities import ACTIVITIES
+    from .geo import PLACES
+    cities = [p["ar"] for p in PLACES.values() if p.get("type") in ("capital", "city", "governorate")] or \
+        [p["ar"] for p in PLACES.values()]
+    acts = [(v.get("q") or [v["label"]])[0] for v in ACTIVITIES.values()]
+    rnd = random.Random(day.toordinal())
+    rnd.shuffle(acts)
+    rnd.shuffle(cities)
+    return [(a, c) for c in cities for a in acts]
+
+
+def google_spent_today(s) -> float:
+    from .models import CostEntry
+    return float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(
+        CostEntry.day == riyadh_today(), CostEntry.service == "google_places")) or 0)
+
+
+# ---------------------------------------------------------------- التشغيل اليومي
+
+def get_auto(s) -> dict:
+    row = s.get(Setting, AUTO_KEY)
+    return {**AUTO_DEFAULT, **((row.value if row else {}) or {})}
+
+
+def set_auto(s, **kw) -> dict:
+    cfg = {**get_auto(s), **kw}
+    row = s.get(Setting, AUTO_KEY)
+    if row is None:
+        s.add(Setting(key=AUTO_KEY, value=cfg))
+        s.flush()
+    else:
+        row.value = cfg
+    return cfg
+
+
+def schedule_daily() -> bool:
+    """يطلب دفعة اليوم مرة واحدة بعد الموعد المحدد (توقيت الرياض)."""
+    from .timeutil import to_riyadh
+    with session_scope() as s:
+        cfg = get_auto(s)
+        if not cfg.get("enabled"):
+            return False
+        now = to_riyadh(now_utc())
+        hh, mm = (int(x) for x in str(cfg.get("time", "05:30")).split(":"))
+        if (now.hour, now.minute) < (hh, mm):
+            return False
+        a, b = riyadh_day_bounds_utc(riyadh_today())
+        today_runs = s.scalars(select(ProspectRun).where(ProspectRun.created_at >= a - timedelta(hours=3)))
+        if any((r.stats or {}).get("_auto") == riyadh_today().isoformat() for r in today_runs):
+            return False
+        if s.scalar(select(ProspectRun.id).where(ProspectRun.status.in_(["pending", "running"]))):
+            return False
+        r = ProspectRun(status="pending", target=int(cfg.get("target") or DAILY_TARGET), source=cfg["sources"],
+                        stats={"_auto": riyadh_today().isoformat()}, log=[])
+        s.add(r)
+        return True
 
 
 # ---------------------------------------------------------------- التصنيف والأولوية
@@ -334,7 +485,7 @@ def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") 
     with session_scope() as s:
         if _is_customer(s, rec, phones, email):
             return "existing_customer"
-        if _existing(s, rec, phones, email, None) is not None:
+        if _existing(s, rec, phones, email, rec.get("unified")) is not None:
             return "duplicate"
     # التحقق من موقع المنشأة نفسها (زاحف بلا تكلفة ذكاء اصطناعي)
     site = None
@@ -345,8 +496,8 @@ def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") 
             log.info("crawl failed %s: %s", rec["website"], type(e).__name__)
     site_text = [(p.url, " ".join([p.title or "", p.description or "", p.text or ""])) for p in (site.pages if site else [])]
     joined = " ".join(t for _, t in site_text)
-    unified = (m.group(1) if (m := UNIFIED_RX.search(joined)) else None)
-    cr = (m.group(1) if (m := CR_RX.search(joined)) else None)
+    unified = rec.get("unified") or (m.group(1) if (m := UNIFIED_RX.search(joined)) else None)
+    cr = rec.get("cr") or (m.group(1) if (m := CR_RX.search(joined)) else None)
     strength, sentence, ev_url, fleet = _evidence(site_text)
     where = "موقعها"
     if strength != "strong":
@@ -384,17 +535,19 @@ def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") 
             if fc.kind == "phone" and not (normalize_phone(fc.raw) or "").startswith("+966"):
                 continue
             added_site += _add_contact(s, c, FoundContact(fc.kind, fc.raw, fc.source_url, "website", fc.label))
-        for p in phones:
-            if p.startswith("+966"):
-                _add_contact(s, c, FoundContact("phone", p, rec["listing_url"], "directory", "من الدليل"))
-        if email:
-            _add_contact(s, c, FoundContact("email", email, rec["listing_url"], "directory"))
+        lvl = "provider" if src == "import" else "directory"
+        if src != "google_places":  # بيانات خرائط Google لا تُخزَّن؛ التواصل من موقع المنشأة فقط
+            for p in phones:
+                if p.startswith("+966"):
+                    _add_contact(s, c, FoundContact("phone", p, rec["listing_url"], lvl, "من الدليل" if lvl == "directory" else "من الملف"))
+            if email:
+                _add_contact(s, c, FoundContact("email", email, rec["listing_url"], lvl))
         s.flush()
         s.refresh(c)
         _refresh_preferred(c)
         good = [x for x in c.contacts if x.verified and (x.kind == "email" or x.value.startswith("+966"))]
         c.contactable = bool(good)
-        c.contact_level = ("website" if any(x.source_type == "website" for x in good) else "directory") if good else None
+        c.contact_level = ("website" if any(x.source_type == "website" for x in good) else lvl) if good else None
         c.channels_verified_at = now_utc() if good else None
         if is_complete(c):
             c.data_status, c.completed_at, c.counted_on = "complete", now_utc(), day
@@ -463,7 +616,7 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
         st = stats.setdefault(src, {})
         took = 0
         for rec in items:
-            if took >= per_page or ready_total() >= target:
+            if (took >= per_page and src in ("bluepages", "earabicmarket")) or ready_total() >= target:
                 break
             st["examined"] = st.get("examined", 0) + 1
             try:
@@ -474,12 +627,70 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
             st[out] = st.get(out, 0) + 1
             if out in ("ready", "needs"):
                 took += 1
-        beat(f"[{src}] {unquote(url).split('.com', 1)[-1][:80]}: {len(items)} بطاقة — جاهزة {ready_total()} من {target}")
+        if src != "import":
+            beat(f"[{src}] {unquote(url).split('.com', 1)[-1][:80]}: {len(items)} بطاقة — جاهزة {ready_total()} من {target}")
 
     for src in sources:
         if ready_total() >= target:
             break
         st = stats.setdefault(src, {})
+        if src == "import":
+            from .models import ProspectPool
+            while ready_total() < target:
+                batch = _pool_records(20)
+                if not batch:
+                    break
+                if beat() == "stopped":
+                    return
+                for pid, rec in batch:
+                    before = dict(st)
+                    handle(src, rec["listing_url"], [rec])
+                    res = next((k for k in ("ready", "needs", "duplicate", "existing_customer", "error")
+                                if st.get(k, 0) > before.get(k, 0)), "skipped")
+                    with session_scope() as s:
+                        p = s.get(ProspectPool, pid)
+                        p.status, p.result, p.processed_at = "done", res, now_utc()
+                    if ready_total() >= target:
+                        break
+            continue
+        if src == "google_places":
+            from .config import settings
+            from .discovery.base import SourceError, SourceUnavailable
+            from .discovery.sources import GooglePlacesSource
+            if not settings.google_places_api_key:
+                beat("خرائط Google: المفتاح غير مضبوط بعد — انتقال للمصدر التالي")
+                continue
+            with session_scope() as s:
+                budget = float(get_auto(s).get("google_budget_usd") or 10)
+            gp = GooglePlacesSource()
+            done_q = set(stats.get("_gq") or [])
+            for phrase, city in google_pairs(day):
+                key = f"{phrase}|{city}"
+                if key in done_q or ready_total() >= target:
+                    continue
+                with session_scope() as s:
+                    if google_spent_today(s) >= budget:
+                        beat(f"خرائط Google: بلغت ميزانية اليوم (${budget:.2f}) — انتقال للمصدر التالي")
+                        break
+                if beat() == "stopped":
+                    return
+                state: dict = {}
+                try:
+                    items = []
+                    for cand in gp.search(phrase, city, state):
+                        items.append({"external_id": f"gplace:{cand.external_id}", "name": cand.name[:300], "name_en": None,
+                                      "website": cand.website, "email": None, "phones": [], "city": city,
+                                      "activity": cand.activity or phrase, "description": "", "listing_url": cand.source_url})
+                        if len(items) >= 20:
+                            break
+                except (SourceError, SourceUnavailable) as e:
+                    beat(f"خرائط Google تعذّرت: {str(e)[:160]} — انتقال للمصدر التالي")
+                    break
+                done_q.add(key)
+                stats["_gq"] = sorted(done_q)[-3000:]
+                st["pages"] = st.get("pages", 0) + 1
+                handle(src, f"«{phrase}» في {city}", items)
+            continue
         if src == "bluepages":
             try:
                 queue = _plan(listing_pages(client), day)
@@ -526,6 +737,10 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
 def tick() -> bool:
     """العامل: يلتقط دفعة معلّقة، ويستأنف دفعة انقطع نبضها (إعادة تشغيل)."""
     from .jobs import job_lock
+    try:
+        schedule_daily()
+    except Exception:  # noqa: BLE001
+        log.exception("prospects schedule failed")
     with session_scope() as s:
         for r in s.scalars(select(ProspectRun).where(ProspectRun.status == "running")):
             if r.heartbeat and r.heartbeat < now_utc() - timedelta(minutes=10):

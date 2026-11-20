@@ -128,3 +128,50 @@ def test_earabicmarket_listing_parse_and_pagination():
     assert len(items) == 1 and items[0]["name"] == "شركة التقنية للأنظمة" and items[0]["city"] == "الرياض"
     assert items[0]["website"] == "http://www.techgroup-sa.example" and items[0]["phones"]
     assert nxt == ["https://www.earabicmarket.com/ar/companies/saudi-arabia/all/search?page=2&qry=abc"]
+
+
+def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatch):
+    """ملف مزوّد (عناوين عربية) ← طابور ← معالجة؛ خرائط Google للاكتشاف فقط (التواصل من الموقع)؛ والجدولة اليومية."""
+    from mandoob import config, prospects as P
+    from mandoob.models import ProspectPool
+    monkeypatch.setattr(P, "DELAY", 0)
+    csv_text = ("الاسم,النشاط,المدينة,الموقع,الهاتف,البريد,الرقم الموحد\n"
+                "مصنع الملف المرخص للتغليف,مصانع تغليف,الدمام,,0138201746,info@licfile-pack.example,7009988776\n"
+                "اسم بلا تواصل من الملف,تجارة,الرياض,,,,\n")
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        r = cl.post("/prospects/import", data={"license_note": "مزوّد تجريبي — عقد 1"},
+                    files={"file": ("lic.csv", csv_text.encode("utf-8"), "text/csv")})
+        assert r.status_code in (200, 303)
+    with session_scope() as s:
+        assert s.query(ProspectPool).filter(ProspectPool.status == "queued").count() == 2
+
+    class G:
+        def search(self, phrase, city, state):
+            from mandoob.discovery.base import Candidate
+            yield Candidate(name="شركة الخرائط للتوزيع", source_type="google_places", source_url="https://maps/x",
+                            external_id="gp1", city=city, website="https://fleet-fast.example", activity="توزيع")
+    monkeypatch.setattr(config.settings, "google_places_api_key", "k")
+    monkeypatch.setattr("mandoob.discovery.sources.GooglePlacesSource", lambda *a, **k: G())
+    monkeypatch.setattr(P, "google_pairs", lambda day: [("توزيع", "الرياض")])
+    with session_scope() as s:
+        rid = P.request_run(s, None, target=50, sources="import,google_places").id
+    P.run(rid, crawler=FakeCrawler(), client=FakeClient())
+    with session_scope() as s:
+        st = s.get(ProspectRun, rid).stats
+        assert st["import"]["ready"] == 1 and st["import"]["needs"] == 1
+        c = s.query(Company).filter(Company.name == "مصنع الملف المرخص للتغليف").one()
+        assert c.unified_number == "7009988776" and c.contact_level == "provider" and c.contactable
+        assert s.query(ProspectPool).filter(ProspectPool.status == "queued").count() == 0
+        # موقع شركة الخرائط هو نفسه موقع منشأة موجودة ← مكررة، ولا يُخزَّن شيء من بيانات الخرائط
+        assert st["google_places"]["duplicate"] == 1
+    # الجدولة اليومية: مرة واحدة في اليوم بعد الموعد
+    with session_scope() as s:
+        P.set_auto(s, enabled=True, time="00:00")
+    monkeypatch.setattr(P, "riyadh_today", lambda: __import__("datetime").date(2031, 5, 5))
+    assert P.schedule_daily() is True and P.schedule_daily() is False
+    with session_scope() as s:
+        r = s.scalar(__import__("sqlalchemy").select(ProspectRun).order_by(ProspectRun.id.desc()))
+        assert r.target == 1000 and "google_places" in r.source
+        r.status = "done"
+        P.set_auto(s, enabled=False)

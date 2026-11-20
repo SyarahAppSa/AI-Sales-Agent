@@ -38,6 +38,31 @@
   <p class="small muted" style="margin:10px 0 0">المصادر: أدلة شركات عامة يسمح أصحابها بزحفها (الصفحات الزرقاء، دليل الشركات السعودية في السوق العربي)، ثم زيارة موقع كل منشأة للتحقق من الهاتف والبريد. لا يُرسل أي عرض ولا يُجرى أي اتصال.</p>
 </div>
 
+{% if user.role in ('admin','manager') %}<div class="card">
+  <div class="head2"><h2>مصادر الوصول إلى {{ sm.target }} يوميًا</h2></div>
+  <div class="grid g3">
+    <div class="stat"><div class="l">ملف مزوّد بيانات مرخّص</div>
+      <div class="s">في الطابور: <b>{{ pool.queued }}</b> — عولج: <b>{{ pool.done }}</b></div>
+      <form method="post" action="/prospects/import" enctype="multipart/form-data" style="margin-top:8px">
+        <input type="file" name="file" accept=".csv,.xlsx" required>
+        <input name="license_note" placeholder="المزوّد وحق الاستخدام (مثل: اسم المزوّد — رقم العقد)" required style="margin-top:6px">
+        <button class="btn p sm" style="margin-top:6px">رفع الملف</button></form>
+      <div class="s" style="margin-top:6px">CSV أو Excel. الأعمدة: الاسم، النشاط، المدينة، الموقع، الهاتف، البريد، الرقم الموحد، السجل التجاري، رابط المصدر.</div></div>
+    <div class="stat"><div class="l">خرائط Google (الواجهة الرسمية)</div>
+      {% if gkey %}<div class="s"><span class="pill ok">مربوطة</span> إنفاق اليوم: <b>${{ gspent }}</b> من ${{ auto.google_budget_usd }}</div>
+      {% else %}<div class="s"><span class="pill warn">تنتظر المفتاح</span> أضف GOOGLE_PLACES_API_KEY في إعدادات الخادم (Render).</div>{% endif %}
+      <div class="s" style="margin-top:6px">للاكتشاف فقط (الاسم والموقع الإلكتروني). الهاتف والبريد يؤخذان من موقع المنشأة نفسها، ولا تُخزَّن بيانات الخرائط.</div></div>
+    <div class="stat"><div class="l">التشغيل اليومي الآلي</div>
+      <form method="post" action="/prospects/auto" class="small">
+        <label class="chips" style="margin:6px 0"><input type="checkbox" name="enabled" {{ 'checked' if auto.enabled }}> مفعّل</label>
+        <div class="row"><div><label>الوقت (الرياض)</label><input name="time" value="{{ auto.time }}" class="ltr"></div>
+        <div><label>الهدف</label><input name="target" type="number" value="{{ auto.target }}"></div>
+        <div><label>ميزانية Google ($)</label><input name="google_budget_usd" type="number" step="0.5" value="{{ auto.google_budget_usd }}"></div></div>
+        <button class="btn sm" style="margin-top:6px">حفظ</button></form>
+      <div class="s">الترتيب: الملف المرخّص ← خرائط Google ← الأدلة العامة، حتى يكتمل الهدف أو تنفد المصادر.</div></div>
+  </div>
+</div>{% endif %}
+
 <form class="card row" method="get">
   <input type="hidden" name="day" value="{{ d }}">
   <div><label>الحالة</label><select name="state"><option value="ready" {{ 'selected' if state=='ready' }}>جاهزة للتواصل</option><option value="needs" {{ 'selected' if state=='needs' }}>تحتاج استكمال</option><option value="all" {{ 'selected' if state=='all' }}>الكل</option></select></div>
