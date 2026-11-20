@@ -1,14 +1,14 @@
 {% extends "base.html" %}{% block title %}لوحة طوارئ — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
 <meta http-equiv="refresh" content="60">
 <div class="dash-head"><div><h1>لوحة طوارئ</h1><div class="date">محاولات التنزيل، وحالة الخوادم، وسجل النشاط — تتحدث كل دقيقة. آخر تحديث: {{ fmt(now) }}</div></div>
-<span class="pill {{ 'err' if blocked else 'warn' }}" style="align-self:center">{{ 'التنزيل محظور لكل الحسابات' if blocked else 'منع التنزيل غير مفعّل' }}</span></div>
+<span class="pill {{ 'err' if blocked else 'warn' }}" style="align-self:center">{{ 'التنزيل محظور على كل الحسابات عدا مدير المنصة' if blocked else 'منع التنزيل غير مفعّل' }}</span></div>
 
 {% set fresh = attempts|selectattr('id', 'in', unread_ids)|list %}
 <div class="em-alert" {% if not fresh %}style="border-color:var(--line);background:var(--panel)"{% endif %}>
   <div class="head2"><h2 {% if not fresh %}style="color:var(--ink)"{% endif %}>محاولات التنزيل {% if fresh %}— {{ fresh|length }} جديدة{% endif %}</h2></div>
   {% for a in attempts[:30] %}{% set n = repeats.get((a.user_id, a.target), 1) %}
   <div class="em-row"><div class="t">
-    <b class="big">مُنع تنزيل {{ a.label }}.</b> المستخدم: <b translate="no">{{ a.user_name }}</b>{% if a.user_email %} (<span class="ltr">{{ a.user_email }}</span>){% endif %}.
+    <b class="big">{% if a.result.startswith('سُمح') %}<span style="color:var(--ok)">نُزّل {{ a.label }} (مسموح لمدير المنصة).</span>{% else %}مُنع تنزيل {{ a.label }}.{% endif %}</b> المستخدم: <b translate="no">{{ a.user_name }}</b>{% if a.user_email %} (<span class="ltr">{{ a.user_email }}</span>){% endif %}.
     {% if a.report_id %}رقم التقرير: <b>{{ a.report_id }}</b>.{% endif %} الوقت: <b>{{ fmt(a.at) }}</b>. محاولة رقم: <b>{{ a.id }}</b>.
     <div class="small muted">الصفحة: <span class="ltr">{{ a.page or '—' }}</span> — الرابط المطلوب: <span class="ltr">{{ a.target }}</span> — النتيجة: {{ a.result }}{% if a.portal %} — البوابة: {{ 'الموظفين' if a.portal == 'staff' else 'الإدارة' }}{% endif %}</div>
     {% if n > 1 %}<div class="small"><span class="pill err">كرّر المحاولة {{ n }} مرات</span> — كل الأوقات في السجل أدناه</div>{% endif %}

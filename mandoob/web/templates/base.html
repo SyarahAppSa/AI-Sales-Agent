@@ -13,6 +13,7 @@
 {% if user %}
 {% if user.role in ('admin','manager') %}{% set groups = [
   ('dash', 'grid', 'لوحة التحكم', '/', []),
+] + ([('emerg', 'bell', 'لوحة طوارئ', '/emergency', [])] if can_emergency else []) + [
   ('find', 'search', 'البحث عن العملاء', None, [('/prospects', 'العملاء المحتملون'), ('/prospecting', 'البحث عن العملاء'),
       ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
   ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),
@@ -21,8 +22,7 @@
       ('/leads', 'طلبات العروض الواردة')] + ([('/offers', 'العروض والمرفقات'), ('/sandbox', 'صندوق التجربة')] if outreach_on else [])),
   ('rep', 'file', 'التقارير', None, [('/daily-report', 'التقرير اليومي'), ('/weekly-report', 'التقرير الأسبوعي للشرائح')]),
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
-      ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]
-      + ([('/emergency', 'لوحة طوارئ')] if can_emergency else [])),
+      ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]),
 ] %}{% else %}{% set groups = [
   ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات'),
       ('/portal/lists', 'قائمة عملاء إدارية')]),
@@ -39,11 +39,11 @@
   {% for key, ic, label, href, items in groups %}
     {% if href %}
       {% set on = is_on(href) == '1' %}
-      <a href="{{ href }}" class="top1 {{ 'on' if on }}" title="{{ label }}" {% if on %}aria-current="page"{% endif %}>{{ icon(ic) }}<span class="lbl">{{ label }}</span></a>
+      <a href="{{ href }}" class="top1 {{ 'on' if on }} {{ 'emerg' if key == 'emerg' }}" title="{{ label }}" {% if on %}aria-current="page"{% endif %}>{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if key == 'emerg' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}</a>
     {% elif items %}
       {% set ns = namespace(open=False) %}{% for h, l in items %}{% if is_on(h) == '1' %}{% set ns.open = True %}{% endif %}{% endfor %}
       <div class="ngrp {{ 'open cur' if ns.open }}" data-grp="{{ key }}">
-        <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if key == 'admin' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}
+        <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>
           <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
         <div class="gitems">
         {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}{% if h == '/emergency' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}</a>{% endfor %}

@@ -352,5 +352,7 @@
 "لا توجد محاولات تنزيل.": "No download attempts.",
 "جديد": "New",
 "تعمل": "Running",
-"لا يوجد": "None"
+"لا يوجد": "None",
+"التنزيل محظور على كل الحسابات عدا مدير المنصة": "Downloads blocked for all accounts except the platform owner",
+"نُزّل {x} (مسموح لمدير المنصة).": "{x} downloaded (allowed for the platform owner)."
 }

@@ -12,6 +12,7 @@ from mandoob.web.app import app
 
 ADMIN = "admin@sayaraup.test"
 REP = "emerg.rep@syarahapp.test"
+MGR = "emerg.mgr@syarahapp.test"
 
 
 @pytest.fixture(autouse=True)
@@ -54,25 +55,39 @@ def test_rep_then_admin_downloads_blocked_and_alerted():
         assert "/portal/export/phones.csv" in home
         _no_file(rep.get("/portal/export/phones.csv", follow_redirects=False))          # «نسخ كل الأرقام»
     with TestClient(app) as adm:
-        otp_login(adm, ADMIN, "admin")
-        _no_file(adm.get("/officials.xlsx", headers={"referer": "http://testserver/officials"}, follow_redirects=False))
-        _no_file(adm.get("/companies.xlsx?status=complete&kind=real", follow_redirects=False))   # رابط قديم بمعاملات
-        _no_file(adm.get("/officials.xlsx", follow_redirects=False))                    # تكرار
-        _no_file(adm.get("/messages/1/attachment", follow_redirects=False))             # مرفق
-        _no_file(adm.get("/old-exports/customers.csv", follow_redirects=False))         # رابط قديم غير موجود
-        _no_file(adm.get("/reports/weekly.pdf", follow_redirects=False))
+        otp_login(adm, ADMIN, "admin")                                                 # مدير المنصة: مسموح ومسجّل
+        r = adm.get("/officials.xlsx", headers={"referer": "http://testserver/officials"}, follow_redirects=False)
+        assert r.status_code == 200 and r.content[:2] == b"PK"
         with session_scope() as s:
-            rows = list(s.query(DownloadAttempt).order_by(DownloadAttempt.id))
-            reps_ = [a for a in rows if a.user_email == REP]
-            assert {a.label for a in reps_} >= {"تقرير «عملائي» (بوابة الموظفين)", "تقرير مسؤولي الشركات (بوابة الموظفين)"}
-            assert all(a.user_name == "أحمد المندوب" for a in reps_)
-            off = [a for a in rows if a.user_email == ADMIN and a.target == "/officials.xlsx"]
-            assert len(off) == 2 and off[0].report_id == "127" and off[0].page == "/officials"
+            own = s.query(DownloadAttempt).filter(DownloadAttempt.user_email == ADMIN).order_by(DownloadAttempt.id.desc()).first()
+            assert own.result == "سُمح — مدير المنصة" and own.read and own.report_id == "127"
+        adm.post("/staff/add", data={"name": "مدير المبيعات", "email": MGR, "team": "", "role": "manager", "profile": "custom"})
+        with session_scope() as s:
+            m = s.query(User).filter(User.email == MGR).one()
+            m.role = "manager"
+    with TestClient(app) as mgr:                                                      # مدير المبيعات: ممنوع
+        otp_login(mgr, MGR, "admin")
+        _no_file(mgr.get("/officials.xlsx", headers={"referer": "http://testserver/officials"}, follow_redirects=False))
+        _no_file(mgr.get("/companies.xlsx?status=complete&kind=real", follow_redirects=False))   # رابط قديم بمعاملات
+        _no_file(mgr.get("/officials.xlsx", follow_redirects=False))                    # تكرار
+        _no_file(mgr.get("/messages/1/attachment", follow_redirects=False))             # مرفق
+        _no_file(mgr.get("/old-exports/customers.csv", follow_redirects=False))         # رابط قديم غير موجود
+    with session_scope() as s:
+        rows = list(s.query(DownloadAttempt).order_by(DownloadAttempt.id))
+        reps_ = [a for a in rows if a.user_email == REP]
+        assert {a.label for a in reps_} >= {"تقرير «عملائي» (بوابة الموظفين)", "تقرير مسؤولي الشركات (بوابة الموظفين)"}
+        assert all(a.user_name == "أحمد المندوب" and a.result == "مُنع" for a in reps_)
+        off = [a for a in rows if a.user_email == MGR and a.target == "/officials.xlsx"]
+        assert len(off) == 2 and off[0].report_id == "127" and off[0].page == "/officials"
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
         dash = adm.get("/").text
         assert re.search(r'لوحة طوارئ</span><span class="count">\d+', dash) and "bellcount" in dash
+        assert dash.index("لوحة طوارئ") < dash.index("البحث عن العملاء")                # بند رئيسي تحت لوحة التحكم
         em = adm.get("/emergency").text
         assert "مُنع تنزيل تقرير موظفي الشركات." in em and "رقم التقرير: <b>127</b>" in em and "كرّر المحاولة 2 مرات" in em
-        assert "أحمد المندوب" in em and REP in em and "جديد" in em
+        assert "مدير المبيعات" in em and "أحمد المندوب" in em and REP in em and "جديد" in em
+        assert "مسموح لمدير المنصة" in em
         assert 'class="count"' not in adm.get("/").text.split("لوحة طوارئ")[1][:60]      # قُرئت بعد فتح اللوحة
         assert "--wm:url(" in em and "data:image/svg+xml" in em                         # علامة مائية باسم المستخدم
 

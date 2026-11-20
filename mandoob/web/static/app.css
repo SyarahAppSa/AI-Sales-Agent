@@ -220,3 +220,5 @@ td.telcol .small{white-space:nowrap}
 .wmk .tablewrap,.wmk .card,.wmk .kpi{position:relative}
 .wmk .tablewrap::after,.wmk .card::after,.wmk .kpi::after{content:"";position:absolute;inset:0;background-image:var(--wm);background-repeat:repeat;pointer-events:none;z-index:4;border-radius:inherit}
 @media print{.wmk .tablewrap::after,.wmk .card::after{opacity:1}}
+.nav a.top1 .count{background:var(--err);color:#fff;border-radius:999px;font-size:11px;padding:0 7px;line-height:18px}
+.nav a.top1.emerg .ic{color:var(--err)}.nav a.top1.emerg.on{background:var(--err-soft);color:var(--err)}

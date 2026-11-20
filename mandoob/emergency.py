@@ -73,6 +73,19 @@ def can_access(user: User | None) -> bool:
     return bool(user and user.active and (user.role == "admin" or (user.perms or {}).get("emergency")))
 
 
+ALLOWED = "سُمح — مدير المنصة"
+
+
+def is_owner(session) -> bool:
+    """مدير المنصة (المالك) فقط يُسمح له بالتنزيل — من بوابة الإدارة وبحساب نشط."""
+    uid = (session or {}).get("uid")
+    if not uid or (session or {}).get("portal") != "admin":
+        return False
+    with session_scope() as s:
+        u = s.get(User, uid)
+        return bool(u and u.active and u.role == "admin" and u.session_version == (session or {}).get("sv"))
+
+
 def record_attempt(session: dict, path: str, referer: str, result: str = "مُنع") -> int:
     """يسجّل المحاولة وينبّه أصحاب صلاحية الطوارئ. يعيد رقم التتبّع."""
     label, rid = describe(path)
@@ -85,9 +98,12 @@ def record_attempt(session: dict, path: str, referer: str, result: str = "مُن
         u = s.get(User, uid) if uid else None
         a = DownloadAttempt(user_id=u.id if u else None, user_name=u.name if u else "غير مسجّل الدخول",
                             user_email=u.email if u else "", portal=(session or {}).get("portal", ""),
-                            page=page[:300], target=path[:300], label=label[:200], report_id=rid, result=result)
+                            page=page[:300], target=path[:300], label=label[:200], report_id=rid, result=result,
+                            read=result == ALLOWED)
         s.add(a)
         s.flush()
+        if result == ALLOWED:  # تنزيل مدير المنصة: يُسجَّل في السجل دون تنبيه
+            return a.id
         title = f"مُنع تنزيل {label}. المستخدم: {a.user_name}." + (f" رقم التقرير: {rid}." if rid else "") + \
             f" الوقت: {fmt(a.at, False).split('، ')[-1] if fmt(a.at, False) else ''}. محاولة رقم: {a.id}"
         for v in s.scalars(select(User).where(User.active.is_(True))):
@@ -111,6 +127,14 @@ class DownloadGuard:
             return await self._timed(scope, receive, send)
         headers = dict(scope.get("headers") or [])
         referer = headers.get(b"referer", b"").decode("latin-1")
+        session = scope.get("session")
+        if is_owner(session):
+            if is_file_path(path):
+                try:
+                    record_attempt(session, path, referer, ALLOWED)
+                except Exception:  # noqa: BLE001
+                    pass
+            return await self._timed(scope, receive, send)
         if is_file_path(path):
             return await self._block(scope, send, path, referer)
         start = {}
@@ -345,7 +369,7 @@ def timeline(s, user_q: str = "", d_from=None, d_to=None, etype: str = "", limit
     if etype in ("", "download"):
         for x in s.scalars(rng(DownloadAttempt.at, select(DownloadAttempt)).order_by(DownloadAttempt.id.desc()).limit(limit)):
             ev.append({"at": x.at, "type": "download", "who": x.user_name, "email": x.user_email,
-                       "what": f"مُنع تنزيل {x.label}" + (f" (رقم التقرير {x.report_id})" if x.report_id else "")
+                       "what": f"{'نزّل' if x.result == ALLOWED else 'مُنع تنزيل'} {x.label}" + (f" (رقم التقرير {x.report_id})" if x.report_id else "")
                                + f" — محاولة رقم {x.id}", "where": x.page})
     if etype in ("", "incident"):
         for x in s.scalars(rng(Incident.at, select(Incident)).order_by(Incident.id.desc()).limit(limit)):
