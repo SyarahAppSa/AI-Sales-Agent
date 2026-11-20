@@ -522,6 +522,80 @@ async def prospects_import(request: Request, file: UploadFile = File(...), licen
     return back("/prospects")
 
 
+# ---------------------------------------------------------------- عملاء عشوائيون (قوائم غير متحقق منها)
+
+def _random_q(q: str, status: str):
+    from ..models import ProspectPool
+    qq = select(ProspectPool).where(ProspectPool.kind == "random")
+    if status:
+        qq = qq.where(ProspectPool.status == status)
+    if q:
+        from sqlalchemy import cast, String as _S
+        qq = qq.where(cast(ProspectPool.row, _S).like(f"%{q}%") | ProspectPool.file_name.like(f"%{q}%"))
+    return qq
+
+
+@app.get("/random-leads", response_class=HTMLResponse)
+def random_leads(request: Request, q: str = "", status: str = "random", page: int = 1,
+                 user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import ProspectPool
+    qq = _random_q(q, status)
+    total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
+    rows = list(s.scalars(qq.order_by(ProspectPool.id).offset((page - 1) * 100).limit(100)))
+    counts = {k: s.scalar(select(func.count(ProspectPool.id)).where(ProspectPool.kind == "random", ProspectPool.status == k)) or 0
+              for k in ("random", "queued", "done")}
+    files = list(s.execute(select(ProspectPool.file_name, ProspectPool.license_note, func.count(ProspectPool.id))
+                           .where(ProspectPool.kind == "random").group_by(ProspectPool.file_name, ProspectPool.license_note)))
+    return render(request, "random_leads.html", user, s, rows=rows, total=total, q=q, status=status, page=page,
+                  counts=counts, files=files, qs=str(request.query_params))
+
+
+@app.post("/random-leads/upload")
+async def random_leads_upload(request: Request, file: UploadFile = File(...), source_note: str = Form(...),
+                              user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospects as P
+    from ..auth import audit
+    data = await file.read()
+    if len(data) > 40 * 1024 * 1024:
+        flash(request, "الملف أكبر من ٤٠ ميغابايت — قسّمه.", "err")
+        return back("/random-leads")
+    try:
+        n, _ = P.queue_upload(s, user, file.filename or "list.csv", data, (source_note or "").strip(), kind="random")
+    except Exception as e:  # noqa: BLE001
+        flash(request, f"تعذّرت قراءة الملف ({type(e).__name__}). جرّب Excel أو CSV.", "err")
+        return back("/random-leads")
+    audit(s, user, "import", user, kind="random_leads", rows=n, file=(file.filename or "")[:100])
+    flash(request, f"أُضيف {n} سجلًا إلى «عملاء عشوائيون». لم يُتحقق منها بعد — انقلها للتحقق لتدخل «العملاء المحتملون»."
+          if n else "لم أجد في الملف أسطرًا فيها هاتف أو بريد أو عمود «الاسم».", "ok" if n else "err")
+    return back("/random-leads")
+
+
+@app.post("/random-leads/verify")
+async def random_leads_verify(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """نقل السجلات المحددة (أو كل نتائج البحث) إلى طابور التحقق: تكرار ← موقع المنشأة ← أولوية."""
+    from ..models import ProspectPool
+    form = await request.form()
+    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()]
+    if form.get("all"):
+        ids = [p.id for p in s.scalars(_random_q(form.get("q") or "", "random"))]
+    n = 0
+    for p in s.scalars(select(ProspectPool).where(ProspectPool.id.in_(ids or [0]), ProspectPool.status == "random")):
+        p.status, n = "queued", n + 1
+    flash(request, f"نُقل {n} سجلًا للتحقق. تُعالج في الدفعة التالية من «العملاء المحتملون» (أو اضغط «تشغيل دفعة» هناك).")
+    return back("/random-leads")
+
+
+@app.get("/random-leads.xlsx")
+def random_leads_xlsx(request: Request, q: str = "", status: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..xlsx import response, workbook
+    st = {"random": "لم يُتحقق منها", "queued": "في طابور التحقق", "done": "عولجت"}
+    rows = [[p.row.get("name", ""), p.row.get("phone", ""), p.row.get("email", ""), p.row.get("city", ""), p.row.get("activity", ""),
+             p.row.get("website", ""), p.file_name, p.license_note, st.get(p.status, p.status), p.result or ""]
+            for p in s.scalars(_random_q(q, status))]
+    head = ["الاسم", "الهاتف", "البريد", "المدينة", "النشاط", "الموقع", "الملف", "مصدر القائمة", "الحالة", "نتيجة التحقق"]
+    return response(workbook([("عملاء عشوائيون", head, rows)]), "random-leads.xlsx")
+
+
 @app.post("/prospects/auto")
 def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form("05:30", alias="time"),
                    target: int = Form(1000), google_budget_usd: float = Form(10.0),

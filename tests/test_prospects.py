@@ -175,3 +175,39 @@ def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatc
         assert r.target == 1000 and "google_places" in r.sources
         r.status = "done"
         P.set_auto(s, enabled=False)
+
+
+def test_random_leads_upload_pdf_and_move_to_verification(monkeypatch):
+    """«عملاء عشوائيون»: قائمة PDF تُحفظ منفصلة دون تحقق، ثم «نقل للتحقق» يدخلها مسار العملاء المحتملين."""
+    import pypdf
+    from mandoob import prospects as P
+    from mandoob.models import ProspectPool
+
+    class Page:
+        def extract_text(self):
+            return ("قائمة الشركات العقارية\nشركة الأفق العقارية للتجربة 0138437261 info@ufuq-test.example\n"
+                    "مؤسسة الواحة للعقار\nهاتف: ٠٥٤٧٢١٩٣٦٨\nسطر بلا بيانات")
+
+    class Reader:
+        def __init__(self, *_):
+            self.pages = [Page()]
+    monkeypatch.setattr(pypdf, "PdfReader", Reader)
+    monkeypatch.setattr(P, "DELAY", 0)
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        cl.post("/random-leads/upload", data={"source_note": "ملف 630 شركة عقارية — تجربة"},
+                files={"file": ("list.pdf", b"%PDF-fake", "application/pdf")})
+        page = cl.get("/random-leads").text
+        assert "شركة الأفق العقارية للتجربة" in page and "مؤسسة الواحة للعقار" in page and "+966" not in page.split("telcol")[0][-50:]
+        assert "0138437261" in page and "0547219368" in page
+        with session_scope() as s:
+            assert s.query(ProspectPool).filter(ProspectPool.kind == "random", ProspectPool.status == "random").count() == 2
+            assert not s.query(Company).filter(Company.name == "مؤسسة الواحة للعقار").count()   # لا تدخل قبل التحقق
+        cl.post("/random-leads/verify", data={"all": "1", "q": ""})
+    with session_scope() as s:
+        rid = P.request_run(s, None, target=50, sources="import").id
+    P.run(rid, crawler=FakeCrawler(), client=FakeClient())
+    with session_scope() as s:
+        c = s.query(Company).filter(Company.name == "مؤسسة الواحة للعقار").one()
+        assert c.contactable and c.primary("phone").value == "+966547219368" and c.prospect_on
+        assert s.query(ProspectPool).filter(ProspectPool.kind == "random", ProspectPool.status == "done").count() == 2

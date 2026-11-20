@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}عملاء عشوائيون — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+<div class="dash-head"><div><h1>عملاء عشوائيون</h1><div class="date">قوائم منشآت من ملفات خارجية (PDF أو Excel أو CSV) — غير متحقق منها بعد، ولا تُسند للموظفين قبل التحقق.</div></div>
+<div class="row" style="flex:0 0 auto"><a class="btn p" href="/random-leads.xlsx?{{ qs }}">تنزيل Excel</a></div></div>
+
+<div class="kpis">
+  <a class="kpi" href="/random-leads?status=random"><div class="l">لم يُتحقق منها</div><div class="v">{{ counts.random }}</div></a>
+  <a class="kpi" href="/random-leads?status=queued"><div class="l">في طابور التحقق</div><div class="v">{{ counts.queued }}</div></a>
+  <a class="kpi" href="/random-leads?status=done"><div class="l">عولجت</div><div class="v">{{ counts.done }}</div><div class="s">النتيجة في «العملاء المحتملون»</div></a>
+  <div class="kpi"><div class="l">الملفات</div><div class="v">{{ files|length }}</div></div>
+</div>
+
+<div class="card"><h2>رفع قائمة</h2>
+<form method="post" action="/random-leads/upload" enctype="multipart/form-data" class="row">
+  <div><label>الملف (PDF أو Excel أو CSV)</label><input type="file" name="file" accept=".pdf,.xlsx,.csv" required></div>
+  <div><label>مصدر القائمة</label><input name="source_note" required placeholder="مثل: ملف «630 شركة عقارية في الشرقية» من حسابنا في Scribd"></div>
+  <button class="btn p">رفع</button></form>
+<p class="small muted" style="margin:8px 0 0">يُحفظ كما هو هنا. عند «النقل للتحقق» يمر كل سجل بمنع التكرار مع العملاء والعملاء الحاليين، ثم يُتحقق من الهاتف والبريد في موقع المنشأة، ثم يدخل «العملاء المحتملون» بأولويته.</p>
+{% if files %}<table class="small" style="margin-top:10px"><tr><th>الملف</th><th>مصدر القائمة</th><th>السجلات</th></tr>{% for f, n_, c_ in files %}<tr><td>{{ f }}</td><td>{{ n_ }}</td><td>{{ c_ }}</td></tr>{% endfor %}</table>{% endif %}
+</div>
+
+<form class="card row" method="get"><input type="hidden" name="status" value="{{ status }}">
+  <div><label>بحث</label><input name="q" value="{{ q }}"></div><button class="btn p">تطبيق</button></form>
+
+<form method="post" action="/random-leads/verify" class="card">
+<input type="hidden" name="q" value="{{ q }}">
+<div class="head2"><h2>السجلات <span class="muted small">({{ total }})</span></h2>
+{% if status == 'random' %}<div class="row" style="flex:0 0 auto"><button class="btn sm">نقل المحدد للتحقق</button><button class="btn p sm" name="all" value="1">نقل الكل للتحقق ({{ total }})</button></div>{% endif %}</div>
+<div class="tablewrap"><table>
+<tr>{% if status == 'random' %}<th></th>{% endif %}<th>الاسم</th><th>الهاتف</th><th>البريد</th><th>المدينة / النشاط</th><th>الملف</th><th>الحالة</th></tr>
+{% for p in rows %}<tr>{% if status == 'random' %}<td><input type="checkbox" name="ids" value="{{ p.id }}"></td>{% endif %}
+<td><b><span translate="no">{{ p.row.name }}</span></b></td>
+<td class="telcol">{% for ph in (p.row.phone or '').split(';') if ph.strip() %}<div class="telrow"><span class="tel" dir="ltr">{{ ph.strip() }}</span></div>{% else %}—{% endfor %}</td>
+<td><span class="ltr">{{ p.row.email or '—' }}</span></td>
+<td class="small">{{ p.row.city or '—' }}<div class="muted">{{ p.row.activity or '' }}</div></td>
+<td class="small muted">{{ p.file_name }}</td>
+<td>{% if p.status == 'random' %}<span class="pill warn">لم يُتحقق</span>{% elif p.status == 'queued' %}<span class="pill info">في الطابور</span>{% else %}<span class="pill {{ 'ok' if p.result == 'ready' else '' }}">{{ {'ready':'جاهزة','needs':'تحتاج استكمال','duplicate':'مكررة','existing_customer':'عميل حالي'}.get(p.result, p.result) }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">لا توجد سجلات. ارفع قائمة من الأعلى.</td></tr>{% endfor %}
+</table></div>
+{% if total > page * 100 %}<p><a class="btn sm" href="/random-leads?status={{ status }}&q={{ q }}&page={{ page + 1 }}">التالي</a></p>{% endif %}
+</form>
+{% endblock %}

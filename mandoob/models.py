@@ -702,7 +702,8 @@ class ProspectPool(Base):
     file_name: Mapped[str] = mapped_column(String(200))
     license_note: Mapped[str] = mapped_column(String(500), default="")  # مصدر الملف وحق الاستخدام
     row: Mapped[dict] = mapped_column(JSON, default=dict)
-    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued / done
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # random / queued / done
+    kind: Mapped[Optional[str]] = mapped_column(String(20), default="provider")  # provider (ملف مرخّص) / random (عملاء عشوائيون)
     result: Mapped[Optional[str]] = mapped_column(String(30))
     uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

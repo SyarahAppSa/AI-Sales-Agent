@@ -230,12 +230,48 @@ def parse_upload(filename: str, data: bytes) -> tuple[list[dict], dict]:
     return out, m
 
 
-def queue_upload(s, user, filename: str, data: bytes, license_note: str) -> tuple[int, dict]:
+PHONE_RX = re.compile(r"(?:\+?966|00966)?\s*0?(?:5\d|1\d|9200|800)[\d\s\-]{6,11}\d")
+EMAIL_RX = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def parse_pdf(data: bytes) -> list[dict]:
+    """قائمة منشآت من ملف PDF: كل سطر فيه هاتف أو بريد صفٌّ؛ الاسم بقية السطر أو السطر الذي قبله."""
+    import io
+    import unicodedata
+    from pypdf import PdfReader
+    rows, prev = [], ""
+    for page in PdfReader(io.BytesIO(data)).pages:
+        text = unicodedata.normalize("NFKC", page.extract_text() or "")
+        for line in text.splitlines():
+            line = normalize_arabic_digits(re.sub(r"\s+", " ", line).strip())
+            if not line:
+                continue
+            phones = [p.strip() for p in PHONE_RX.findall(line)]
+            emails = EMAIL_RX.findall(line)
+            if not phones and not emails:
+                prev = line
+                continue
+            rest = EMAIL_RX.sub(" ", PHONE_RX.sub(" ", line))
+            rest = re.sub(r"[\d|:;,\-–—]+", " ", rest)
+            rest = re.sub(r"(?i)\b(?:الهاتف|هاتف|جوال|الجوال|تليفون|فاكس|البريد|بريد|tel|phone|mobile|fax|email|e-mail)\b", " ", rest)
+            name = re.sub(r"\s+", " ", rest).strip() or prev
+            if len(name) < 3:
+                name = prev
+            rows.append({"name": name[:300], "phone": ";".join(phones), "email": emails[0] if emails else "",
+                         "city": "", "activity": "", "website": "", "unified": "", "cr": "", "name_en": "", "source_url": ""})
+            prev = ""
+    return rows
+
+
+def queue_upload(s, user, filename: str, data: bytes, license_note: str, kind: str = "provider") -> tuple[int, dict]:
     from .models import ProspectPool
-    rows, m = parse_upload(filename, data)
+    if filename.lower().endswith(".pdf"):
+        rows, m = parse_pdf(data), {"name": 0, "phone": 1, "email": 2}
+    else:
+        rows, m = parse_upload(filename, data)
     for r in rows:
-        s.add(ProspectPool(file_name=filename[:200], license_note=license_note[:500], row=r,
-                           uploaded_by=user.id if user else None))
+        s.add(ProspectPool(file_name=filename[:200], license_note=license_note[:500], row=r, kind=kind,
+                           status="random" if kind == "random" else "queued", uploaded_by=user.id if user else None))
     return len(rows), m
 
 
@@ -243,6 +279,7 @@ def _pool_records(n: int) -> list[tuple[int, dict]]:
     from .models import ProspectPool
     with session_scope() as s:
         items = list(s.scalars(select(ProspectPool).where(ProspectPool.status == "queued").order_by(ProspectPool.id).limit(n)))
+        # تحقق «عملاء عشوائيون» يُعامل كالملف لكن مصدره قائمة غير موثّقة
         out = []
         for p in items:
             r = p.row or {}
