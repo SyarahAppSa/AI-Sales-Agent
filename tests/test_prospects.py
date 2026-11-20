@@ -211,3 +211,31 @@ def test_random_leads_upload_pdf_and_move_to_verification(monkeypatch):
         c = s.query(Company).filter(Company.name == "مؤسسة الواحة للعقار").one()
         assert c.contactable and c.primary("phone").value == "+966547219368" and c.prospect_on
         assert s.query(ProspectPool).filter(ProspectPool.kind == "random", ProspectPool.status == "done").count() == 2
+
+
+def test_upload_parser_robust_formats():
+    """عناوين في صف لاحق، ملف بلا عناوين، CSV بترميز ويندوز العربي وفاصلة منقوطة، وملفات غير مدعومة برسالة واضحة."""
+    import io
+    import pytest
+    from openpyxl import Workbook
+    from mandoob import prospects as P
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["قائمة شركات المقاولات في الدمام"])
+    ws.append([])
+    ws.append(["م", "اسم الشركة", "رقم الجوال", "المدينة"])
+    ws.append([1, "شركة البناء المتين", "0551234987", "الدمام"])
+    ws2 = wb.create_sheet("ورقة2")
+    ws2.append(["مؤسسة الخبر للتجارة", "0138887766", "info@khobar-trade.example"])
+    ws2.append(["مؤسسة الظهران للنقل", "0503332211", ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    rows, m = P.parse_upload("list.xlsx", buf.getvalue())
+    names = {r["name"] for r in rows}
+    assert {"شركة البناء المتين", "مؤسسة الخبر للتجارة", "مؤسسة الظهران للنقل"} <= names
+    assert next(r for r in rows if r["name"] == "شركة البناء المتين")["phone"] == "0551234987"
+    csv_bytes = "الاسم;الهاتف\nمحل الأمانة;0114443322\n".encode("cp1256")
+    rows, _ = P.parse_upload("x.csv", csv_bytes)
+    assert rows and rows[0]["name"] == "محل الأمانة" and rows[0]["phone"] == "0114443322"
+    with pytest.raises(P.UploadError):
+        P.parse_upload("list.numbers", b"xxxx")

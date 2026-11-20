@@ -192,7 +192,7 @@ COLS = {"name": ["name", "company", "company_name", "trade_name", "الاسم", 
         "source_url": ["source_url", "source", "link", "رابط المصدر", "المصدر"]}
 
 
-def _map_headers(headers: list[str]) -> dict[str, int]:
+def _map_headers(headers: list[str], partial: bool = True) -> dict[str, int]:
     norm = [re.sub(r"\s+", " ", (h or "").strip().lower()) for h in headers]
     out = {}
     for key, names in COLS.items():
@@ -200,37 +200,117 @@ def _map_headers(headers: list[str]) -> dict[str, int]:
             if h in [n.lower() for n in names]:
                 out[key] = i
                 break
+    # تطابق جزئي للعناوين غير المعتادة (مثل «رقم الجوال» أو «اسم المؤسسة/الشركة»)
+    PART = {"name": ["اسم", "name", "company", "المنشأه", "المنشأة", "الشركة", "الشركه", "المؤسسة"],
+            "phone": ["جوال", "هاتف", "تلفون", "phone", "mobile", "tel", "واتس", "contact no"],
+            "email": ["بريد", "email", "e-mail", "ايميل", "إيميل"], "website": ["موقع الكتروني", "موقع إلكتروني", "website", "web"],
+            "city": ["مدينة", "المدينه", "city"], "activity": ["نشاط", "قطاع", "activity", "sector", "category"],
+            "unified": ["موحد", "unified"], "cr": ["سجل", "c.r", "cr no"]}
+    for key, words in (PART.items() if partial else []):
+        if key in out:
+            continue
+        for i, h in enumerate(norm):
+            if i in out.values() or not h:
+                continue
+            if any(w in h for w in words) and not (key == "name" and any(x in h for x in ("انجليز", "english", "مسؤول", "المالك"))):
+                out[key] = i
+                break
     return out
 
 
-def parse_upload(filename: str, data: bytes) -> tuple[list[dict], dict]:
-    """CSV أو Excel بعناوين عربية أو إنجليزية ← صفوف موحدة. يعيد أيضًا الأعمدة التي تعرّف عليها."""
-    rows: list[list] = []
-    if filename.lower().endswith((".xlsx", ".xlsm")):
+class UploadError(ValueError):
+    """سبب واضح بالعربية لتعذّر قراءة الملف."""
+
+
+def _sheets(filename: str, data: bytes) -> list[list[list[str]]]:
+    """كل أوراق الملف كصفوف نصية: xlsx/xlsm، xls القديم، CSV/TXT (UTF-8 أو ترميز ويندوز العربي، فاصلة أو ; أو Tab)."""
+    import io
+    low = filename.lower()
+    if low.endswith((".xlsx", ".xlsm")) or data[:2] == b"PK":
         from openpyxl import load_workbook
-        import io
-        ws = load_workbook(io.BytesIO(data), read_only=True, data_only=True).active
-        rows = [[("" if v is None else str(v)) for v in r] for r in ws.iter_rows(values_only=True)]
-    else:
-        import csv
-        import io
-        text = data.decode("utf-8-sig", errors="replace")
-        rows = list(csv.reader(io.StringIO(text)))
-    if not rows:
-        return [], {}
-    m = _map_headers(rows[0])
-    if "name" not in m:
-        return [], m
-    out = []
-    for r in rows[1:]:
-        get = lambda k: (r[m[k]].strip() if k in m and m[k] < len(r) and r[m[k]] else "")  # noqa: E731
-        if not get("name"):
+        try:
+            wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        except Exception as e:  # noqa: BLE001
+            raise UploadError("ملف Excel تالف أو محمي بكلمة مرور — افتحه واحفظه من جديد بصيغة xlsx") from e
+        return [[[("" if v is None else str(v)).strip() for v in r] for r in ws.iter_rows(values_only=True)] for ws in wb.worksheets]
+    if low.endswith(".xls") or data[:4] == b"\xd0\xcf\x11\xe0":
+        import xlrd
+        try:
+            book = xlrd.open_workbook(file_contents=data)
+        except Exception as e:  # noqa: BLE001
+            raise UploadError("ملف Excel القديم (xls) لم يُقرأ — احفظه بصيغة xlsx وأعد رفعه") from e
+        return [[[str(sh.cell_value(i, j)).strip() for j in range(sh.ncols)] for i in range(sh.nrows)] for sh in book.sheets()]
+    if low.endswith((".numbers", ".pages", ".docx", ".doc")):
+        raise UploadError("هذه الصيغة غير مدعومة — من Numbers أو Word: «ملف ← تصدير إلى ← Excel أو CSV» ثم ارفعه")
+    import csv
+    for enc in ("utf-8-sig", "cp1256", "utf-16"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
             continue
-        out.append({k: get(k) for k in COLS})
-    return out, m
+    else:
+        raise UploadError("ترميز الملف غير معروف — احفظه بصيغة CSV UTF-8")
+    try:
+        dialect = csv.Sniffer().sniff(text[:5000], delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    return [[[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]]
 
 
-PHONE_RX = re.compile(r"(?:\+?966|00966)?\s*0?(?:5\d|1\d|9200|800)[\d\s\-]{6,11}\d")
+def _guess_columns(rows: list[list[str]]) -> dict[str, int]:
+    """بلا صف عناوين معروف: الهاتف = العمود الأكثر أرقامًا هاتفية، البريد = الأكثر عناوين بريد، الاسم = أطول نص عربي/لاتيني."""
+    width = max((len(r) for r in rows[:200]), default=0)
+    sample = rows[:200]
+    def score(j, fn):
+        return sum(1 for r in sample if j < len(r) and fn(r[j]))
+    m = {}
+    ph = max(range(width), key=lambda j: score(j, lambda v: bool(PHONE_RX.search(normalize_arabic_digits(v)))), default=None)
+    if ph is not None and score(ph, lambda v: bool(PHONE_RX.search(normalize_arabic_digits(v)))) >= 2:
+        m["phone"] = ph
+    em = max(range(width), key=lambda j: score(j, lambda v: bool(EMAIL_RX.search(v))), default=None)
+    if em is not None and score(em, lambda v: bool(EMAIL_RX.search(v))) >= 2:
+        m["email"] = em
+    textual = [j for j in range(width) if j not in m.values()]
+    if textual:
+        nm = max(textual, key=lambda j: score(j, lambda v: bool(re.search(r"[\u0600-\u06FFA-Za-z]{3,}", v)) and not EMAIL_RX.search(v)
+                                              and not v.startswith("http")))
+        if score(nm, lambda v: bool(re.search(r"[\u0600-\u06FFA-Za-z]{3,}", v))) >= 2:
+            m["name"] = nm
+    return m
+
+
+def parse_upload(filename: str, data: bytes) -> tuple[list[dict], dict]:
+    """CSV أو Excel (كل الأوراق) بعناوين عربية أو إنجليزية — صف العناوين في أي من أول ١٥ صفًا، أو تخمين الأعمدة
+    إن لم توجد عناوين. يعيد الصفوف الموحدة والأعمدة التي تعرّف عليها."""
+    out, used = [], {}
+    for rows in _sheets(filename, data):
+        rows = [r for r in rows if any(c for c in r)]
+        if not rows:
+            continue
+        hdr_i, m = None, {}
+        for i, r in enumerate(rows[:15]):
+            mm = _map_headers(r)
+            if "name" in mm and len(mm) >= 2 and not any(PHONE_RX.search(normalize_arabic_digits(c)) for c in r):
+                hdr_i, m = i, mm
+                break
+        if hdr_i is None:
+            m = _guess_columns(rows)
+            if "name" not in m or not ({"phone", "email"} & set(m)):
+                continue
+            body = rows
+        else:
+            body = rows[hdr_i + 1:]
+        used = used or m
+        for r in body:
+            get = lambda k: (r[m[k]].strip() if k in m and m[k] < len(r) and r[m[k]] else "")  # noqa: E731
+            if not get("name") or _map_headers(r, partial=False).get("name") is not None:
+                continue
+            out.append({k: get(k) for k in COLS})
+    return out, used
+
+
+PHONE_RX = re.compile(r"(?:\+?\s?966|00966)?[\s\-]*\(?0?(?:5\d|1\d|9200|800)\)?[\d\s\-]{6,11}\d")
 EMAIL_RX = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
@@ -239,9 +319,19 @@ def parse_pdf(data: bytes) -> list[dict]:
     import io
     import unicodedata
     from pypdf import PdfReader
-    rows, prev = [], ""
-    for page in PdfReader(io.BytesIO(data)).pages:
+    rows, prev, chars = [], "", 0
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if getattr(reader, "is_encrypted", False):
+            raise UploadError("ملف PDF محمي بكلمة مرور — احفظ نسخة بلا حماية")
+        pages = reader.pages
+    except UploadError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise UploadError("ملف PDF تالف أو غير مكتمل التنزيل — نزّله مرة أخرى") from e
+    for page in pages:
         text = unicodedata.normalize("NFKC", page.extract_text() or "")
+        chars += len(text.strip())
         for line in text.splitlines():
             line = normalize_arabic_digits(re.sub(r"\s+", " ", line).strip())
             if not line:
@@ -260,6 +350,9 @@ def parse_pdf(data: bytes) -> list[dict]:
             rows.append({"name": name[:300], "phone": ";".join(phones), "email": emails[0] if emails else "",
                          "city": "", "activity": "", "website": "", "unified": "", "cr": "", "name_en": "", "source_url": ""})
             prev = ""
+    if not rows and chars < 20:
+        raise UploadError("ملف PDF مصوَّر (صور ممسوحة بلا نص) — لا يمكن قراءة الأرقام منه آليًا. "
+                          "إن كان لديك نسخة Excel أو Word منه فارفعها")
     return rows
 
 

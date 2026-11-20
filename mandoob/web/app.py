@@ -559,14 +559,22 @@ async def random_leads_upload(request: Request, file: UploadFile = File(...), so
     if len(data) > 40 * 1024 * 1024:
         flash(request, "الملف أكبر من ٤٠ ميغابايت — قسّمه.", "err")
         return back("/random-leads")
+    fname = file.filename or "list.csv"
     try:
-        n, _ = P.queue_upload(s, user, file.filename or "list.csv", data, (source_note or "").strip(), kind="random")
+        n, cols = P.queue_upload(s, user, fname, data, (source_note or "").strip(), kind="random")
+    except P.UploadError as e:
+        flash(request, f"«{fname}»: {e}", "err")
+        return back("/random-leads")
     except Exception as e:  # noqa: BLE001
-        flash(request, f"تعذّرت قراءة الملف ({type(e).__name__}). جرّب Excel أو CSV.", "err")
+        log.warning("random upload failed: %s", type(e).__name__)
+        flash(request, f"«{fname}»: تعذّرت قراءة الملف ({type(e).__name__}). احفظه بصيغة xlsx أو CSV وأعد رفعه.", "err")
+        return back("/random-leads")
+    if not n:
+        flash(request, f"«{fname}»: قُرئ الملف لكن لم أجد أسطرًا فيها اسم منشأة مع هاتف أو بريد. تأكد أن فيه عمودًا للاسم "
+                       "(مثل «الاسم» أو «اسم الشركة») وعمودًا للهاتف أو البريد.", "err")
         return back("/random-leads")
     audit(s, user, "import", user, kind="random_leads", rows=n, file=(file.filename or "")[:100])
-    flash(request, f"أُضيف {n} سجلًا إلى «عملاء عشوائيون». لم يُتحقق منها بعد — انقلها للتحقق لتدخل «العملاء المحتملون»."
-          if n else "لم أجد في الملف أسطرًا فيها هاتف أو بريد أو عمود «الاسم».", "ok" if n else "err")
+    flash(request, f"«{fname}»: أُضيف {n} سجلًا إلى «عملاء عشوائيون». لم يُتحقق منها بعد — انقلها للتحقق لتدخل «العملاء المحتملون».")
     return back("/random-leads")
 
 
