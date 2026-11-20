@@ -3,16 +3,36 @@
 <div class="top"><div><h1>اكتشاف عملاء جدد</h1><p class="sub" style="margin:0">أدلة النقل والمقاولين والمصانع — على مرحلتين: أسماء ومدن وأنشطة تُطابق مع قاعدتنا أولًا، ثم الهاتف والبريد من موقع المنشأة للجديد فقط.</p></div>
 <form method="post" action="/discover/probe" style="flex:0 0 auto"><button class="btn">افحص الوصول للمصادر الآن</button></form></div>
 
+<div class="grid g3" style="margin-bottom:14px">
+  <div class="icard"><div class="t"><div class="l">منشآت جديدة مكتملة اليوم</div><div class="v">{{ today_new_complete }} <span class="muted" style="font-size:16px">من {{ auto.target_complete }}</span></div>
+  <div class="bar" style="margin-top:6px"><i style="width:{{ [100, (100 * today_new_complete / auto.target_complete)|round|int]|min if auto.target_complete else 0 }}%"></i></div>
+  <div class="s">بعد استبعاد المكرر وعملاء سيارة آب الحاليين</div></div></div>
+  <div class="icard"><div class="t"><div class="l">البحث اليومي التلقائي</div><div class="v" style="font-size:18px">{{ 'مفعّل' if auto.enabled else 'متوقف' }}</div><div class="s">يبدأ {{ auto.time }} بتوقيت الرياض — ميزانية ${{ auto.budget_usd }}</div></div></div>
+  <div class="icard"><div class="t"><div class="l">تكلفة اليوم (الاكتشاف)</div><div class="v">${{ today_rows|rejectattr('key','equalto','prospecting')|sum(attribute='cost')|round(2) }}</div><div class="s">{% set c = today_rows|rejectattr('key','equalto','prospecting')|sum(attribute='complete') %}{% if c %}≈ ${{ ((today_rows|rejectattr('key','equalto','prospecting')|sum(attribute='cost')) / c)|round(2) }} لكل منشأة مكتملة{% else %}—{% endif %}</div></div></div>
+</div>
+
+<div class="card tablewrap"><h2>أي مصدر يجلب عملاء فعلًا — اليوم</h2><table>
+<tr><th>المصدر</th><th>جديدة مكتملة (هاتف + بريد)</th><th>مكررة</th><th>من عملائنا الحاليين</th><th>قيد الاستكمال</th><th>التكلفة</th><th>التكلفة لكل منشأة مكتملة</th><th>مراجع خرائط محفوظة</th><th>وصل الفريق إلى المسؤول</th></tr>
+{% for x in today_rows %}<tr><td><b>{{ x.source }}</b></td><td><b>{{ x.complete }}</b></td><td>{{ x.duplicates }}</td><td>{{ x.existing_customers }}</td><td>{{ x.incomplete }}</td><td>${{ x.cost }}</td><td>{{ '$' ~ x.cost_per_complete if x.cost_per_complete else '—' }}</td><td>{{ x.maps_refs }}</td><td>{{ x.reached_dm }}</td></tr>{% endfor %}
+</table></div>
+
+<form class="card row" method="post" action="/discover/auto" style="align-items:end"><div style="flex:1 1 220px"><b>البحث اليومي التلقائي</b><div class="small muted">من المصادر المتاحة الآن (بحث الويب، حسابات التواصل العامة، أدلة الويب، والخرائط عند ربطها) — يبدّل الأنشطة والمدن والمناطق واللغتين يوميًا، ولا ينتظر ملفات أو ربطًا.</div></div>
+<div class="chips" style="flex:0 0 auto"><label><input type="checkbox" name="enabled" value="1" {{ 'checked' if auto.enabled }}> مفعّل</label></div>
+<div style="flex:0 0 120px"><label class="small">الوقت (الرياض)</label><input type="time" name="time" value="{{ auto.time }}"></div>
+<div style="flex:0 0 130px"><label class="small">هدف المكتملة يوميًا</label><input type="number" name="target" value="{{ auto.target_complete }}" min="1" max="5000"></div>
+<div style="flex:0 0 130px"><label class="small">الميزانية اليومية ($)</label><input type="number" name="budget" value="{{ auto.budget_usd }}" min="1" max="2000" step="1"></div>
+<div style="flex:0 0 auto"><button class="btn p">حفظ</button></div></form>
+
 <div class="card tablewrap"><h2>المصادر وحالة الوصول</h2><table>
 <tr><th>المصدر</th><th>يغطي</th><th>طريقة الوصول</th><th>الحالة</th><th>آخر فحص من الخادم</th><th>المطلوب</th></tr>
 {% for x in sources %}<tr><td><b>{{ x.label }}</b></td><td class="small">{{ x.covers }}</td><td class="small">{{ x.method }}</td>
 <td><span class="pill {{ KIND[x.status][0] }}">{{ KIND[x.status][1] }}</span>{% if x.why %}<div class="small muted">{{ x.why }}</div>{% endif %}</td>
-<td class="small ltr">{{ x.probe or '—' }}</td><td class="small">{{ '—' if x.status == 'works' else x.needs }}</td></tr>{% endfor %}
+<td class="small ltr">{{ x.probe or '—' }}</td><td class="small">{{ '—' if x.status == 'works' else x.needs }}{% if x.fallback %}<div class="muted">{{ x.fallback }}</div>{% endif %}</td></tr>{% endfor %}
 </table></div>
 
 <div class="grid g2">
 <form class="card" method="post" action="/discover/run"><h2>دفعة جديدة</h2>
-<div class="field"><label>المصادر</label><div class="chips">{% for x in sources if x.kind != 'blocked' %}<label><input type="checkbox" name="sources" value="{{ x.key }}" {{ 'checked' if x.key == 'claude_directory' }} {{ 'disabled' if x.status in ('needs_key',) }}> {{ x.label }}</label>{% endfor %}</div></div>
+<div class="field"><label>المصادر</label><div class="chips">{% for x in sources if x.kind != 'blocked' %}<label><input type="checkbox" name="sources" value="{{ x.key }}" {{ 'checked' if x.auto and x.status == 'works' }} {{ 'disabled' if x.status in ('needs_key',) }}> {{ x.label }}</label>{% endfor %}</div></div>
 <div class="field"><label>الأنشطة</label>
 {% for sk in ['transport','construction','industry'] %}<div class="chips"><b class="small" style="width:100%">{{ DIR_SECTORS[sk].label }}</b>{% for ak in DIR_SECTORS[sk].activities %}<label><input type="checkbox" name="activities" value="{{ ak }}" {{ 'checked' if ak in defaults }}> {{ ACTIVITIES[ak].label }}</label>{% endfor %}</div>{% endfor %}</div>
 <div class="field"><label>المناطق (فارغ = الرياض وجدة والدمام)</label><div class="chips"><label><input type="checkbox" name="all_regions" value="1"> كل المملكة</label>{% for rid, r in GEO_REGIONS.items() %}<label><input type="checkbox" name="regions" value="{{ rid }}"> {{ r.ar }}</label>{% endfor %}</div></div>
@@ -29,19 +49,22 @@
 
 {% if runs %}<div class="card tablewrap"><h2>الدفعات</h2><table>
 <tr><th>#</th><th>الحالة</th><th>المصادر</th><th>المكتشفة</th><th>جديدة بعد استبعاد التكرار</th><th>مكتملة (هاتف + بريد)</th><th>قيد الاستكمال</th><th>التكلفة / الميزانية</th><th>تكلفة المكتملة</th><th>المدة</th></tr>
-{% for r in runs %}{% set st = r.stats or {} %}{% set srcs = st.items()|rejectattr('0','in',['_spent','_minutes'])|list %}
-{% set disc = srcs|map(attribute='1')|map(attribute='discovered')|sum %}{% set comp = srcs|map(attribute='1')|map(attribute='complete')|sum %}
-<tr><td><a href="?run={{ r.id }}">#{{ r.id }}</a>{% if r.params.similar_to %}<div class="small muted">مشابهة</div>{% endif %}</td>
+{% for r in runs %}{% set v = rv[r.id] %}
+<tr><td><a href="?run={{ r.id }}">#{{ r.id }}</a>{% if r.params.similar_to %}<div class="small muted">مشابهة</div>{% elif r.params.auto %}<div class="small muted">يومية تلقائية</div>{% endif %}</td>
 <td>{{ {'pending':'بانتظار الخادم','running':'يعمل','done':'اكتملت','stopped':'أُوقفت','failed':'فشلت'}.get(r.status, r.status) }}</td>
-<td class="small">{{ r.sources|join('، ') }}</td><td>{{ disc }}</td><td>{{ srcs|map(attribute='1')|map(attribute='new')|sum }}</td><td><b>{{ comp }}</b></td>
-<td>{{ srcs|map(attribute='1')|map(attribute='incomplete')|sum }}</td><td>${{ st._spent if st._spent is defined else '…' }} / ${{ r.budget_usd }}</td>
-<td>{% if comp and st._spent %}${{ (st._spent / comp)|round(2) }}{% else %}—{% endif %}</td><td class="small">{{ st._minutes ~ ' د' if st._minutes else '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
+<td class="small">{{ v.labels }}</td><td>{{ v.discovered }}</td><td>{{ v.new }}</td><td><b>{{ v.complete }}</b></td>
+<td>{{ v.incomplete }}</td><td>${{ v.spent }} / ${{ r.budget_usd }}</td>
+<td>{% if v.complete %}${{ (v.spent / v.complete)|round(2) }}{% else %}—{% endif %}</td><td class="small">{{ v.minutes ~ ' د' if v.minutes else '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
 
 {% if cur %}<div class="card"><h2>الدفعة #{{ cur.id }} — السجل</h2><pre class="small" style="white-space:pre-wrap;max-height:220px;overflow:auto">{{ (cur.log or [])|join('\n') }}</pre></div>
 <div class="card tablewrap"><h2>منشآت الدفعة #{{ cur.id }} ({{ stubs|length }})</h2><table>
-<tr><th>المنشأة</th><th>النشاط والمدينة</th><th>رابط الدليل</th><th>النتيجة</th></tr>
+<tr><th>المنشأة</th><th>النشاط والمدينة</th><th>مسار الوصول (العبارة ← أول نتيجة ← خرائط/حساب)</th><th>النتيجة</th></tr>
 {% for x in stubs %}<tr><td><b>{{ x.name }}</b>{% if x.website %}<div class="small ltr">{{ x.website.split('//')[-1][:40] }}</div>{% endif %}</td><td class="small">{{ x.activity }}<div class="muted">{{ x.city }}</div></td>
-<td class="small">{% if x.source_url %}<a class="ltr" href="{{ x.source_url }}" target="_blank" rel="noopener">{{ x.source_url.split('//')[-1][:45] }}</a>{% else %}—{% endif %}</td>
+<td class="small" style="max-width:360px">{% if x.query %}<div class="muted">«{{ x.query }}»</div>{% endif %}
+{% if x.source_url %}<div><a class="ltr" href="{{ x.source_url }}" target="_blank" rel="noopener">{{ x.source_url.split('//')[-1][:45] }}</a></div>{% endif %}
+{% if x.maps_url %}<div>خرائط: <a class="ltr" href="{{ x.maps_url }}" target="_blank" rel="noopener">{{ x.maps_url.split('//')[-1][:35] }}</a></div>{% endif %}
+{% if x.social_url and x.social_url != x.source_url %}<div>حساب: <a class="ltr" href="{{ x.social_url }}" target="_blank" rel="noopener">{{ x.social_url.split('//')[-1][:35] }}</a></div>{% endif %}
+<div class="muted">{{ {'web_search':'بحث الويب','social':'حسابات التواصل','claude_directory':'أدلة الويب','google_places':'خرائط Google'}.get(x.source, x.source) }}</div></td>
 <td>{% set lab = {'new':('','جديدة — بانتظار المرحلة ٢'),'duplicate':('','مكررة (لدينا مسبقًا)'),'existing_customer':('','من عملائنا الحاليين'),'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'failed':('err','تعذر'),'skipped':('','تُركت')} %}
 <span class="pill {{ lab.get(x.status, ('',''))[0] }}">{{ lab.get(x.status, ('', x.status))[1] }}</span>{% if x.company_id %} <a class="small" href="/companies/{{ x.company_id }}">السجل</a>{% elif x.duplicate_of %} <a class="small" href="/companies/{{ x.duplicate_of }}">السجل الموجود</a>{% endif %}</td></tr>{% endfor %}
 </table></div>{% endif %}

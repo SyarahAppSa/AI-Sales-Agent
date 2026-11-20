@@ -723,11 +723,37 @@ def discover_page(request: Request, run: Optional[int] = None, user: User = Depe
     cur = s.get(DirectoryRun, run) if run else (runs[0] if runs else None)
     stubs = list(s.scalars(select(LeadStub).where(LeadStub.run_id == cur.id).order_by(LeadStub.id))) if cur else []
     busy = any(r.status in ("pending", "running") for r in runs)
-    return render(request, "discover.html", user, s, sources=D.source_status(s), runs=runs, cur=cur, stubs=stubs,
+    rv = {}
+    for r in runs:
+        st = {k: v for k, v in (r.stats or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+        rv[r.id] = {"labels": "، ".join(D.SOURCES.get(x, {}).get("label", x) for x in (r.sources or [])),
+                    **{f: sum(v.get(f, 0) for v in st.values()) for f in ("discovered", "complete", "incomplete",
+                                                                        "duplicate", "existing_customer")},
+                    "spent": (r.stats or {}).get("_spent", 0), "minutes": (r.stats or {}).get("_minutes")}
+        rv[r.id]["new"] = rv[r.id]["discovered"] - rv[r.id]["duplicate"] - rv[r.id]["existing_customer"]
+    from datetime import date as _date
+    today_rows = D.daily_by_source(s)
+    auto = D.get_auto(s)
+    return render(request, "discover.html", user, s, sources=D.source_status(s), runs=runs, cur=cur, stubs=stubs, rv=rv,
+                  today_rows=today_rows, auto=auto,
+                  today_new_complete=sum(x["complete"] for x in today_rows if x["key"] != "prospecting"),
                   busy=busy, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
                   defaults=DISCOVER_DEFAULT, KIND={"works": ("ok", "يعمل"), "needs_key": ("warn", "يحتاج ربطًا (مفتاح)"),
                                                    "needs_file": ("warn", "ينتظر ملفًا"),
                                                    "blocked": ("err", "غير متاح آليًا من الخادم")})
+
+
+@app.post("/discover/auto")
+def discover_auto(request: Request, enabled: str = Form(""), time: str = Form("05:30"), target: int = Form(400),
+                  budget: float = Form(20), user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import directory as D
+    from ..auth import audit
+    v = D.set_auto(s, enabled=bool(enabled), time=(time or "05:30")[:5], target_complete=max(1, min(target, 5000)),
+                   budget_usd=max(1.0, min(budget, 2000.0)))
+    audit(s, user, "directory_auto", None, **{k: v[k] for k in ("enabled", "time", "target_complete", "budget_usd")})
+    flash(request, f"البحث اليومي التلقائي {'مفعّل' if v['enabled'] else 'متوقف'}: {v['time']} — هدف {v['target_complete']} "
+                   f"— ميزانية ${v['budget_usd']:.0f}")
+    return back("/discover")
 
 
 @app.post("/discover/probe")
@@ -755,7 +781,7 @@ async def discover_run(request: Request, user: User = Depends(require_manager), 
     if halt_reason():
         flash(request, "البحث موقوف أو بلغ سقف الإنفاق اليومي: " + halt_reason(), "err")
         return back("/discover")
-    sources = [x for x in form.getlist("sources") if x in D.SOURCES] or ["claude_directory"]
+    sources = [x for x in form.getlist("sources") if x in D.SOURCES] or list(D.AUTO_SOURCES)
     budget = max(0.5, min(float(form.get("budget") or 5), 500))
     params = {"activities": list(form.getlist("activities")) or DISCOVER_DEFAULT, "scope": _scope_regions(form),
               "stage1_limit": max(5, min(int(form.get("limit") or 30), 2000))}

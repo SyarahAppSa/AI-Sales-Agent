@@ -650,6 +650,11 @@ class LeadStub(Base):
     phone_hint: Mapped[Optional[str]] = mapped_column(String(40))
     source_url: Mapped[str] = mapped_column(String(500), default="")  # رابط الدليل/القائمة
     vehicle_hint: Mapped[Optional[str]] = mapped_column(Text)
+    # مسار الوصول: عبارة البحث ← أول نتيجة قادت إلى المنشأة ← مرجع الخرائط/الحساب التجاري إن ظهر
+    query: Mapped[Optional[str]] = mapped_column(String(300))
+    found_url: Mapped[Optional[str]] = mapped_column(String(500))
+    maps_url: Mapped[Optional[str]] = mapped_column(String(500))
+    social_url: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     # new / duplicate / existing_customer / complete / incomplete / failed / skipped
     duplicate_of: Mapped[Optional[int]] = mapped_column(Integer)

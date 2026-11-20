@@ -42,6 +42,11 @@
  <span class="small muted">جُمع {{ fmt(c.first_found_at, False) }}</span>
  <div class="small">{{ c.fit_reason or '—' }}{% if c.fit_phrase %}<div class="muted">«{{ c.fit_phrase[:220] }}»</div>{% endif %}</div>
  {% if c.fit_evidence_url %}<a class="small ltr" href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">{{ c.fit_evidence_url.split('//')[-1][:60] }}</a>{% endif %}</div>
+{% set refs = c.sources|selectattr('source_type','in',['web_search','maps_ref','social'])|list %}
+{% if refs %}<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill info">مسار الوصول</span>
+{% for x in refs %}<div class="small">{{ {'web_search':'أول نتيجة بحث','maps_ref':'مرجع خرائط Google (من بحث الويب)','social':'الحساب التجاري العام'}[x.source_type] }}:
+<a class="ltr" href="{{ x.url }}" target="_blank" rel="noopener">{{ x.url.split('//')[-1][:60] }}</a>{% if x.snippet %} <span class="muted">— {{ x.snippet[:120] }}</span>{% endif %}</div>{% endfor %}
+{% for ct in c.contacts if ct.verified %}<div class="small">{{ 'الهاتف' if ct.kind == 'phone' else 'البريد' }} <span class="ltr">{{ ct.value }}</span> ← <a class="ltr" href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url.split('//')[-1][:55] }}</a></div>{% endfor %}</div>{% endif %}
 {% for g in signals %}<div style="border-bottom:1px solid var(--line);padding:6px 0"><span class="pill warn">{{ g.label }}</span> <span class="small muted">{{ fmt_date(g.announced_on) if g.announced_on else 'التاريخ غير مذكور' }}</span>
 <div class="small">{{ g.title[:300] }}</div>{% if g.url %}<a class="small ltr" href="{{ g.url }}" target="_blank" rel="noopener">{{ g.url.split('//')[-1][:60] }}</a>{% endif %}</div>{% endfor %}
 {% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/reasons/find" style="margin-top:8px"><button class="btn sm">ابحث عن دليل ترشيح (توظيف مدير أسطول، افتتاح مركز توزيع…)</button></form>{% endif %}
