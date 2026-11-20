@@ -172,44 +172,40 @@ def verify_code(s, email: str, code: str, portal: str) -> User:
     return user
 
 
-LOGIN_SUBJECT = "رمز دخولك إلى منصة المندوب الذكي لسيارة اب"
+LOGIN_SUBJECT = "رمز الدخول إلى المندوب الذكي لسيارة اب"
 RESEND_AFTER_SECONDS = 60
 
 
-LOGIN_SUBJECT_EN = "Your sign-in code for Syarah App Smart Sales Agent"
+LOGIN_SUBJECT_EN = "Sign-in code for Syarah App Smart Sales Agent"
 
 
 def login_email(user: User, code: str, portal: str, lang: str | None = None) -> tuple[str, str, str]:
-    """(العنوان، النص، HTML) لرسالة كود الدخول — الكود بخط كبير مع مدة صلاحيته، بلغة المستخدم."""
+    """(العنوان، النص، HTML) لرسالة كود الدخول: رسالة معاملات بسيطة — الرمز ومدة صلاحيته فقط،
+    بلا روابط ولا صور ولا مرفقات (أقل احتمالًا للتصنيف كرسالة مزعجة)."""
     from html import escape
     from .i18n import current_lang
-    link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
     if (lang or current_lang()) == "en":
         where = "the Admin portal" if portal == "admin" else "the Staff portal"
-        text = (f"Hello {user.name},\n\nYour sign-in code for {where} of Syarah App Smart Sales Agent:\n\n    {code}\n\n"
-                f"Valid for 5 minutes and for one use only. Any previous code no longer works.\n"
-                f"If you did not request this code, ignore this email and do not share it with anyone.\n\n{link}")
+        text = (f"Hello {user.name},\n\nYour sign-in code for {where}:\n\n    {code}\n\n"
+                f"Valid for 5 minutes, one use only. Any previous code no longer works.\n"
+                f"If you did not request it, ignore this email and do not share it.\n\nSyarah App Smart Sales Agent")
         html = (f"<div dir='ltr' style='font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#292431'>"
-                f"<p style='font-size:16px'>Hello {escape(user.name)},</p>"
-                f"<p style='font-size:15px'>Your sign-in code for {where} of <b>Syarah App Smart Sales Agent</b>:</p>"
-                f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
-                f"background:#EFE8F8;border-radius:12px;padding:18px 8px;margin:16px 0;color:#6941A5'>{code}</div>"
-                f"<p style='font-size:15px;text-align:center'><b>Valid for 5 minutes, one use only</b></p>"
-                f"<p style='font-size:13px;color:#6F6879'>Any previous code no longer works. If you did not request "
-                f"this code, ignore this email and do not share it with anyone.</p></div>")
+                f"<p>Hello {escape(user.name)},</p><p>Your sign-in code for {where}:</p>"
+                f"<p style='font-size:40px;font-weight:bold;letter-spacing:10px;text-align:center;direction:ltr'>{code}</p>"
+                f"<p><b>Valid for 5 minutes, one use only.</b> Any previous code no longer works.</p>"
+                f"<p style='color:#6F6879;font-size:13px'>If you did not request it, ignore this email and do not share it.</p>"
+                f"<p style='color:#6F6879;font-size:13px'>Syarah App Smart Sales Agent</p></div>")
         return LOGIN_SUBJECT_EN, text, html
     where = "بوابة الإدارة" if portal == "admin" else "بوابة الموظفين"
-    text = (f"مرحبًا {user.name}،\n\nرمز دخولك إلى {where} في منصة المندوب الذكي لسيارة اب:\n\n    {code}\n\n"
+    text = (f"مرحبًا {user.name}،\n\nرمز الدخول إلى {where}:\n\n    {code}\n\n"
             f"صالح لمدة ٥ دقائق ولمرة واحدة فقط. أي رمز سابق لم يعد صالحًا.\n"
-            f"إن لم تطلب هذا الرمز فتجاهل الرسالة ولا تشاركه مع أحد.\n\n{link}")
-    html = (f"<div dir='rtl' style='font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;color:#1f2937'>"
-            f"<p style='font-size:16px'>مرحبًا {escape(user.name)}،</p>"
-            f"<p style='font-size:15px'>رمز دخولك إلى {where} في منصة <b>المندوب الذكي لسيارة اب</b>:</p>"
-            f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
-            f"background:#EFE8F8;border-radius:12px;padding:18px 8px;margin:16px 0;color:#6941A5'>{code}</div>"
-            f"<p style='font-size:15px;text-align:center'><b>صالح لمدة ٥ دقائق ولمرة واحدة فقط</b></p>"
-            f"<p style='font-size:13px;color:#6b7280'>أي رمز سابق لم يعد صالحًا. إن لم تطلب هذا الرمز فتجاهل الرسالة "
-            f"ولا تشاركه مع أحد.</p></div>")
+            f"إن لم تطلب هذا الرمز فتجاهل الرسالة ولا تشاركه مع أحد.\n\nالمندوب الذكي لسيارة اب")
+    html = (f"<div dir='rtl' style='font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;color:#292431'>"
+            f"<p>مرحبًا {escape(user.name)}،</p><p>رمز الدخول إلى {where}:</p>"
+            f"<p style='font-size:40px;font-weight:bold;letter-spacing:10px;text-align:center;direction:ltr'>{code}</p>"
+            f"<p><b>صالح لمدة ٥ دقائق ولمرة واحدة فقط.</b> أي رمز سابق لم يعد صالحًا.</p>"
+            f"<p style='color:#6F6879;font-size:13px'>إن لم تطلب هذا الرمز فتجاهل الرسالة ولا تشاركه مع أحد.</p>"
+            f"<p style='color:#6F6879;font-size:13px'>المندوب الذكي لسيارة اب</p></div>")
     return LOGIN_SUBJECT, text, html
 
 
@@ -224,7 +220,9 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
         return False
     subject, text, html = login_email(user, code, portal)
     res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "المندوب الذكي لسيارة اب", user.email,
-                                                subject, text, html))
+                                                subject, text, html,
+                                                headers={"Auto-Submitted": "auto-generated", "X-Priority": "1",
+                                                         "Importance": "high", "X-Auto-Response-Suppress": "All"}))
     return bool(res and res.accepted)
 
 

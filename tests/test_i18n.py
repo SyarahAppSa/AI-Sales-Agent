@@ -77,7 +77,7 @@ def test_choice_remembered_after_logout_and_login_code_email_in_english(monkeypa
         from mandoob.mail.sandbox import ROOT
         f = sorted((ROOT / "outbox").glob("*.eml"), key=lambda p: p.stat().st_mtime_ns)[-1]
         m = message_from_bytes(f.read_bytes(), policy=policy.default)
-        assert str(m["Subject"]) == "Your sign-in code for Syarah App Smart Sales Agent"
+        assert str(m["Subject"]) == "Sign-in code for Syarah App Smart Sales Agent"
         body = m.get_body(preferencelist=("plain",)).get_content()
         assert "Valid for 5 minutes" in body and last_code_for(ADMIN)
         c2.post("/admin/login/verify", data={"code": last_code_for(ADMIN)})  # استهلاك الرمز (لا يبقى رمز معلّق)

@@ -62,7 +62,7 @@ def test_full_staff_login_with_company_mail_code():
         # ٢) يكتب بريده فقط ← الكود يصل من بريد الشركة المربوط
         r = c.post("/portal/login/request", data={"email": REP.upper()})
         m = _last_mail(REP)
-        assert m is not None and str(m["Subject"]) == "رمز دخولك إلى منصة المندوب الذكي لسيارة اب"
+        assert m is not None and str(m["Subject"]) == "رمز الدخول إلى المندوب الذكي لسيارة اب"
         assert "sales@sayaraup.test" in str(m["From"])                          # من بريد الشركة المربوط
         html = m.get_body(preferencelist=("html",)).get_content()
         code1 = last_code_for(REP)
