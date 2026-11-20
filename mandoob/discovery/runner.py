@@ -412,6 +412,7 @@ def enrich_incomplete(*, crawler: Crawler | None = None, limit: int = 100) -> in
                                      Company.is_test.is_(False),
                                      Company.enrich_attempts < 5,
                                      (Company.retry_enrich_at.is_(None)) | (Company.retry_enrich_at <= now_utc()))
+            .order_by(Company.retry_enrich_at.asc().nulls_first(), Company.id.desc())
             .limit(limit))]
     for cid in ids:
         with session_scope() as s:

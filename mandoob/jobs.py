@@ -254,3 +254,31 @@ def weekly_report_tick(force: bool = False) -> bool:
             notify(s, u, None, f"التقرير الأسبوعي للشرائح — {w['start']}", "\n".join(lines))
     _mark("weekly_report_done")
     return True
+
+
+ENRICH_KEY = "enrich_auto"  # {"budget_usd": 3}: سقف يومي لإعادة البحث عن الهاتف/البريد الناقص
+
+
+def enrich_spent_today(s) -> float:
+    from sqlalchemy import func, or_, select
+    from .models import CostEntry
+    from .timeutil import riyadh_today
+    return float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(
+        CostEntry.day == riyadh_today(), or_(CostEntry.note == "complete", CostEntry.note.like("%:retry")))) or 0)
+
+
+def enrich_tick(limit: int = 5) -> int:
+    """كل ١٠ دقائق: يعيد البحث عن الهاتف والبريد للعملاء «قيد الاستكمال» الذين حان موعدهم (أيًّا كان مصدرهم:
+    دفعات «البحث عن عملاء» اليدوية أو الاكتشاف أو التشغيل اليومي) — الموقع أولًا ثم وكيل البحث، ضمن سقف يومي."""
+    from .config import settings
+    if not settings.ai_enabled:
+        return 0
+    budget = float((get_setting(ENRICH_KEY) or {}).get("budget_usd", 3))
+    with session_scope() as s:
+        if enrich_spent_today(s) >= budget:
+            return 0
+    with job_lock("enrich", minutes=30) as ok:
+        if not ok:
+            return 0
+        from .discovery.runner import enrich_incomplete
+        return enrich_incomplete(limit=limit)

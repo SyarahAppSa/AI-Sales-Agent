@@ -92,3 +92,40 @@ def test_search_status_messages_are_arabic_with_cause_and_action(monkeypatch):
         otp_login(cl, ADMIN, "admin")
         html = cl.get("/").text
         assert 'class="health err"' in html and "توقف البحث" in html and "رصيد خدمة البحث غير كافٍ" in html
+
+
+def test_incomplete_from_manual_batch_is_retried_automatically_and_page_explains(monkeypatch):
+    """عميل من دفعة يدوية بلا هاتف ولا بريد: الصفحة توضح الناقص، و«ابحث الآن» يقدّمه، والعامل يكمله من موقعه."""
+    from mandoob import config, jobs
+    from mandoob.discovery import runner
+    from mandoob.discovery.base import FoundContact
+    from mandoob.discovery.crawler import SiteResult
+    monkeypatch.setattr(type(config.settings), "ai_enabled", property(lambda self: True))
+    with session_scope() as s:
+        co = Company(name="مصنع ناقص التواصل", name_norm="dash-nocontact", activity="مصنع ألبان", city="الرياض",
+                     data_status="incomplete", lead_source="discovery", website="https://nocontact.example",
+                     domain="nocontact.example", first_found_at=now_utc(), retry_enrich_at=now_utc() + timedelta(days=2))
+        s.add(co)
+        s.flush()
+        cid = co.id
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        page = cl.get(f"/companies/{cid}").text
+        assert "لا يوجد هاتف ولا بريد موثّق بعد" in page and "ابحث عن الهاتف والبريد الآن" in page
+        assert "مصنع ناقص التواصل" not in cl.get("/").text          # «أحدث العملاء» للمكتملين فقط
+        cl.post(f"/companies/{cid}/enrich")
+
+    class FakeCrawler:
+        def __init__(self, *a, **k):
+            pass
+
+        def crawl(self, url):
+            return SiteResult(website=url, contacts=[
+                FoundContact("phone", "0114736291", "https://nocontact.example/contact"),
+                FoundContact("email", "info@nocontact.example", "https://nocontact.example/contact")])
+    monkeypatch.setattr(runner, "Crawler", FakeCrawler)
+    monkeypatch.setattr("mandoob.discovery.agent.agent_complete", lambda *a, **k: [])
+    assert jobs.enrich_tick(limit=50) >= 1
+    with session_scope() as s:
+        co = s.get(Company, cid)
+        assert co.data_status == "complete" and co.primary("phone") and co.primary("email")

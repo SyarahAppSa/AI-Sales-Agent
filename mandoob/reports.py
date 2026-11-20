@@ -550,7 +550,7 @@ def sales_performance(s: Session, user: User, start, end) -> dict:
 
 def recent_customers(s: Session, user: User, n: int = 8) -> list[Company]:
     return list(s.scalars(scope_companies(select(Company), user)
-                          .where(Company.is_test.is_(False), Company.data_status.in_(["complete", "incomplete"]))
+                          .where(Company.is_test.is_(False), Company.data_status == "complete")
                           .order_by(Company.first_found_at.desc(), Company.id.desc()).limit(n)))
 
 

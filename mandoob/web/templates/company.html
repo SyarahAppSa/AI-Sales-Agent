@@ -10,9 +10,14 @@
 <div class="grid g2">
 <div>
 <div class="card"><h2>بيانات التواصل الموثّقة</h2>
-<table><tr><th>النوع</th><th>القيمة</th><th>المصدر</th></tr>
+{% set has_ph = c.contacts|selectattr('kind','equalto','phone')|selectattr('verified')|list %}{% set has_em = c.contacts|selectattr('kind','equalto','email')|selectattr('verified')|list %}
+{% if c.data_status != 'complete' %}<div class="health warn" style="margin-bottom:12px"><span class="dotc"></span><div class="t">
+<b>{% if not has_ph and not has_em %}لا يوجد هاتف ولا بريد موثّق بعد{% elif not has_ph %}ينقص رقم هاتف موثّق{% else %}ينقص بريد موثّق{% endif %}</b>
+<div class="act">لا يُسند تلقائيًا للموظفين حتى تكتمل بياناته. يعيد الخادم البحث تلقائيًا في موقع المنشأة ثم في الويب{% if c.retry_enrich_at %} — الموعد القادم: {{ fmt(c.retry_enrich_at) }}{% endif %} (محاولات سابقة: {{ c.enrich_attempts or 0 }}).</div></div>
+{% if user.role in ('admin','manager') %}<form method="post" action="/companies/{{ c.id }}/enrich"><button class="btn p sm">ابحث عن الهاتف والبريد الآن</button></form>{% endif %}</div>{% endif %}
+{% if c.contacts %}<table><tr><th>النوع</th><th>القيمة</th><th>المصدر</th></tr>
 {% for ct in c.contacts %}<tr><td>{{ 'هاتف' if ct.kind=='phone' else 'بريد' }}{% if ct.preferred %} <span class="pill ok">مفضل</span>{% endif %}{% if not ct.verified %} <span class="pill err">مرتد/غير صالح</span>{% endif %}</td>
-<td class="ltr">{{ phone(ct.value) if ct.kind=='phone' else ct.value }}</td><td class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url[:60] }}</a><div class="muted">{{ fmt(ct.found_at, False) }}{% if ct.label %} · {{ ct.label }}{% endif %}</div></td></tr>{% endfor %}</table>
+<td class="ltr">{{ phone(ct.value) if ct.kind=='phone' else ct.value }}</td><td class="small"><a href="{{ ct.source_url }}" target="_blank" rel="noopener">{{ ct.source_url[:60] }}</a><div class="muted">{{ fmt(ct.found_at, False) }}{% if ct.label %} · {{ ct.label }}{% endif %}</div></td></tr>{% endfor %}</table>{% endif %}
 <p class="small" style="margin-top:10px"><b>سبب الترشيح:</b> {{ c.fit_reason }} {% if c.fit_evidence_url %}<a href="{{ c.fit_evidence_url }}" target="_blank" rel="noopener">(الدليل)</a>{% endif %}</p>
 <p class="small muted">اكتُشفت {{ fmt(c.first_found_at) }} — الحملة: {{ c.campaign.name if c.campaign else '—' }} — الفئة: {{ c.category.label if c.category else '—' }} — شوهدت {{ c.times_seen }} مرة</p>
 <details><summary>المصادر ({{ c.sources|length }})</summary><ul class="small">{% for src in c.sources %}<li>{{ SOURCE_LABELS.get(src.source_type, src.source_type) }}: <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.url[:80] }}</a> — {{ fmt(src.found_at, False) }}</li>{% endfor %}</ul></details>

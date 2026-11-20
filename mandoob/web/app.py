@@ -337,6 +337,18 @@ def home(request: Request, period: str = "7d", user: User = Depends(current_user
                   health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
 
 
+@app.post("/companies/{cid}/enrich")
+def company_enrich_now(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """يقدّم العميل في طابور إعادة البحث عن الهاتف/البريد (ينفذه العامل خلال ١٠ دقائق)."""
+    c = s.get(Company, cid)
+    if c is None:
+        raise HTTPException(404)
+    if c.data_status == "incomplete":
+        c.retry_enrich_at, c.enrich_attempts = None, 0
+        flash(request, "سيبحث الخادم عن الهاتف والبريد لهذا العميل خلال ١٠ دقائق؛ حدّث الصفحة بعدها.")
+    return back(f"/companies/{cid}")
+
+
 # ---------------------------------------------------------------- الفئات المستهدفة
 
 @app.get("/targets", response_class=HTMLResponse)
