@@ -362,6 +362,23 @@ def queue_upload(s, user, filename: str, data: bytes, license_note: str, kind: s
         rows, m = parse_pdf(data), {"name": 0, "phone": 1, "email": 2}
     else:
         rows, m = parse_upload(filename, data)
+    from .normalize import normalize_phone
+    seen = set()
+    for (row,) in s.execute(select(ProspectPool.row)):
+        for p in str((row or {}).get("phone") or "").split(";"):
+            if (pp := normalize_phone(normalize_arabic_digits(p))):
+                seen.add(pp)
+        if (row or {}).get("name") and not (row or {}).get("phone"):
+            seen.add("n:" + normalize_name(row["name"]))
+    kept = []
+    for r in rows:
+        ps = {pp for p in str(r.get("phone") or "").split(";") if (pp := normalize_phone(normalize_arabic_digits(p)))}
+        key = ps or {"n:" + normalize_name(r.get("name") or "")}
+        if key & seen:
+            continue
+        seen |= key
+        kept.append(r)
+    rows = kept
     for r in rows:
         s.add(ProspectPool(file_name=filename[:200], license_note=license_note[:500], row=r, kind=kind,
                            status="random" if kind == "random" else "queued", uploaded_by=user.id if user else None))

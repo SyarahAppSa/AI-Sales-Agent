@@ -389,3 +389,54 @@ def test_admin_list_delete_with_x_removes_assignments():
             assert s.get(AdminList, lid) is None
             assert not s.query(AdminListAssignment).filter_by(list_id=lid).count()
             assert not s.query(AdminListContact).filter_by(list_id=lid).count()
+
+
+def test_admin_lists_no_duplicate_numbers_or_records():
+    """لا تُضاف أرقام/سجلات مكررة: داخل الملف، وبين الملفات، ومع عملاء المنصة — وزر إزالة المكرر يحفظ المسند."""
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, AdminListAssignment, User
+
+    def xl(rows):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["اسم المؤسسة", "رقم الجوال"])
+        for r in rows:
+            ws.append(r)
+        b = io.BytesIO()
+        wb.save(b)
+        return b.getvalue()
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        r = adm.post("/admin-lists/upload", files={"file": ("dup1.xlsx", xl([["مؤسسة التكرار أ", "0557770001"],
+                                                                                ["مؤسسة التكرار أ نسخة", "557770001"],   # الرقم نفسه بلا صفر
+                                                                                ["مؤسسة التكرار ب", "0557770002"]]),
+                                                         "application/octet-stream")}, follow_redirects=True)
+        assert "أُضيف 2 عميل جديد" in r.text and "1 مكرر داخل الملف" in r.text
+        r = adm.post("/admin-lists/upload", files={"file": ("dup2.xlsx", xl([["مؤسسة التكرار ج", "+966557770002"],
+                                                                                ["مؤسسة التكرار د", "0557770003"]]),
+                                                         "application/octet-stream")}, follow_redirects=True)
+        assert "أُضيف 1 عميل جديد" in r.text and "1 موجود سابقًا" in r.text
+        r = adm.post("/admin-lists/upload", files={"file": ("dup3.xlsx", xl([["مؤسسة التكرار أ", "0557770001"]]),
+                                                         "application/octet-stream")}, follow_redirects=True)
+        assert "لم يُضف شيء" in r.text
+        with session_scope() as s:
+            names = [x.name for x in s.query(AdminList).all()]
+            assert "dup3.xlsx" not in names
+            # قوائم قديمة فيها تكرار (رُفعت قبل المنع): نحقنها مباشرة ثم ننظّفها
+            l1 = AdminList(name="old1.xlsx", headers=["اسم المؤسسة", "رقم الجوال"], rows=[["قديمة ١", "0558880001"], ["قديمة ٢", "0558880002"]])
+            l2 = AdminList(name="old2.xlsx", headers=["اسم المؤسسة", "رقم الجوال"], rows=[["قديمة ١", "0558880001"], ["قديمة ٣", "0558880003"],
+                                                                                     ["قديمة ٢", "0558880002"]])
+            s.add_all([l1, l2])
+            s.flush()
+            rid = s.query(User).filter(User.role == "rep").first().id
+            s.add(AdminListAssignment(list_id=l2.id, row_idx=2, owner_id=rid))          # مكرر لكنه مسند ← يبقى
+            s.add(AdminListAssignment(list_id=l2.id, row_idx=1, owner_id=rid))
+            l2id = l2.id
+        r = adm.post("/admin-lists/dedupe", follow_redirects=True)
+        assert "أُزيل 1 صف مكرر" in r.text
+        with session_scope() as s:
+            l2 = s.get(AdminList, l2id)
+            assert [x[0] for x in l2.rows] == ["قديمة ٣", "قديمة ٢"]
+            idx = {a.row_idx: l2.rows[a.row_idx][0] for a in s.query(AdminListAssignment).filter_by(list_id=l2id)}
+            assert sorted(idx.values()) == ["قديمة ٢", "قديمة ٣"]                          # الإسناد يتبع الصف الصحيح

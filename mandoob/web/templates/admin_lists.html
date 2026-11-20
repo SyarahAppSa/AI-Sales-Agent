@@ -7,7 +7,7 @@
   <div><label>ملاحظة (اختياري)</label><input name="note" placeholder="مثل: قائمة المؤسسات في الجبيل"></div>
   <button class="btn p">رفع وعرض</button></form></div>{% endif %}
 
-{% if lists %}<div class="card"><div class="head2"><h2>القوائم المرفوعة ({{ lists|length }})</h2>{% if cur %}<span class="small muted">المفتوحة الآن: <b translate="no">{{ cur.name }}</b></span>{% endif %}</div>
+{% if lists %}<div class="card"><div class="head2"><h2>القوائم المرفوعة ({{ lists|length }})</h2>{% if can_manage %}<form method="post" action="/admin-lists/dedupe" onsubmit="return confirm('إزالة الصفوف المكررة من كل القوائم؟ يبقى أول ظهور لكل عميل، ولا يُمس عميل مسند أو مسجّل عليه تواصل.')" style="flex:0 0 auto"><button class="btn sm">إزالة المكرر من القوائم الحالية</button></form>{% endif %}{% if cur %}<span class="small muted">المفتوحة الآن: <b translate="no">{{ cur.name }}</b></span>{% endif %}</div>
 <div class="tablewrap flist"><table><thead><tr><th>#</th><th>الملف</th><th>العملاء</th>{% if not staff_view %}<th>مسندون</th>{% endif %}<th>تم التواصل</th><th>تاريخ الرفع</th><th></th></tr></thead><tbody>
 {% for i, nm, sh, at, nt in lists %}{% set st_ = lstats.get(i, {}) %}<tr class="{{ 'cur' if cur and cur.id == i }}">
 <td class="muted small">{{ loop.index }}</td>

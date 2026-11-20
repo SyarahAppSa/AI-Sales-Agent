@@ -851,6 +851,117 @@ def portal_list_contact(lid: int, idx: int, request: Request, status: str = Form
     return _list_contact(request, s, user, lid, idx, status, note, bool(confirm), "/portal/lists")
 
 
+# ---------------------------------------------------------------- منع التكرار في القوائم الإدارية
+
+def _row_keys(headers, row, kinds) -> tuple[set[str], str]:
+    """(أرقام الصف بصيغة موحّدة، مفتاح الاسم الموحّد) — للمقارنة بين الملفات."""
+    phones = set()
+    for j, k in kinds.items():
+        if k == "phone" and j < len(row) and _cell(row[j]):
+            p = _phone_full(row[j])
+            if p and p.startswith("+"):
+                phones.add(p)
+    name_j = next((j for j, h in enumerate(headers) if any(w in str(h) for w in ("اسم", "الشركة", "المنشأة", "المؤسسة", "name", "Name"))
+                   and kinds.get(j) not in ("phone", "email", "url", "num", "date")), None)
+    if name_j is None:
+        name_j = next((j for j, k in kinds.items() if k in ("text", "long")), None)
+    nm = normalize_name(_cell(row[name_j])) if name_j is not None and name_j < len(row) else ""
+    return phones, nm
+
+
+def _known_keys(s, exclude_list: int | None = None) -> tuple[set[str], set[str]]:
+    """كل الأرقام والأسماء الموجودة: القوائم الإدارية، وعملاء المنصة، و«عملاء عشوائيون»."""
+    from ..models import AdminList, Contact, ProspectPool
+    from ..prospects import normalize_arabic_digits
+    phones, names = set(), set()
+    for al in s.scalars(select(AdminList).where(AdminList.id != (exclude_list or 0))):
+        kinds = _col_kinds(al.headers or [], al.rows or [])
+        for r in al.rows or []:
+            ps, nm = _row_keys(al.headers or [], r, kinds)
+            phones |= ps
+            if nm and not ps:
+                names.add(nm)
+    phones |= {v for (v,) in s.execute(select(Contact.value).where(Contact.kind == "phone"))}
+    for (row,) in s.execute(select(ProspectPool.row)):
+        for p in str((row or {}).get("phone") or "").split(";"):
+            if p.strip():
+                pp = _phone_full(normalize_arabic_digits(p))
+                if pp.startswith("+"):
+                    phones.add(pp)
+    return phones, names
+
+
+def _dedupe_rows(head, body, known_phones, known_names):
+    """يعيد (الصفوف الجديدة، مكرر داخل الملف، مكرر موجود سابقًا)."""
+    kinds = _col_kinds(head, body)
+    seen_p, seen_n, out = set(), set(), []
+    inside = before = 0
+    for r in body:
+        ps, nm = _row_keys(head, r, kinds)
+        if ps:
+            if ps & known_phones:
+                before += 1
+                continue
+            if ps & seen_p:
+                inside += 1
+                continue
+            seen_p |= ps
+        elif nm:
+            if nm in known_names:
+                before += 1
+                continue
+            if nm in seen_n:
+                inside += 1
+                continue
+            seen_n.add(nm)
+        else:
+            key = "|".join(_cell(c) for c in r)
+            if key in seen_n:
+                inside += 1
+                continue
+            seen_n.add(key)
+        out.append(r)
+    return out, inside, before
+
+
+@app.post("/admin-lists/dedupe")
+def admin_lists_dedupe(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """إزالة المكرر من القوائم الحالية: يبقى أول ظهور (الأقدم رفعًا)، ولا يُحذف صف مسند أو مسجّل عليه تواصل."""
+    from ..auth import audit
+    from ..models import AdminList, AdminListAssignment, AdminListContact
+    seen_p, seen_n = set(), set()
+    removed = 0
+    for al in s.scalars(select(AdminList).order_by(AdminList.id)):
+        kinds = _col_kinds(al.headers or [], al.rows or [])
+        keep_idx = {x.row_idx for x in s.scalars(select(AdminListAssignment).where(AdminListAssignment.list_id == al.id))} | \
+            {x.row_idx for x in s.scalars(select(AdminListContact).where(AdminListContact.list_id == al.id))}
+        new_rows, remap = [], {}
+        for i, r in enumerate(al.rows or []):
+            ps, nm = _row_keys(al.headers or [], r, kinds)
+            dup = bool(ps & seen_p) if ps else bool(nm and nm in seen_n)
+            if dup and i not in keep_idx:
+                removed += 1
+                continue
+            seen_p |= ps
+            if nm and not ps:
+                seen_n.add(nm)
+            remap[i] = len(new_rows)
+            new_rows.append(r)
+        if len(new_rows) != len(al.rows or []):
+            for model in (AdminListAssignment, AdminListContact):
+                for x in s.scalars(select(model).where(model.list_id == al.id)):
+                    x.row_idx = -1 - remap[x.row_idx]  # مؤقتًا لتجنّب تعارض القيد الفريد
+            s.flush()
+            for model in (AdminListAssignment, AdminListContact):
+                for x in s.scalars(select(model).where(model.list_id == al.id)):
+                    x.row_idx = -1 - x.row_idx
+            al.rows = new_rows
+    audit(s, user, "admin_list_dedupe", None, removed=removed)
+    flash(request, f"أُزيل {removed} صف مكرر من القوائم الحالية (بقي أول ظهور لكل عميل، ولم يُمس أي عميل مسند أو مسجّل عليه تواصل)."
+          if removed else "لا توجد صفوف مكررة في القوائم الحالية.")
+    return back("/admin-lists")
+
+
 @app.post("/admin-lists/upload")
 async def admin_lists_upload(request: Request, file: UploadFile = File(...), note: str = Form(""),
                              user: User = Depends(require_manager), s=Depends(get_db)):
@@ -876,21 +987,37 @@ async def admin_lists_upload(request: Request, file: UploadFile = File(...), not
         import io
         from openpyxl import load_workbook
         names = [ws.title for ws in load_workbook(io.BytesIO(data), read_only=True).worksheets]
+    known_p, known_n = _known_keys(s)
+    added = inside = before = 0
     for i, rows in enumerate(sheets):
         head, body = _split_table(rows)
         if not body:
             continue
+        body, d_in, d_before = _dedupe_rows(head, body, known_p, known_n)
+        inside, before = inside + d_in, before + d_before
+        if not body:
+            continue
+        kinds_ = _col_kinds(head, body)
+        for r in body:  # الأوراق التالية في الملف نفسه تقارن بما أُضيف من الأوراق السابقة
+            ps, nm = _row_keys(head, r, kinds_)
+            known_p |= ps
+            if nm and not ps:
+                known_n.add(nm)
+        added += len(body)
         al = AdminList(name=fname[:200], sheet=(names[i] if i < len(names) else "")[:100], headers=head, rows=body,
                        note=(note or "").strip()[:500], uploaded_by=user.id)
         s.add(al)
         s.flush()
         first = first or al.id
         made += 1
-    audit(s, user, "import", user, kind="admin_list", file=fname[:100], sheets=made)
+    audit(s, user, "import", user, kind="admin_list", file=fname[:100], sheets=made, added=added,
+          dup_inside=inside, dup_existing=before)
+    dup_msg = (f" وتُرك {inside + before} صف مكرر ({before} موجود سابقًا في القوائم أو عملاء المنصة، و{inside} مكرر داخل الملف)."
+               if inside or before else " لا يوجد تكرار.")
     if not made:
-        flash(request, f"«{fname}»: الملف فارغ أو لم أجد فيه جدولًا.", "err")
+        flash(request, f"«{fname}»: لم يُضف شيء — كل الصفوف مكررة أو الملف فارغ." + (dup_msg if inside or before else ""), "err")
         return back("/admin-lists")
-    flash(request, f"«{fname}»: رُفع {made} {'ورقة' if made == 1 else 'أوراق'} — تظهر القائمة كما هي بكل أعمدتها.")
+    flash(request, f"«{fname}»: أُضيف {added} عميل جديد في {made} {'ورقة' if made == 1 else 'أوراق'}." + dup_msg)
     return back(f"/admin-lists?lid={first}")
 
 
