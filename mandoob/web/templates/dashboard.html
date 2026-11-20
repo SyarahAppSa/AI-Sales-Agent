@@ -39,7 +39,7 @@
   <div class="head2"><h2>أحدث العملاء</h2><a class="btn sm" href="/today">عملاء اليوم</a></div>
   {% for c in recent %}<div class="list-row">
     <div style="min-width:0"><a class="n" href="/companies/{{ c.id }}">{{ c.name }}</a>
-      <div class="meta">{{ c.activity or '—' }} · {{ c.city or '—' }} · {{ fmt(c.first_found_at) }}</div></div>
+      <div class="meta">{{ (c.activity or '—')|truncate(48, True, '…') }} · {{ c.city or '—' }} · {{ fmt(c.first_found_at) }}</div></div>
     <div style="flex:0 0 auto;text-align:left">{% if c.data_status == 'complete' %}<span class="pill ok">مكتمل</span>{% else %}<span class="pill warn">قيد الاستكمال</span>{% endif %}
       <div class="meta">{{ c.owner.name if c.owner else 'غير مسند' }}</div></div>
   </div>{% else %}<p class="muted">لا يوجد عملاء بعد. اضغط «البحث عن عملاء» لبدء أول دفعة.</p>{% endfor %}
