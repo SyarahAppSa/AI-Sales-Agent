@@ -591,33 +591,95 @@ def _phone_full(v: str) -> str:
 templates.env.globals.update(phone_full=_phone_full)
 
 
-@app.get("/admin-lists", response_class=HTMLResponse)
-def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1,
-                user: User = Depends(require_manager), s=Depends(get_db)):
-    from ..models import AdminList
+LIST_STATUS = {"replied": "تم التواصل — رد", "no_answer": "تم التواصل — لم يرد", "wrong_number": "رقم خاطئ",
+               "do_not_contact": "طلب عدم التواصل"}
+
+
+def _admin_lists_view(request, user, s, lid, q, page, cstate, base):
+    from ..models import AdminList, AdminListContact
     lists = list(s.execute(select(AdminList.id, AdminList.name, AdminList.sheet, AdminList.created_at, AdminList.note)
                            .order_by(AdminList.id.desc())))
     cur = s.get(AdminList, lid) if lid else (s.get(AdminList, lists[0][0]) if lists else None)
-    rows, total = [], 0
-    phone_cols = set()
-    kinds: dict[int, str] = {}
+    rows, total, kinds, cmap, counts = [], 0, {}, {}, {"all": 0, "none": 0, "done": 0, "replied": 0}
     if cur is not None:
         kinds = _col_kinds(cur.headers or [], cur.rows or [])
-        data = cur.rows or []
+        cmap = {x.row_idx: x for x in s.scalars(select(AdminListContact).where(AdminListContact.list_id == cur.id))}
+        data = list(enumerate(cur.rows or []))
+        counts = {"all": len(data), "done": len(cmap), "none": len(data) - len(cmap),
+                  "replied": sum(1 for x in cmap.values() if x.status == "replied")}
         if q:
             ql = q.strip().lower()
-            data = [r for r in data if any(ql in str(c).lower() for c in r)]
+            data = [(i, r) for i, r in data if any(ql in str(c).lower() for c in r)]
+        if cstate == "none":
+            data = [(i, r) for i, r in data if i not in cmap]
+        elif cstate == "done":
+            data = [(i, r) for i, r in data if i in cmap]
+        elif cstate in LIST_STATUS:
+            data = [(i, r) for i, r in data if i in cmap and cmap[i].status == cstate]
         total = len(data)
         rows = data[(page - 1) * 200: page * 200]
-        from ..prospects import PHONE_RX, normalize_arabic_digits
-        for j, h in enumerate(cur.headers or []):
-            sample = [r[j] for r in (cur.rows or [])[:100] if j < len(r) and r[j]]
-            if sample and sum(1 for v in sample if PHONE_RX.fullmatch(normalize_arabic_digits(v).strip() or "x")) >= len(sample) / 2:
-                phone_cols.add(j)
     sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
     skip_first = bool(cur and cur.headers and str(cur.headers[0]).strip() in ("م", "#", "No", "no", "رقم", "ت", "مسلسل"))
     return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
-                  sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first)
+                  sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first, cmap=cmap, cstate=cstate, counts=counts,
+                  LIST_STATUS=LIST_STATUS, base=base, can_manage=user.role in ("admin", "manager"))
+
+
+@app.get("/admin-lists", response_class=HTMLResponse)
+def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "",
+                user: User = Depends(require_manager), s=Depends(get_db)):
+    return _admin_lists_view(request, user, s, lid, q, page, cstate, "/admin-lists")
+
+
+@app.get("/portal/lists", response_class=HTMLResponse)
+def portal_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "",
+                 user: User = Depends(staff_user), s=Depends(get_db)):
+    """بوابة الموظفين: نفس القائمة الإدارية مع تسجيل التواصل (بلا رفع أو حذف)."""
+    return _admin_lists_view(request, user, s, lid, q, page, cstate, "/portal/lists")
+
+
+def _list_contact(request, s, user, lid, idx, status, note, confirm, base):
+    from ..models import AdminList, AdminListContact
+    al = s.get(AdminList, lid)
+    if al is None or not (0 <= idx < len(al.rows or [])):
+        raise HTTPException(404)
+    ret = _safe_back(request, f"{base}?lid={lid}")
+    x = s.scalar(select(AdminListContact).where(AdminListContact.list_id == lid, AdminListContact.row_idx == idx))
+    name_col = next((j for j, k in enumerate(al.headers or []) if "اسم" in str(k) or "name" in str(k).lower()), 1 if len(al.rows[idx]) > 1 else 0)
+    who = _cell(al.rows[idx][name_col]) if name_col < len(al.rows[idx]) else f"صف {idx + 1}"
+    if status == "reset":
+        if x is not None:
+            s.delete(x)
+            flash(request, f"أُلغيت حالة التواصل لـ «{who}».")
+        return back(ret)
+    if status not in LIST_STATUS:
+        flash(request, "اختر نتيجة التواصل.", "err")
+        return back(ret)
+    if x is not None and x.by_id != user.id and not confirm:
+        flash(request, f"تم التواصل مع «{who}» بواسطة {x.by_name} في {fmt(x.at)} ({LIST_STATUS.get(x.status)}). "
+                       "لا تكرر الاتصال — وإن كان لديك تحديث جديد فاضغط «حفظ» مرة أخرى مع تأكيد.", "err")
+        return back(ret)
+    if x is None:
+        x = AdminListContact(list_id=lid, row_idx=idx, history=[])
+        s.add(x)
+    hist = list(x.history or [])
+    if x.status:
+        hist.append({"status": x.status, "note": x.note, "by": x.by_name, "at": x.at.isoformat(timespec="minutes") if x.at else ""})
+    x.status, x.note, x.by_id, x.by_name, x.at, x.history = status, (note or "").strip()[:500], user.id, user.name, now_utc(), hist[-20:]
+    flash(request, f"سُجّل «{LIST_STATUS[status]}» لـ «{who}» — يظهر لكل الموظفين الآن.")
+    return back(ret)
+
+
+@app.post("/admin-lists/{lid}/row/{idx}/contact")
+def admin_list_contact(lid: int, idx: int, request: Request, status: str = Form(""), note: str = Form(""),
+                       confirm: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db)):
+    return _list_contact(request, s, user, lid, idx, status, note, bool(confirm), "/admin-lists")
+
+
+@app.post("/portal/lists/{lid}/row/{idx}/contact")
+def portal_list_contact(lid: int, idx: int, request: Request, status: str = Form(""), note: str = Form(""),
+                        confirm: str = Form(""), user: User = Depends(staff_user), s=Depends(get_db)):
+    return _list_contact(request, s, user, lid, idx, status, note, bool(confirm), "/portal/lists")
 
 
 @app.post("/admin-lists/upload")
@@ -698,14 +760,28 @@ def admin_lists_verify(lid: int, request: Request, user: User = Depends(require_
     return back(f"/admin-lists?lid={lid}")
 
 
+@app.get("/portal/lists/{lid}.xlsx")
+def portal_lists_xlsx(lid: int, user: User = Depends(staff_user), s=Depends(get_db)):
+    _require(user, "export")
+    return admin_lists_xlsx(lid, user, s)
+
+
 @app.get("/admin-lists/{lid}.xlsx")
 def admin_lists_xlsx(lid: int, user: User = Depends(require_manager), s=Depends(get_db)):
     from ..models import AdminList
     from ..xlsx import response, workbook
+    from ..models import AdminListContact
     al = s.get(AdminList, lid)
     if al is None:
         raise HTTPException(404)
-    return response(workbook([((al.sheet or "القائمة")[:31], al.headers or [], al.rows or [])]), f"admin-list-{lid}.xlsx")
+    cmap = {x.row_idx: x for x in s.scalars(select(AdminListContact).where(AdminListContact.list_id == lid))}
+    rows = []
+    for i, r in enumerate(al.rows or []):
+        x = cmap.get(i)
+        rows.append([_cell(c) for c in r] + (["نعم", "رد" if x.status == "replied" else ("لم يرد" if x.status == "no_answer" else LIST_STATUS.get(x.status, "")),
+                                              x.by_name, fmt(x.at), x.note] if x else ["لا", "", "", "", ""]))
+    head = list(al.headers or []) + ["تم التواصل؟", "هل رد؟", "الموظف", "وقت التواصل", "ملاحظة"]
+    return response(workbook([((al.sheet or "القائمة")[:31], head, rows)]), f"admin-list-{lid}.xlsx")
 
 
 # ---------------------------------------------------------------- عملاء عشوائيون (قوائم غير متحقق منها)

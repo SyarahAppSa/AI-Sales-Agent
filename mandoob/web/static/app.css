@@ -195,3 +195,5 @@ td.telcol .small{white-space:nowrap}
 .alist tbody tr:hover td{background:var(--brand-hover)}
 .alist td.n,.alist th.n{color:var(--muted);width:1%;text-align:center}
 .alist .btn.sm{padding:2px 10px;font-size:12px}
+.alist tr.done td{background:var(--ok-soft)!important}.alist tr.done:hover td{background:#dcefe2!important}
+.alist th.cst{background:var(--brand-soft);color:var(--brand)}.alist td.cst{white-space:nowrap}

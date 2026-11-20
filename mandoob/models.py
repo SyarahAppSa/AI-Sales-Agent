@@ -749,3 +749,18 @@ class AdminList(Base):
     uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     sent_to_verify_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class AdminListContact(Base):
+    """حالة التواصل لكل صف في «قائمة عملاء إدارية» — مشتركة بين الموظفين حتى لا يُتصل بالعميل مرتين."""
+    __tablename__ = "admin_list_contacts"
+    __table_args__ = (UniqueConstraint("list_id", "row_idx", name="uq_admin_list_row"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    list_id: Mapped[int] = mapped_column(ForeignKey("admin_lists.id"), index=True)
+    row_idx: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20))  # replied / no_answer / wrong_number / do_not_contact
+    note: Mapped[str] = mapped_column(String(500), default="")
+    by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    by_name: Mapped[str] = mapped_column(String(120), default="")
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    history: Mapped[list] = mapped_column(JSON, default=list)  # كل التحديثات السابقة (لا يُمسح شيء)

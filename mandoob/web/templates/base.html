@@ -23,7 +23,8 @@
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
       ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]),
 ] %}{% else %}{% set groups = [
-  ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات')]),
+  ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات'),
+      ('/portal/lists', 'قائمة عملاء إدارية')]),
   ('rep', 'file', 'التقارير', None, ([('/portal/reports', 'تقرير مبيعاتي')] if (user.perms or {}).get('see_reports') else [])),
 ] %}{% endif %}
 {% macro is_on(href) -%}{{ '1' if (path == href if href in ('/', '/portal') else (path == href or path.startswith(href + '/'))) and not (href == '/offers' and path.startswith('/offers-report')) }}{%- endmacro %}

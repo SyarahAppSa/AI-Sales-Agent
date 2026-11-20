@@ -291,5 +291,22 @@
 "(أُرسلت)": "(sent)",
 "حذف": "Delete",
 "لا توجد قوائم بعد. ارفع ملف Excel من الأعلى.": "No lists yet. Upload an Excel file above.",
-"مثل: قائمة المؤسسات في الجبيل": "e.g. Jubail establishments list"
+"مثل: قائمة المؤسسات في الجبيل": "e.g. Jubail establishments list",
+"تم التواصل؟": "Contacted?",
+"هل رد؟": "Answered?",
+"ملاحظة": "Note",
+"تحديث التواصل": "Update contact",
+"نعم": "Yes",
+"لا": "No",
+"رد": "Answered",
+"لم يرد": "No answer",
+"اختر النتيجة…": "Choose result…",
+"إلغاء (لم يتم التواصل)": "Reset (not contacted)",
+"تم التواصل — رد": "Contacted — answered",
+"تم التواصل — لم يرد": "Contacted — no answer",
+"رقم خاطئ": "Wrong number",
+"الكل ({x})": "All ({x})",
+"لم يُتواصل معهم ({x})": "Not contacted ({x})",
+"تم التواصل ({x})": "Contacted ({x})",
+"ردّوا ({x})": "Answered ({x})"
 }

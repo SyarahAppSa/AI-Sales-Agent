@@ -271,3 +271,47 @@ def test_admin_list_upload_shows_excel_as_is():
         with session_scope() as s:
             assert s.query(ProspectPool).count() == before + 2
             assert s.get(AdminList, lid) is not None          # القائمة الأصلية باقية
+
+
+def test_admin_list_contact_status_shared_and_no_double_call():
+    """«تم التواصل؟/هل رد؟» لكل صف: يراه الموظفون فورًا، والموظف الثاني يُنبَّه قبل تكرار الاتصال، والحالة في Excel."""
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, AdminListContact, User
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["اسم المؤسسة", "رقم الجوال"])
+    ws.append(["مؤسسة التواصل المشترك", "0551119988"])
+    ws.append(["مؤسسة لم يتصل بها أحد", "0552228877"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        adm.post("/admin-lists/upload", files={"file": ("tw.xlsx", buf.getvalue(), "application/octet-stream")})
+        with session_scope() as s:
+            lid = s.query(AdminList).order_by(AdminList.id.desc()).first().id
+        adm.post(f"/admin-lists/{lid}/row/0/contact", data={"status": "no_answer", "note": "اتصلت الساعة ١٠"},
+                 headers={"referer": f"http://testserver/admin-lists?lid={lid}"})
+        html = adm.get(f"/admin-lists?lid={lid}").text
+        assert "لم يرد" in html and "اتصلت الساعة ١٠" in html and "تم التواصل (1)" in html and "لم يُتواصل معهم (1)" in html
+        assert "مؤسسة التواصل المشترك" not in adm.get(f"/admin-lists?lid={lid}&cstate=none").text
+        rows = list(load_workbook(io.BytesIO(adm.get(f"/admin-lists/{lid}.xlsx").content)).active.iter_rows(values_only=True))
+        assert rows[0][-5:] == ("تم التواصل؟", "هل رد؟", "الموظف", "وقت التواصل", "ملاحظة")
+        assert rows[1][-5] == "نعم" and rows[1][-4] == "لم يرد" and rows[2][-5] == "لا"
+    # موظف آخر (بوابة الموظفين) يرى الحالة ويُمنع من التكرار دون تأكيد
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        adm.post("/staff/add", data={"name": "موظف القوائم", "email": "lists.rep@syarahapp.test", "team": "", "profile": "sales_rep"})
+    with TestClient(app) as rep_:
+        otp_login(rep_, "lists.rep@syarahapp.test", "portal")
+        page = rep_.get(f"/portal/lists?lid={lid}").text
+        assert "مؤسسة التواصل المشترك" in page and "لم يرد" in page
+        r = rep_.post(f"/portal/lists/{lid}/row/0/contact", data={"status": "replied"},
+                      headers={"referer": f"http://testserver/portal/lists?lid={lid}"}, follow_redirects=True)
+        assert "لا تكرر الاتصال" in r.text
+        with session_scope() as s:
+            assert s.query(AdminListContact).filter_by(list_id=lid, row_idx=0).one().status == "no_answer"
+        rep_.post(f"/portal/lists/{lid}/row/0/contact", data={"status": "replied", "confirm": "1"})
+        with session_scope() as s:
+            x = s.query(AdminListContact).filter_by(list_id=lid, row_idx=0).one()
+            assert x.status == "replied" and x.by_name == "موظف القوائم" and len(x.history) == 1
