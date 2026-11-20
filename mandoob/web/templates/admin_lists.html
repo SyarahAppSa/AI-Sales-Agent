@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}قائمة عملاء إدارية — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+<div class="dash-head"><div><h1>قائمة عملاء إدارية</h1><div class="date">ارفع ملف Excel من جهازك فيظهر كما هو بكل أعمدته — دون تحقق أو تعديل.</div></div>
+{% if cur %}<div class="row" style="flex:0 0 auto"><a class="btn p" href="/admin-lists/{{ cur.id }}.xlsx">تنزيل Excel</a></div>{% endif %}</div>
+
+<div class="card"><form method="post" action="/admin-lists/upload" enctype="multipart/form-data" class="row" style="align-items:flex-end">
+  <div><label>ملف Excel أو CSV من جهازك</label><input type="file" name="file" accept=".xlsx,.xls,.csv" required></div>
+  <div><label>ملاحظة (اختياري)</label><input name="note" placeholder="مثل: قائمة المؤسسات في الجبيل"></div>
+  <button class="btn p">رفع وعرض</button></form></div>
+
+{% if lists %}<div class="card"><h2>القوائم المرفوعة ({{ lists|length }})</h2>
+<div class="row" style="gap:8px">{% for i, nm, sh, at, nt in lists %}<a class="btn sm {{ 'p' if cur and cur.id == i }}" href="/admin-lists?lid={{ i }}" style="flex:0 0 auto" title="{{ nt }}">{{ nm }}{% if sh %} — {{ sh }}{% endif %} ({{ sizes[i] }})</a>{% endfor %}</div></div>{% endif %}
+
+{% if cur %}<div class="card">
+<div class="head2"><h2><span translate="no">{{ cur.name }}</span>{% if cur.sheet %} — {{ cur.sheet }}{% endif %} <span class="muted small">({{ total }} صف)</span></h2>
+<div class="row" style="flex:0 0 auto">
+<form method="get" class="row" style="flex:0 0 auto"><input type="hidden" name="lid" value="{{ cur.id }}"><input name="q" value="{{ q }}" placeholder="بحث في القائمة" style="width:200px"><button class="btn sm">بحث</button></form>
+<form method="post" action="/admin-lists/{{ cur.id }}/verify" style="flex:0 0 auto"><button class="btn sm" title="ينسخ الصفوف إلى طابور التحقق؛ القائمة تبقى كما هي">إرسال للتحقق{% if cur.sent_to_verify_at %} (أُرسلت){% endif %}</button></form>
+<form method="post" action="/admin-lists/{{ cur.id }}/delete" style="flex:0 0 auto" onsubmit="return confirm('حذف هذه القائمة؟')"><button class="btn sm d">حذف</button></form></div></div>
+{% if cur.note %}<p class="small muted" style="margin:0 0 8px">{{ cur.note }} — رُفعت {{ fmt(cur.created_at) }}</p>{% endif %}
+<div class="tablewrap"><table translate="no">
+<tr><th>#</th>{% for h in cur.headers %}<th>{{ h }}</th>{% endfor %}</tr>
+{% for r in rows %}<tr><td class="muted small">{{ (page - 1) * 200 + loop.index }}</td>{% for c in r %}<td class="small {{ 'telcol' if loop.index0 in phone_cols }}">{% if loop.index0 in phone_cols and c %}<span class="tel" dir="ltr">{{ c }}</span>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
+{% else %}<tr><td colspan="{{ (cur.headers|length) + 1 }}" class="muted">لا توجد صفوف{% if q %} مطابقة للبحث{% endif %}.</td></tr>{% endfor %}
+</table></div>
+<div class="row" style="margin-top:10px">{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="/admin-lists?lid={{ cur.id }}&q={{ q }}&page={{ page - 1 }}">السابق</a>{% endif %}
+{% if page * 200 < total %}<a class="btn sm" style="flex:0 0 auto" href="/admin-lists?lid={{ cur.id }}&q={{ q }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>
+</div>{% elif not lists %}<div class="card"><p class="muted">لا توجد قوائم بعد. ارفع ملف Excel من الأعلى.</p></div>{% endif %}
+{% endblock %}

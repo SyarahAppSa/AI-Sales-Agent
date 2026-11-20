@@ -239,3 +239,35 @@ def test_upload_parser_robust_formats():
     assert rows and rows[0]["name"] == "محل الأمانة" and rows[0]["phone"] == "0114443322"
     with pytest.raises(P.UploadError):
         P.parse_upload("list.numbers", b"xxxx")
+
+
+def test_admin_list_upload_shows_excel_as_is():
+    import io
+    from openpyxl import Workbook
+    from mandoob.models import AdminList, ProspectPool
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "المؤسسات"
+    ws.append(["قائمة المؤسسات في الجبيل"])
+    ws.append(["اسم المؤسسة", "النشاط", "رقم الجوال", "ملاحظات الإدارة"])
+    ws.append(["مؤسسة الجبيل الإدارية للتجربة", "مقاولات", "0559871234", "عميل مهم"])
+    ws.append(["مؤسسة الساحل الإدارية للتجربة", "نقل", "0137771122", ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        r = cl.post("/admin-lists/upload", files={"file": ("جبيل.xlsx", buf.getvalue(), "application/vnd.ms-excel")},
+                    follow_redirects=True)
+        html = r.text
+        assert "قائمة عملاء إدارية" in html and "مؤسسة الجبيل الإدارية للتجربة" in html and "ملاحظات الإدارة" in html
+        assert "عميل مهم" in html and "0559871234" in html and "(2 صف)" in html
+        assert "مؤسسة الساحل" not in cl.get(f"/admin-lists?q=الجبيل").text.split("<table")[1]
+        with session_scope() as s:
+            lid = s.query(AdminList).order_by(AdminList.id.desc()).first().id
+            before = s.query(ProspectPool).count()
+        rows = list(load_workbook(io.BytesIO(cl.get(f"/admin-lists/{lid}.xlsx").content)).active.iter_rows(values_only=True))
+        assert any("مؤسسة الجبيل الإدارية للتجربة" in [str(x) for x in r_] for r_ in rows)
+        cl.post(f"/admin-lists/{lid}/verify")
+        with session_scope() as s:
+            assert s.query(ProspectPool).count() == before + 2
+            assert s.get(AdminList, lid) is not None          # القائمة الأصلية باقية

@@ -521,6 +521,134 @@ async def prospects_import(request: Request, file: UploadFile = File(...), licen
     return back("/prospects")
 
 
+# ---------------------------------------------------------------- قائمة عملاء إدارية (ملف Excel كما هو)
+
+def _split_table(rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
+    """صف العناوين = أول صف فيه ٢ خلايا أو أكثر غير فارغة (بعد أسطر العنوان)، وما بعده البيانات."""
+    rows = [r for r in rows if any(str(c).strip() for c in r)]
+    for i, r in enumerate(rows[:15]):
+        if sum(1 for c in r if str(c).strip()) >= 2:
+            width = max(len(x) for x in rows)
+            head = [str(c).strip() or f"عمود {j + 1}" for j, c in enumerate(list(r) + [""] * (width - len(r)))]
+            body = [[str(c).strip() for c in list(x) + [""] * (width - len(x))] for x in rows[i + 1:]]
+            return head, body
+    return [], []
+
+
+@app.get("/admin-lists", response_class=HTMLResponse)
+def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1,
+                user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import AdminList
+    lists = list(s.execute(select(AdminList.id, AdminList.name, AdminList.sheet, AdminList.created_at, AdminList.note)
+                           .order_by(AdminList.id.desc())))
+    cur = s.get(AdminList, lid) if lid else (s.get(AdminList, lists[0][0]) if lists else None)
+    rows, total = [], 0
+    phone_cols = set()
+    if cur is not None:
+        data = cur.rows or []
+        if q:
+            ql = q.strip().lower()
+            data = [r for r in data if any(ql in str(c).lower() for c in r)]
+        total = len(data)
+        rows = data[(page - 1) * 200: page * 200]
+        from ..prospects import PHONE_RX, normalize_arabic_digits
+        for j, h in enumerate(cur.headers or []):
+            sample = [r[j] for r in (cur.rows or [])[:100] if j < len(r) and r[j]]
+            if sample and sum(1 for v in sample if PHONE_RX.fullmatch(normalize_arabic_digits(v).strip() or "x")) >= len(sample) / 2:
+                phone_cols.add(j)
+    sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
+    return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
+                  sizes=sizes, phone_cols=phone_cols)
+
+
+@app.post("/admin-lists/upload")
+async def admin_lists_upload(request: Request, file: UploadFile = File(...), note: str = Form(""),
+                             user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import prospects as P
+    from ..auth import audit
+    from ..models import AdminList
+    fname = file.filename or "list.xlsx"
+    data = await file.read()
+    if len(data) > 40 * 1024 * 1024:
+        flash(request, "الملف أكبر من ٤٠ ميغابايت — قسّمه.", "err")
+        return back("/admin-lists")
+    try:
+        sheets = P._sheets(fname, data)
+    except P.UploadError as e:
+        flash(request, f"«{fname}»: {e}", "err")
+        return back("/admin-lists")
+    except Exception as e:  # noqa: BLE001
+        flash(request, f"«{fname}»: تعذّرت قراءة الملف ({type(e).__name__}). احفظه بصيغة xlsx وأعد رفعه.", "err")
+        return back("/admin-lists")
+    made, first = 0, None
+    names = []
+    if fname.lower().endswith((".xlsx", ".xlsm")) or data[:2] == b"PK":
+        import io
+        from openpyxl import load_workbook
+        names = [ws.title for ws in load_workbook(io.BytesIO(data), read_only=True).worksheets]
+    for i, rows in enumerate(sheets):
+        head, body = _split_table(rows)
+        if not body:
+            continue
+        al = AdminList(name=fname[:200], sheet=(names[i] if i < len(names) else "")[:100], headers=head, rows=body,
+                       note=(note or "").strip()[:500], uploaded_by=user.id)
+        s.add(al)
+        s.flush()
+        first = first or al.id
+        made += 1
+    audit(s, user, "import", user, kind="admin_list", file=fname[:100], sheets=made)
+    if not made:
+        flash(request, f"«{fname}»: الملف فارغ أو لم أجد فيه جدولًا.", "err")
+        return back("/admin-lists")
+    flash(request, f"«{fname}»: رُفع {made} {'ورقة' if made == 1 else 'أوراق'} — تظهر القائمة كما هي بكل أعمدتها.")
+    return back(f"/admin-lists?lid={first}")
+
+
+@app.post("/admin-lists/{lid}/delete")
+def admin_lists_delete(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import AdminList
+    al = s.get(AdminList, lid)
+    if al:
+        s.delete(al)
+        flash(request, f"حُذفت القائمة «{al.name}».")
+    return back("/admin-lists")
+
+
+@app.post("/admin-lists/{lid}/verify")
+def admin_lists_verify(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """اختياري: إرسال صفوف القائمة إلى «عملاء عشوائيون» ثم التحقق — القائمة الأصلية تبقى كما هي."""
+    from .. import prospects as P
+    from ..models import AdminList, ProspectPool
+    al = s.get(AdminList, lid)
+    if al is None:
+        raise HTTPException(404)
+    m = P._map_headers(al.headers or [])
+    if "name" not in m:
+        m = P._guess_columns(al.rows or [])
+    n = 0
+    for r in al.rows or []:
+        get = lambda k: (r[m[k]] if k in m and m[k] < len(r) else "")  # noqa: E731
+        if not get("name"):
+            continue
+        s.add(ProspectPool(file_name=al.name[:200], license_note=f"قائمة عملاء إدارية #{al.id}", kind="random",
+                           status="queued", row={k: get(k) for k in P.COLS}, uploaded_by=user.id))
+        n += 1
+    al.sent_to_verify_at = now_utc()
+    flash(request, f"أُرسل {n} صفًا للتحقق — تظهر نتيجتها في «العملاء المحتملون». القائمة الإدارية بقيت كما هي."
+          if n else "لم أتعرف على عمود الاسم في هذه القائمة.", "ok" if n else "err")
+    return back(f"/admin-lists?lid={lid}")
+
+
+@app.get("/admin-lists/{lid}.xlsx")
+def admin_lists_xlsx(lid: int, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import AdminList
+    from ..xlsx import response, workbook
+    al = s.get(AdminList, lid)
+    if al is None:
+        raise HTTPException(404)
+    return response(workbook([((al.sheet or "القائمة")[:31], al.headers or [], al.rows or [])]), f"admin-list-{lid}.xlsx")
+
+
 # ---------------------------------------------------------------- عملاء عشوائيون (قوائم غير متحقق منها)
 
 def _source_note(user, kind: str, url: str, note: str) -> str:

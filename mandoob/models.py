@@ -735,3 +735,17 @@ class CompanyOfficial(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AdminList(Base):
+    """«قائمة عملاء إدارية»: ملف Excel يرفعه المدير من جهازه ويُعرض كما هو (كل الأعمدة)، دون تحقق أو تعديل."""
+    __tablename__ = "admin_lists"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    sheet: Mapped[str] = mapped_column(String(100), default="")
+    headers: Mapped[list] = mapped_column(JSON, default=list)
+    rows: Mapped[list] = mapped_column(JSON, default=list)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_to_verify_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

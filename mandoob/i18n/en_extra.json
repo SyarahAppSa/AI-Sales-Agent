@@ -277,5 +277,19 @@
 "المصدر: رابط": "Source: link",
 "ملاحظة (اختياري)": "Note (optional)",
 "ملاحظة (اختياري): المزوّد أو رقم العقد": "Note (optional): provider or contract no.",
-"مثل: قائمة المقاولين في الدمام": "e.g. Dammam contractors list"
+"مثل: قائمة المقاولين في الدمام": "e.g. Dammam contractors list",
+"قائمة عملاء إدارية": "Admin customer list",
+"قائمة عملاء إدارية — المندوب الذكي لسيارة اب": "Admin customer list — Syarah App Smart Sales Agent",
+"ارفع ملف Excel من جهازك فيظهر كما هو بكل أعمدته — دون تحقق أو تعديل.": "Upload an Excel file from your device to see it as is, with all columns — no verification or changes.",
+"ملف Excel أو CSV من جهازك": "Excel or CSV file from your device",
+"رفع وعرض": "Upload and view",
+"القوائم المرفوعة ({x})": "Uploaded lists ({x})",
+"({x} صف)": "({x} rows)",
+"بحث في القائمة": "Search the list",
+"بحث": "Search",
+"إرسال للتحقق": "Send for verification",
+"(أُرسلت)": "(sent)",
+"حذف": "Delete",
+"لا توجد قوائم بعد. ارفع ملف Excel من الأعلى.": "No lists yet. Upload an Excel file above.",
+"مثل: قائمة المؤسسات في الجبيل": "e.g. Jubail establishments list"
 }
