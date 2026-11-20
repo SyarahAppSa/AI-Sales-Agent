@@ -434,6 +434,11 @@ class MailAccount(Base):
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # أول إرسال ناجح فعلًا
     sync_cursor: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # SMTP من صفحة «ربط بريد الشركة»: كلمة السر مشفّرة بمفتاح الخادم ولا تُعرض أبدًا
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(120))
+    smtp_port: Mapped[Optional[int]] = mapped_column(Integer)
+    smtp_user: Mapped[Optional[str]] = mapped_column(String(200))
+    smtp_password_enc: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class OutboundMessage(Base):

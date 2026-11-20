@@ -76,7 +76,8 @@ def provider_configured(acct) -> bool:
     if acct.provider == "google":
         return bool(settings.google_client_id and settings.google_client_secret and settings.google_refresh_token)
     if acct.provider == "smtp":
-        return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+        return bool(getattr(acct, "smtp_password_enc", None) and acct.smtp_host) or \
+            bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
     return True
 
 

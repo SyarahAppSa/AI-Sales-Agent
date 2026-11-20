@@ -6,6 +6,15 @@
 <b>{{ {'microsoft365':'Microsoft 365','google':'Google Workspace','smtp':'SMTP','sandbox':'صندوق تجربة محلي'}.get(a.provider, a.provider) }}</b> {% if a.active %}<span class="pill ok">نشط</span>{% else %}<span class="pill">غير نشط</span>{% endif %}
 <div class="small">المرسل: {{ a.sender_name }} &lt;<span class="ltr">{{ a.sender_address }}</span>&gt; — الردود: <span class="ltr">{{ a.reply_mailbox or a.sender_address }}</span></div>
 <div class="small muted">آخر مزامنة: {{ fmt(a.last_sync_at) if a.last_sync_at else 'لم تتم' }}</div></div>{% else %}<p class="muted">لم يُربط بريد بعد.</p>{% endfor %}
+{% for a in accounts if a.active and a.provider == 'smtp' %}<form method="post" action="/mail/smtp" style="margin-top:12px;border:1px solid var(--line);border-radius:14px;padding:14px">
+<h2 style="margin-bottom:6px">كلمة سر البريد</h2>
+{% if a.smtp_password_enc %}<p class="small"><span class="pill ok">محفوظة ومشفّرة</span> الخادم: <span class="ltr">{{ a.smtp_host }}</span> — لتغييرها اكتب الجديدة.</p>
+{% else %}<p class="small muted" style="margin:0 0 8px">اكتب كلمة سر بريد <span class="ltr">{{ a.sender_address }}</span> (أو «كلمة مرور التطبيق» من Zoho). تُختبر بالدخول دون إرسال، ثم تُحفظ مشفّرة ولا تظهر لأحد.</p>{% endif %}
+<div class="field"><label>كلمة السر</label><input name="password" type="password" required autocomplete="new-password" class="ltr" style="text-align:left"></div>
+<details class="small"><summary>إعدادات متقدمة (اختياري)</summary>
+<div class="row"><div><label>اسم المستخدم</label><input name="smtp_user" placeholder="{{ a.sender_address }}" class="ltr"></div>
+<div><label>خادم SMTP</label><input name="smtp_host" placeholder="يُكتشف تلقائيًا (Zoho)" class="ltr"></div></div></details>
+<button class="btn p" style="margin-top:8px">حفظ واختبار الاتصال</button></form>{% endfor %}
 {% if accounts %}<form method="post" action="/mail/test" style="margin-top:12px">
 <h2 style="margin-bottom:8px">رسالة تجربة</h2>
 <div class="field"><label>إلى (البريد الذي ستصله الرسالة)</label><input name="to" value="{{ user.email }}" class="ltr" style="text-align:left"></div>

@@ -12,23 +12,55 @@ from ..config import settings
 from .base import OutgoingEmail, SendResult, build_mime
 
 
+ZOHO_HOSTS = ["smtp.zoho.sa", "smtppro.zoho.sa", "smtppro.zoho.com", "smtp.zoho.com", "smtppro.zoho.eu", "smtp.zoho.eu"]
+
+
+def _connect(host: str, port: int):
+    ctx = ssl.create_default_context()
+    if port == 465:
+        return smtplib.SMTP_SSL(host, 465, context=ctx, timeout=20)
+    srv = smtplib.SMTP(host, port, timeout=20)
+    srv.starttls(context=ctx)
+    return srv
+
+
+def check_login(user: str, password: str, host: str | None = None) -> tuple[str | None, str]:
+    """يجرّب الدخول (دون إرسال) على الخادم المحدد أو خوادم Zoho المعروفة. يعيد (الخادم الناجح، سبب الفشل)."""
+    hosts = [host] if host else ZOHO_HOSTS
+    reason = "تعذّر الوصول إلى خادم البريد"
+    for h in hosts:
+        try:
+            with _connect(h, 465) as srv:
+                srv.login(user, password)
+            return h, ""
+        except smtplib.SMTPAuthenticationError:
+            reason = "كلمة السر أو البريد غير صحيح (إن كان التحقق بخطوتين مفعّلًا فاستخدم «كلمة مرور التطبيق» من Zoho)"
+        except (smtplib.SMTPException, OSError):
+            continue
+    return None, reason
+
+
 class SMTPProvider:
     name = "smtp"
 
-    def __init__(self, sender: str):
+    def __init__(self, sender: str, account=None):
         self.sender = sender
+        self.account = account
+
+    def _creds(self):
+        a = self.account
+        if a is not None and a.smtp_password_enc:
+            from ..secretbox import unseal
+            return a.smtp_host, int(a.smtp_port or 465), a.smtp_user or self.sender, unseal(a.smtp_password_enc)
+        return settings.smtp_host, int(settings.smtp_port), settings.smtp_user, settings.smtp_password
 
     def send(self, msg: OutgoingEmail) -> SendResult:
         mime = build_mime(msg)
-        ctx = ssl.create_default_context()
+        host, port, user, password = self._creds()
         try:
-            if int(settings.smtp_port) == 465:
-                srv = smtplib.SMTP_SSL(settings.smtp_host, 465, context=ctx, timeout=30)
-            else:
-                srv = smtplib.SMTP(settings.smtp_host, int(settings.smtp_port), timeout=30)
-                srv.starttls(context=ctx)
+            srv = _connect(host, port)
             with srv:
-                srv.login(settings.smtp_user, settings.smtp_password)
+                srv.login(user, password)
                 srv.send_message(mime)
             mid = msg.ensure_message_id()
             return SendResult(accepted=True, provider_message_id=mid, internet_message_id=mid)

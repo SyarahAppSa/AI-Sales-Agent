@@ -1860,6 +1860,29 @@ def mail_save(request: Request, provider: str = Form(...), sender_address: str =
     return back("/mail")
 
 
+@app.post("/mail/smtp")
+def mail_smtp(request: Request, password: str = Form(...), smtp_user: str = Form(""), smtp_host: str = Form(""),
+              user: User = Depends(require_manager), s=Depends(get_db)):
+    """كلمة سر بريد SMTP (مثل Zoho) من الصفحة: تُختبر بالدخول دون إرسال، ثم تُحفظ مشفّرة ولا تُعرض أبدًا."""
+    from ..auth import audit
+    from ..mail.smtp import check_login
+    from ..outreach import active_account
+    from ..secretbox import seal
+    acct = active_account(s)
+    if acct is None or acct.provider != "smtp":
+        flash(request, "اربط أولًا بريد SMTP (مثل Zoho) من «ربط / تغيير البريد».", "err")
+        return back("/mail")
+    login = (normalize_email(smtp_user) or acct.sender_address).strip().lower()
+    host, why = check_login(login, password, smtp_host.strip().lower() or None)
+    if not host:
+        flash(request, f"لم يُحفظ شيء: {why}.", "err")
+        return back("/mail")
+    acct.smtp_host, acct.smtp_port, acct.smtp_user, acct.smtp_password_enc = host, 465, login, seal(password)
+    audit(s, user, "mail_secret", user, provider="smtp", host=host)
+    flash(request, f"نجح الاتصال بخادم البريد ({host}) وحُفظت كلمة السر مشفّرة. أرسل الآن «رسالة تجربة» للتأكيد النهائي.")
+    return back("/mail")
+
+
 @app.post("/mail/test")
 def mail_test(request: Request, to: str = Form(""), message: str = Form(""), user: User = Depends(require_manager),
               s=Depends(get_db)):
@@ -1876,8 +1899,10 @@ def mail_test(request: Request, to: str = Form(""), message: str = Form(""), use
         need = {"microsoft365": "MS_TENANT_ID و MS_CLIENT_ID و MS_CLIENT_SECRET",
                 "smtp": "SMTP_HOST و SMTP_USER و SMTP_PASSWORD",
                 "google": "GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET و GOOGLE_REFRESH_TOKEN"}.get(acct.provider, "")
-        flash(request, f"مفاتيح المزود غير مضبوطة على الخادم بعد ({need}). أضفها في مجموعة mandoob-secrets "
-                       "ثم أعد المحاولة.", "err")
+        flash(request, ("اكتب كلمة سر البريد في خانة «كلمة سر البريد» بهذه الصفحة واضغط «حفظ واختبار الاتصال»، ثم أعد التجربة."
+                        if acct.provider == "smtp" else
+                        f"مفاتيح المزود غير مضبوطة على الخادم بعد ({need}). أضفها في مجموعة mandoob-secrets ثم أعد المحاولة."),
+              "err")
         return back("/mail")
     body = message.strip() or "هذه رسالة تجربة من منصة «المندوب الذكي لسيارة اب» للتأكد من ربط البريد والتوقيع."
     try:

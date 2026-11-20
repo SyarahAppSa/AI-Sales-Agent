@@ -315,5 +315,15 @@
 "تم التواصل معهم": "Contacted",
 "ردّوا": "Answered",
 "لم يُتواصل معهم بعد": "Not contacted yet",
-"لم تُرفع قوائم بعد — ارفع ملف Excel من «قائمة عملاء إدارية».": "No lists uploaded yet — upload an Excel file in “Admin customer list”."
+"لم تُرفع قوائم بعد — ارفع ملف Excel من «قائمة عملاء إدارية».": "No lists uploaded yet — upload an Excel file in “Admin customer list”.",
+"كلمة سر البريد": "Mail password",
+"محفوظة ومشفّرة": "Saved and encrypted",
+"الخادم": "Server",
+"لتغييرها اكتب الجديدة.": "To change it, enter a new one.",
+"كلمة السر": "Password",
+"إعدادات متقدمة (اختياري)": "Advanced settings (optional)",
+"اسم المستخدم": "Username",
+"خادم SMTP": "SMTP server",
+"يُكتشف تلقائيًا (Zoho)": "Auto-detected (Zoho)",
+"حفظ واختبار الاتصال": "Save and test connection"
 }
