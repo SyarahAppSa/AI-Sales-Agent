@@ -317,7 +317,7 @@ def schedule_daily() -> bool:
             return False
         if s.scalar(select(ProspectRun.id).where(ProspectRun.status.in_(["pending", "running"]))):
             return False
-        r = ProspectRun(status="pending", target=int(cfg.get("target") or DAILY_TARGET), source=cfg["sources"],
+        r = ProspectRun(status="pending", target=int(cfg.get("target") or DAILY_TARGET), sources=cfg["sources"],
                         stats={"_auto": riyadh_today().isoformat()}, log=[])
         s.add(r)
         return True
@@ -578,7 +578,7 @@ def request_run(s, user: User | None, target: int = 100, sources: str = "bluepag
     busy = s.scalar(select(ProspectRun).where(ProspectRun.status.in_(["pending", "running"])))
     if busy:
         return busy
-    r = ProspectRun(status="pending", target=max(1, min(int(target), 5000)), stats={}, log=[], source=sources,
+    r = ProspectRun(status="pending", target=max(1, min(int(target), 5000)), stats={}, log=[], sources=sources,
                     created_by=user.id if user else None)
     s.add(r)
     s.flush()
@@ -594,10 +594,10 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
         r = s.get(ProspectRun, run_id)
         r.status, r.started_at, r.heartbeat = "running", r.started_at or now_utc(), now_utc()
         target = r.target
-        src_list = r.source
+        src_list = r.sources or r.source
         stats = dict(r.stats or {})
         done_pages = set(stats.get("_pages") or [])
-        _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصادر: {r.source}")
+        _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصادر: {r.sources or r.source}")
     sources = [x for x in (src_list or "bluepages").split(",") if x in SOURCE_LABEL]
 
     def beat(msg=None):

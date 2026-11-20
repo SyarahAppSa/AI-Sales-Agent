@@ -172,6 +172,6 @@ def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatc
     assert P.schedule_daily() is True and P.schedule_daily() is False
     with session_scope() as s:
         r = s.scalar(__import__("sqlalchemy").select(ProspectRun).order_by(ProspectRun.id.desc()))
-        assert r.target == 1000 and "google_places" in r.source
+        assert r.target == 1000 and "google_places" in r.sources
         r.status = "done"
         P.set_auto(s, enabled=False)

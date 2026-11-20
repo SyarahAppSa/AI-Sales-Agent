@@ -683,7 +683,8 @@ class ProspectRun(Base):
     __tablename__ = "prospect_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/stopped/failed
-    source: Mapped[str] = mapped_column(String(40), default="bluepages")
+    source: Mapped[str] = mapped_column(String(40), default="bluepages")  # قديم (مصدر واحد)
+    sources: Mapped[Optional[str]] = mapped_column(Text)  # المصادر بالترتيب، مفصولة بفواصل
     target: Mapped[int] = mapped_column(Integer, default=100)  # عدد المنشآت الجديدة القابلة للتواصل المطلوب
     stats: Mapped[dict] = mapped_column(JSON, default=dict)
     log: Mapped[list] = mapped_column(JSON, default=list)
