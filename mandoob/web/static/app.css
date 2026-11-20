@@ -183,3 +183,15 @@ td.telcol .small{white-space:nowrap}
 .telrow+.telrow{margin-top:6px}
 .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media (max-width:1100px){.kpis[style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}}@media (max-width:560px){.kpis[style*="repeat(5"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* قائمة عملاء إدارية: جدول واضح — سطر واحد لكل خلية، عناوين ثابتة، تمرير أفقي وعمودي */
+.alist{max-height:72vh;overflow:auto;border:1px solid var(--line);border-radius:14px}
+.alist table{font-size:13.5px}
+.alist th{position:sticky;top:0;z-index:1;white-space:nowrap;background:var(--soft);border-radius:0!important;padding:10px 12px}
+.alist td{white-space:nowrap;overflow-wrap:normal;word-break:normal;padding:9px 12px;vertical-align:middle}
+.alist td.k-long{white-space:normal;min-width:220px;max-width:340px;overflow-wrap:break-word}
+.alist td.k-text:nth-child(2),.alist td.k-long{font-weight:700}
+.alist tbody tr:nth-child(even) td{background:var(--soft)}
+.alist tbody tr:hover td{background:var(--brand-hover)}
+.alist td.n,.alist th.n{color:var(--muted);width:1%;text-align:center}
+.alist .btn.sm{padding:2px 10px;font-size:12px}

@@ -535,6 +535,62 @@ def _split_table(rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
     return [], []
 
 
+def _cell(v):
+    """تنظيف عرض الخلية: 567775573.0 ← 567775573، و2018-08-25 00:00:00 ← 2018-08-25."""
+    v = str(v or "").strip()
+    if re.fullmatch(r"\d+\.0", v):
+        v = v[:-2]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2} 00:00:00", v):
+        v = v[:10]
+    return v
+
+
+def _col_kinds(headers, rows) -> dict[int, str]:
+    """نوع كل عمود للعرض: phone / email / url / date / num / long (نص طويل) / text."""
+    from ..prospects import normalize_arabic_digits
+    out = {}
+    width = len(headers)
+    sample = rows[:300]
+    for j in range(width):
+        vals = [_cell(r[j]) for r in sample if j < len(r) and _cell(r[j])]
+        h = str(headers[j])
+        if not vals:
+            out[j] = "text"
+            continue
+        def share(fn):
+            return sum(1 for v in vals if fn(v)) / len(vals)
+        digits = lambda v: re.sub(r"[\s\-+()]", "", normalize_arabic_digits(v))  # noqa: E731
+        if share(lambda v: "@" in v and "." in v) > .5:
+            out[j] = "email"
+        elif share(lambda v: v.lower().startswith(("http://", "https://", "www."))) > .5:
+            out[j] = "url"
+        elif any(w in h for w in ("جوال", "هاتف", "تلفون", "phone", "mobile", "واتس")) or \
+                share(lambda v: re.fullmatch(r"(?:00966|966|0)?5\d{8}|(?:00966|966|0)?1\d{8}|9200\d{5}", digits(v)) is not None) > .6:
+            out[j] = "phone"
+        elif share(lambda v: re.fullmatch(r"\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}", v) is not None) > .6:
+            out[j] = "date"
+        elif share(lambda v: re.fullmatch(r"[\d.,]+", v) is not None) > .8:
+            out[j] = "num"
+        elif sum(len(v) for v in vals) / len(vals) > 28:
+            out[j] = "long"
+        else:
+            out[j] = "text"
+    return out
+
+
+def _phone_full(v: str) -> str:
+    """الرقم كاملًا برمز الدولة: 567775573 ← +966567775573، و0551234567 ← +966551234567."""
+    from ..normalize import normalize_phone
+    from ..prospects import normalize_arabic_digits
+    d = re.sub(r"[\s\-()]", "", normalize_arabic_digits(_cell(v)))
+    if re.fullmatch(r"[15]\d{8}", d):
+        d = "0" + d
+    return normalize_phone(d) or _cell(v)
+
+
+templates.env.globals.update(phone_full=_phone_full)
+
+
 @app.get("/admin-lists", response_class=HTMLResponse)
 def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1,
                 user: User = Depends(require_manager), s=Depends(get_db)):
@@ -544,7 +600,9 @@ def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: 
     cur = s.get(AdminList, lid) if lid else (s.get(AdminList, lists[0][0]) if lists else None)
     rows, total = [], 0
     phone_cols = set()
+    kinds: dict[int, str] = {}
     if cur is not None:
+        kinds = _col_kinds(cur.headers or [], cur.rows or [])
         data = cur.rows or []
         if q:
             ql = q.strip().lower()
@@ -557,8 +615,9 @@ def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: 
             if sample and sum(1 for v in sample if PHONE_RX.fullmatch(normalize_arabic_digits(v).strip() or "x")) >= len(sample) / 2:
                 phone_cols.add(j)
     sizes = {i: len(s.get(AdminList, i).rows or []) for i, *_ in lists}
+    skip_first = bool(cur and cur.headers and str(cur.headers[0]).strip() in ("م", "#", "No", "no", "رقم", "ت", "مسلسل"))
     return render(request, "admin_lists.html", user, s, lists=lists, cur=cur, rows=rows, total=total, q=q, page=page,
-                  sizes=sizes, phone_cols=phone_cols)
+                  sizes=sizes, kinds=kinds, cell=_cell, skip_first=skip_first)
 
 
 @app.post("/admin-lists/upload")

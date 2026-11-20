@@ -17,10 +17,16 @@
 <form method="post" action="/admin-lists/{{ cur.id }}/verify" style="flex:0 0 auto"><button class="btn sm" title="ينسخ الصفوف إلى طابور التحقق؛ القائمة تبقى كما هي">إرسال للتحقق{% if cur.sent_to_verify_at %} (أُرسلت){% endif %}</button></form>
 <form method="post" action="/admin-lists/{{ cur.id }}/delete" style="flex:0 0 auto" onsubmit="return confirm('حذف هذه القائمة؟')"><button class="btn sm d">حذف</button></form></div></div>
 {% if cur.note %}<p class="small muted" style="margin:0 0 8px">{{ cur.note }} — رُفعت {{ fmt(cur.created_at) }}</p>{% endif %}
-<div class="tablewrap"><table translate="no">
-<tr><th>#</th>{% for h in cur.headers %}<th>{{ h }}</th>{% endfor %}</tr>
-{% for r in rows %}<tr><td class="muted small">{{ (page - 1) * 200 + loop.index }}</td>{% for c in r %}<td class="small {{ 'telcol' if loop.index0 in phone_cols }}">{% if loop.index0 in phone_cols and c %}<span class="tel" dir="ltr">{{ c }}</span>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
-{% else %}<tr><td colspan="{{ (cur.headers|length) + 1 }}" class="muted">لا توجد صفوف{% if q %} مطابقة للبحث{% endif %}.</td></tr>{% endfor %}
+<div class="tablewrap alist"><table translate="no">
+<thead><tr>{% if not skip_first %}<th class="n">#</th>{% endif %}{% for h in cur.headers %}<th class="k-{{ kinds.get(loop.index0, 'text') }}">{{ h }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in rows %}<tr>{% if not skip_first %}<td class="n">{{ (page - 1) * 200 + loop.index }}</td>{% endif %}
+{% for c in r %}{% set k = kinds.get(loop.index0, 'text') %}{% set v = cell(c) %}<td class="k-{{ k }}">{% if not v %}<span class="muted">—</span>
+{% elif k == 'phone' %}<a class="tel" dir="ltr" href="tel:{{ phone_full(v) }}">{{ phone_full(v) }}</a>
+{% elif k == 'email' %}<a class="ltr" href="mailto:{{ v }}">{{ v }}</a>
+{% elif k == 'url' %}<a class="btn sm" href="{{ v if v.startswith('http') else 'https://' ~ v }}" target="_blank" rel="noopener" title="{{ v }}">فتح ↗</a>
+{% elif k in ('date', 'num') %}<span class="ltr">{{ v }}</span>
+{% else %}{{ v }}{% endif %}</td>{% endfor %}</tr>
+{% else %}<tr><td colspan="{{ (cur.headers|length) + 1 }}" class="muted">لا توجد صفوف{% if q %} مطابقة للبحث{% endif %}.</td></tr>{% endfor %}</tbody>
 </table></div>
 <div class="row" style="margin-top:10px">{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="/admin-lists?lid={{ cur.id }}&q={{ q }}&page={{ page - 1 }}">السابق</a>{% endif %}
 {% if page * 200 < total %}<a class="btn sm" style="flex:0 0 auto" href="/admin-lists?lid={{ cur.id }}&q={{ q }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>

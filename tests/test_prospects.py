@@ -260,7 +260,7 @@ def test_admin_list_upload_shows_excel_as_is():
                     follow_redirects=True)
         html = r.text
         assert "قائمة عملاء إدارية" in html and "مؤسسة الجبيل الإدارية للتجربة" in html and "ملاحظات الإدارة" in html
-        assert "عميل مهم" in html and "0559871234" in html and "(2 صف)" in html
+        assert "عميل مهم" in html and "+966559871234" in html and "(2 صف)" in html
         assert "مؤسسة الساحل" not in cl.get(f"/admin-lists?q=الجبيل").text.split("<table")[1]
         with session_scope() as s:
             lid = s.query(AdminList).order_by(AdminList.id.desc()).first().id
