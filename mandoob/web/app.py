@@ -3446,3 +3446,245 @@ async def voice_webhook(request: Request):
 
 def _404():
     raise HTTPException(404, "غير موجود")
+
+
+# ---------------------------------------------------------------- ملفات طلبات العملاء
+
+def _kit_user(request: Request, s) -> User:
+    """المستخدم من أي بوابة (الإدارة أو الموظفين)."""
+    user = _session_user(request, s, "admin") or _session_user(request, s, "staff")
+    if user is None:
+        raise LoginRequired("/portal/login")
+    return user
+
+
+def _kit_manager(request: Request, s) -> User:
+    user = _session_user(request, s, "admin")
+    if user is None or user.role not in ("admin", "manager"):
+        raise HTTPException(403, "إدارة «ملفات طلبات العملاء» للإدارة فقط")
+    return user
+
+
+def _kit_page(request: Request, s, user: User, base: str, company_id: int | None):
+    from .. import kit
+    from ..models import KitItem, KitLog
+    from ..permissions import can_view_company
+    kit.ensure_defaults(s)
+    manage = base == "/kit" and user.role in ("admin", "manager")
+    items = list(s.scalars(select(KitItem).order_by(KitItem.position, KitItem.id)))
+    if not manage:
+        items = [i for i in items if kit.visible_to_reps(i)]
+    company, sent = None, []
+    if company_id:
+        company = s.get(Company, company_id)
+        if company is None or (base.startswith("/portal") and not can_view_company(s, user, company)):
+            raise HTTPException(404, "غير موجود")
+        sent = list(s.scalars(select(KitLog).where(KitLog.company_id == company.id, KitLog.action == "sent")
+                              .order_by(KitLog.id.desc()).limit(50)))
+    logs = list(s.scalars(select(KitLog).order_by(KitLog.id.desc()).limit(40))) if manage else []
+    view = [{"it": i, "share": kit.share_url(i), "lines": kit.message_lines(i), "copy_lbl": kit.copy_label(i),
+             "ready": kit.visible_to_reps(i), "expired": kit.expired(i), "has": kit.has_content(i)} for i in items]
+    return render(request, "kit.html", user, s, view=view, manage=manage, base=base, company=company, sent=sent,
+                  logs=logs, KINDS=kit.KINDS, company_back=(f"/companies/{company.id}" if base == "/kit" else
+                                                            f"/portal/companies/{company.id}") if company else None)
+
+
+@app.get("/kit", response_class=HTMLResponse)
+def kit_page(request: Request, company: int = 0, user: User = Depends(current_user), s=Depends(get_db)):
+    return _kit_page(request, s, user, "/kit", company or None)
+
+
+@app.get("/portal/kit", response_class=HTMLResponse)
+def portal_kit_page(request: Request, company: int = 0, user: User = Depends(staff_user), s=Depends(get_db)):
+    return _kit_page(request, s, user, "/portal/kit", company or None)
+
+
+def _kit_fields(it, form, user) -> None:
+    from datetime import date as _date
+    it.title = (form.get("title") or it.title or "عنصر جديد").strip()[:200]
+    it.note = (form.get("note") or "").strip()[:300]
+    if form.get("kind") in __import__("mandoob.kit", fromlist=["KINDS"]).KINDS:
+        it.kind = form.get("kind")
+    for f in ("value", "url", "url2"):
+        v = (form.get(f) or "").strip()
+        if f != "value" and v and not re.match(r"https?://", v):
+            v = "https://" + v
+        setattr(it, f, v[:500] or None)
+    it.body = (form.get("body") or "").strip() or None
+    try:
+        it.expires_on = _date.fromisoformat(form.get("expires_on")) if form.get("expires_on") else None
+    except ValueError:
+        it.expires_on = None
+    it.published = form.get("published") == "on"
+    it.share_enabled = form.get("share_enabled") == "on"
+    it.updated_at, it.updated_by = now_utc(), user.name
+
+
+async def _kit_file(it, form) -> bool:
+    up = form.get("file")
+    if up is None or not getattr(up, "filename", ""):
+        return False
+    data = await up.read()
+    if not data:
+        return False
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(400, "الملف أكبر من 15 ميغابايت")
+    import mimetypes
+    it.file_name = up.filename[:255]
+    it.file_data = data
+    it.mime_type = (up.content_type if up.content_type and up.content_type != "application/octet-stream"
+                    else mimetypes.guess_type(up.filename)[0]) or "application/octet-stream"
+    it.size_bytes = len(data)
+    it.version = (it.version or 0) + 1
+    return True
+
+
+@app.post("/kit/new")
+async def kit_new(request: Request, s=Depends(get_db)):
+    from .. import kit
+    from ..models import KitItem
+    user = _kit_manager(request, s)
+    form = await request.form()
+    pos = (s.scalar(select(func.max(KitItem.position))) or 0) + 1
+    it = KitItem(position=pos, share_token=kit.new_token(), title="عنصر جديد")
+    _kit_fields(it, form, user)
+    await _kit_file(it, form)
+    s.add(it)
+    s.flush()
+    kit.log(s, "update", it, user)
+    flash(request, f"أُضيف «{it.title}»" + ("" if it.published else " كمسودة — عاينه ثم انشره"))
+    return back(f"/kit#item-{it.id}")
+
+
+@app.post("/kit/{iid}/save")
+async def kit_save(iid: int, request: Request, s=Depends(get_db)):
+    from .. import kit
+    from ..models import KitItem
+    user = _kit_manager(request, s)
+    it = s.get(KitItem, iid) or _404()
+    form = await request.form()
+    was = it.published
+    _kit_fields(it, form, user)
+    replaced = await _kit_file(it, form)
+    if form.get("remove_file") == "on" and not replaced:
+        it.file_name = it.file_data = it.mime_type = None
+        it.size_bytes = 0
+    if it.published and not kit.has_content(it):
+        it.published = False
+        flash(request, f"«{it.title}» بلا محتوى بعد — حُفظ كمسودة. أضف الملف أو الرابط أو الرقم ثم انشره", "err")
+    else:
+        kit.log(s, "publish" if it.published and not was else "update", it, user)
+        flash(request, f"حُفظ «{it.title}»" + (f" — النسخة {it.version}" if replaced else "")
+              + (" ومنشور للمندوبين" if it.published else " كمسودة (لا يراه المندوبون)"))
+    return back(f"/kit#item-{it.id}")
+
+
+@app.post("/kit/{iid}/move")
+def kit_move(iid: int, request: Request, dir: str = Form(...), s=Depends(get_db)):
+    from ..models import KitItem
+    _kit_manager(request, s)
+    items = list(s.scalars(select(KitItem).order_by(KitItem.position, KitItem.id)))
+    i = next((k for k, x in enumerate(items) if x.id == iid), None)
+    if i is None:
+        _404()
+    j = i - 1 if dir == "up" else i + 1
+    if 0 <= j < len(items):
+        items[i], items[j] = items[j], items[i]
+    for k, x in enumerate(items, start=1):
+        x.position = k
+    return back(f"/kit#item-{iid}")
+
+
+@app.post("/kit/{iid}/delete")
+def kit_delete(iid: int, request: Request, s=Depends(get_db)):
+    from ..models import KitItem
+    _kit_manager(request, s)
+    it = s.get(KitItem, iid) or _404()
+    flash(request, f"حُذف «{it.title}» وتوقف رابط مشاركته")
+    s.delete(it)
+    return back("/kit")
+
+
+def _kit_item_for(request: Request, s, iid: int):
+    from .. import kit
+    from ..models import KitItem
+    user = _kit_user(request, s)
+    it = s.get(KitItem, iid)
+    if it is None or not it.file_data:
+        raise HTTPException(404, "غير موجود")
+    is_mgr = request.session.get("portal") == "admin" and user.role in ("admin", "manager")
+    if not kit.visible_to_reps(it) and not is_mgr:  # المسودة: معاينة الإدارة فقط
+        raise HTTPException(404, "غير موجود")
+    return user, it
+
+
+def _kit_file_response(it, inline: bool) -> Response:
+    from urllib.parse import quote
+    disp = "inline" if inline else "attachment"
+    ext = Path(it.file_name or "").suffix.lower()
+    ascii_name = (re.sub(r"[^A-Za-z0-9._-]+", "-", Path(it.file_name or "").stem).strip("-") or "syarah-app") + ext
+    return Response(it.file_data, media_type=it.mime_type or "application/octet-stream",
+                    headers={"content-disposition": f"{disp}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(it.file_name or 'file')}",
+                             "cache-control": "no-store", "x-robots-tag": "noindex, nofollow",
+                             "x-content-type-options": "nosniff"})
+
+
+@app.get("/kit/{iid}/view")
+def kit_view(iid: int, request: Request, s=Depends(get_db)):
+    user, it = _kit_item_for(request, s, iid)
+    return _kit_file_response(it, inline=True)
+
+
+@app.get("/kit/{iid}/file")
+def kit_download(iid: int, request: Request, company: int = 0, s=Depends(get_db)):
+    from .. import kit
+    user, it = _kit_item_for(request, s, iid)
+    kit.log(s, "download", it, user, company or None)
+    return _kit_file_response(it, inline=False)
+
+
+@app.get("/kit/s/{token}")
+def kit_share(token: str, s=Depends(get_db)):
+    """رابط المشاركة العام: المستند المعتمد وحده، بلا حساب وبلا أي جزء آخر من المنصة."""
+    from .. import kit
+    from ..models import KitItem
+    it = s.scalar(select(KitItem).where(KitItem.share_token == token))
+    if it is None or not kit.share_url(it):
+        return HTMLResponse("<!doctype html><meta charset=utf-8><title>غير متاح</title><body dir=rtl style='font-family:sans-serif;"
+                            "padding:40px'>هذا الرابط غير متاح. اطلب رابطًا جديدًا من مندوب سيارة اب.</body>", status_code=404)
+    kit.log(s, "share_open", it)
+    if it.file_data:
+        return _kit_file_response(it, inline=True)
+    import html as _h
+    body = "".join(f"<p>{_h.escape(p).replace(chr(10), '<br>')}</p>" for p in (it.body or "").split("\n\n"))
+    return HTMLResponse(f"<!doctype html><html lang=ar dir=rtl><meta charset=utf-8><meta name=viewport content='width=device-width,"
+                        f"initial-scale=1'><meta name=robots content=noindex><title>{_h.escape(it.title)} — سيارة اب</title>"
+                        "<body style='font-family:Almarai,Tahoma,sans-serif;max-width:760px;margin:0 auto;padding:28px 18px;"
+                        f"line-height:1.9;color:#292431;background:#FAF8FC'><h1 style='color:#6941A5'>{_h.escape(it.title)}</h1>"
+                        f"{body}<p style='color:#888;font-size:13px'>سيارة اب</p></body></html>")
+
+
+@app.post("/kit/sent")
+async def kit_sent(request: Request, s=Depends(get_db)):
+    """«تسجيل ما تم إرساله»: اسم المستند ونسخته واسم المندوب والتاريخ في سجل العميل."""
+    from .. import kit
+    from ..models import KitItem
+    from ..permissions import can_view_company
+    user = _kit_user(request, s)
+    form = await request.form()
+    comp = s.get(Company, int(form.get("company_id") or 0)) or _404()
+    staff = request.session.get("portal") == "staff"
+    if staff and not can_view_company(s, user, comp):
+        raise HTTPException(404, "غير موجود")
+    ids = [int(x) for x in form.getlist("item_ids") if str(x).isdigit()]
+    items = [it for it in (s.get(KitItem, i) for i in ids) if it is not None and kit.visible_to_reps(it)]
+    base = "/portal/kit" if staff else "/kit"
+    if not items:
+        flash(request, "اختر العناصر التي أرسلتها أولًا", "err")
+        return back(f"{base}?company={comp.id}")
+    for it in items:
+        kit.log(s, "sent", it, user, comp.id)
+    names = "، ".join(f"{it.title}" + (f" (نسخة {it.version})" if it.file_data else "") for it in items)
+    log_activity(s, comp.id, "note", "أُرسلت ملفات للعميل", f"{names} — بواسطة {user.name}", user_id=user.id)
+    flash(request, f"سُجّل إرسال {len(items)} عنصر إلى العميل")
+    return back(f"{base}?company={comp.id}")

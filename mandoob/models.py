@@ -857,3 +857,42 @@ class CampaignSourceMark(Base):
     by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     by_name: Mapped[str] = mapped_column(String(120), default="")
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class KitItem(Base):
+    """عنصر في «ملفات طلبات العملاء»: ملف معتمد و/أو قيمة للنسخ (رقم، عنوان، بريد) و/أو رابط، أو نص (دليل/أسئلة)."""
+    __tablename__ = "kit_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="file")  # file / number / address / template / app / link / email / phone / text
+    title: Mapped[str] = mapped_column(String(200))
+    note: Mapped[str] = mapped_column(String(300), default="")      # وصف قصير يظهر للمندوب
+    value: Mapped[Optional[str]] = mapped_column(String(500))       # ما يُنسخ: رقم/عنوان/بريد
+    url: Mapped[Optional[str]] = mapped_column(String(500))         # رابط (أو رابط الآيفون)
+    url2: Mapped[Optional[str]] = mapped_column(String(500))        # رابط الأندرويد
+    body: Mapped[Optional[str]] = mapped_column(Text)               # نص الدليل/الخطوات/الأسئلة الشائعة
+    file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    file_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    expires_on: Mapped[Optional[date]] = mapped_column(Date)
+    published: Mapped[bool] = mapped_column(Boolean, default=False)       # معتمد ومنشور للمندوبين
+    share_enabled: Mapped[bool] = mapped_column(Boolean, default=True)    # رابط المشاركة العام يعمل
+    share_token: Mapped[str] = mapped_column(String(40), unique=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_by: Mapped[str] = mapped_column(String(120), default="")
+
+
+class KitLog(Base):
+    """سجل نشاط «ملفات طلبات العملاء»: تحميل، فتح رابط مشاركة، تسجيل إرسال لعميل."""
+    __tablename__ = "kit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    action: Mapped[str] = mapped_column(String(20))  # download / share_open / sent / publish / update
+    item_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    item_title: Mapped[str] = mapped_column(String(200), default="")
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    user_name: Mapped[str] = mapped_column(String(120), default="")

@@ -123,7 +123,8 @@ class DownloadGuard:
             return await self.app(scope, receive, send)
         from .config import settings
         path = scope.get("path", "")
-        if not settings.downloads_blocked or path.startswith("/static/"):
+        # «ملفات طلبات العملاء»: المواد التي اعتمدتها الإدارة فقط — المسارات تتحقق بنفسها من النشر والصلاحية
+        if not settings.downloads_blocked or path.startswith(("/static/", "/kit/")):
             return await self._timed(scope, receive, send)
         headers = dict(scope.get("headers") or [])
         referer = headers.get(b"referer", b"").decode("latin-1")

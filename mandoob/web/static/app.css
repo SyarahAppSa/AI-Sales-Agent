@@ -251,3 +251,16 @@ select.mk-yes,select.mk-interested{background:var(--ok-soft);color:var(--ok)}
 select.mk-no,select.mk-not_interested{background:var(--err-soft);color:var(--err)}
 select.mk-later{background:var(--warn-soft);color:var(--warn)}
 .soctable th{white-space:nowrap}.soctable td{min-width:72px}.soctable td.muted{min-width:0}
+/* ملفات طلبات العملاء */
+.kitbar{position:sticky;top:8px;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px}
+.kitlist{display:grid;gap:10px}
+.kititem{padding:12px 14px;margin:0}
+.kititem.draft{border-style:dashed;opacity:.92}
+.kithead{display:flex;gap:10px;align-items:flex-start}
+.kithead input[type=checkbox]{width:20px;height:20px;margin-top:3px;flex:0 0 auto}
+.kitnum{display:inline-grid;place-items:center;min-width:26px;height:26px;border-radius:50%;background:var(--soft);font-weight:700;font-size:13px}
+.kitacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.kitval{font-weight:700;padding:3px 10px;border-radius:8px;background:var(--soft);unicode-bidi:isolate}
+.kitbody summary{list-style:none;display:inline-block}
+.kittext{white-space:pre-line;margin-top:8px;padding:10px;border-radius:8px;background:var(--soft);line-height:1.9}
+.kitedit{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}

@@ -5,7 +5,8 @@
 <span class="pill {{ 'ok' if c.data_status=='complete' else 'warn' }}">{{ 'مكتملة البيانات' if c.data_status=='complete' else 'قيد استكمال البيانات' }}</span>
 {% if c.do_not_contact %}<span class="pill err">أوقفت التواصل</span>{% endif %}{% if c.is_test %}<span class="pill warn">بيانات تجريبية — لا إرسال ولا اتصال</span>{% endif %}</div>
 <div class="stat" style="flex:0 0 260px"><div class="l">المندوب المسؤول</div><div style="font-weight:700">{{ c.owner.name if c.owner else 'غير مسند' }}</div>
-<div class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div></div></div>
+<div class="small muted">الخطوة القادمة: {{ c.next_action or '—' }}{% if c.next_action_at %} — {{ fmt(c.next_action_at) }}{% endif %}</div>
+<a class="btn sm p" style="margin-top:8px" href="/kit?company={{ c.id }}">ملفات طلبات العملاء</a></div></div>
 
 <div class="grid g2">
 <div>

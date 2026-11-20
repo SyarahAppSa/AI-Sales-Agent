@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import panel %}{% from "_vehicle.html" import vind %}{% block content %}
 <div class="top"><div><h1><span translate="no">{{ c.name }}</span></h1><p class="sub" style="margin:0">{{ c.activity }} — {{ c.city }} <span class="pill">{{ STAGE_LABELS.get(c.stage, c.stage) }}</span></p></div>
-<div class="row"><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
+<div class="row"><a class="btn sm p" href="/portal/kit?company={{ c.id }}">ملفات طلبات العملاء</a><a class="btn sm" href="/portal">عملائي ومتابعاتي</a></div></div>
 <div class="grid g2"><div>
 <div class="card"><h2>بيانات العميل</h2>
 {% set ph = c.primary('phone') %}{% set em = c.primary('email') %}

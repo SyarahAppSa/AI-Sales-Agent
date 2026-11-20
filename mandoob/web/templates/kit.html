@@ -1,0 +1,129 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>ملفات طلبات العملاء</h1>
+<p class="sub">ما يطلبه العميل أثناء المكالمة: حمّل الملف، أو انسخ الرابط أو الرقم، أو اختر عدة عناصر وانسخ رسالة جاهزة ترسلها بنفسك.</p></div>
+{% if company_back %}<div class="row" style="flex:0 0 auto"><a class="btn" href="{{ company_back }}">العودة إلى بطاقة العميل</a></div>{% endif %}</div>
+
+{% if company %}<div class="card kitctx"><b>العميل:</b> <a href="{{ company_back }}" translate="no">{{ company.name }}</a>
+<span class="small muted">— اختر ما أرسلته ثم اضغط «تسجيل ما تم إرساله» ليعرف زملاؤك ما سبق إرساله.</span>
+{% if sent %}<details style="margin-top:6px" open><summary class="small">سبق إرساله لهذا العميل ({{ sent|length }})</summary>
+<table class="small"><tr><th>المستند</th><th>النسخة</th><th>المندوب</th><th>التاريخ</th></tr>
+{% for x in sent %}<tr><td>{{ x.item_title }}</td><td>{{ x.version or '—' }}</td><td translate="no">{{ x.user_name }}</td><td>{{ fmt(x.at) }}</td></tr>{% endfor %}</table></details>
+{% else %}<div class="small muted" style="margin-top:4px">لم يُسجَّل إرسال أي مستند لهذا العميل بعد.</div>{% endif %}</div>{% endif %}
+
+<div class="kitbar card" id="kitbar">
+  <span><b id="kit-n">0</b> عنصر محدد</span>
+  <button type="button" class="btn p" id="kit-msg" disabled>نسخ رسالة للعميل</button>
+  {% if company %}<form method="post" action="/kit/sent" id="kit-sent-form" style="display:inline">
+    <input type="hidden" name="company_id" value="{{ company.id }}"><span id="kit-sent-ids"></span>
+    <button class="btn" id="kit-sent" disabled>تسجيل ما تم إرساله</button></form>{% endif %}
+  <span class="small muted" id="kit-toast" role="status" aria-live="polite"></span>
+</div>
+
+{% if not view %}<div class="card"><p class="muted">لا توجد عناصر منشورة بعد. تضيفها الإدارة من هذه الصفحة.</p></div>{% endif %}
+<div class="kitlist">
+{% for x in view %}{% set it = x.it %}
+<div class="card kititem {{ '' if x.ready else 'draft' }}" id="item-{{ it.id }}">
+  <div class="kithead">
+    {% if x.ready %}<input type="checkbox" class="kit-pick" value="{{ it.id }}" aria-label="اختيار {{ it.title }}" data-lines="{{ x.lines|tojson|forceescape }}">{% endif %}
+    <span class="kitnum">{{ loop.index }}</span>
+    <div style="flex:1 1 auto"><b>{{ it.title }}</b>{% if it.note %} <span class="small muted">— {{ it.note }}</span>{% endif %}
+      <div class="small muted">
+        {% if manage %}{% if it.published and x.has %}<span class="pill ok">منشور للمندوبين</span>{% else %}<span class="pill warn">مسودة — لا يراه المندوبون</span>{% endif %}
+        {% if it.file_data and not it.share_enabled %}<span class="pill err">المشاركة موقوفة</span>{% endif %}{% endif %}
+        {% if it.file_data %}<span>النسخة {{ it.version }}</span> · {% endif %}<span>آخر تحديث: {{ fmt(it.updated_at) }}</span>
+        {% if it.expires_on %} · <span class="{{ 'pill err' if x.expired else '' }}">تنتهي الوثيقة: {{ fmt_date(it.expires_on) }}{{ ' (منتهية)' if x.expired }}</span>{% endif %}
+      </div></div>
+  </div>
+  <div class="kitacts">
+    {% if it.value %}<span class="kitval" translate="no" dir="auto">{{ it.value }}</span>
+      <button type="button" class="btn sm" data-copy="{{ it.value }}">{{ x.copy_lbl }}</button>{% endif %}
+    {% if it.kind == 'app' %}
+      {% if it.url %}<button type="button" class="btn sm" data-copy="{{ it.url }}">نسخ رابط الآيفون</button>{% endif %}
+      {% if it.url2 %}<button type="button" class="btn sm" data-copy="{{ it.url2 }}">نسخ رابط الأندرويد</button>{% endif %}
+    {% elif it.url %}<a class="btn sm" href="{{ it.url }}" target="_blank" rel="noopener">فتح {{ 'الخريطة' if 'خريطة' in it.title or 'مواقع' in it.title else 'الرابط' }}</a>
+      <button type="button" class="btn sm" data-copy="{{ it.url }}">نسخ الرابط</button>{% endif %}
+    {% if it.file_data %}
+      <a class="btn sm" href="/kit/{{ it.id }}/view" target="_blank" rel="noopener">معاينة</a>
+      <a class="btn sm" href="/kit/{{ it.id }}/file{{ '?company=%d' % company.id if company }}">تحميل الملف</a>
+      {% if x.share %}<button type="button" class="btn sm" data-copy="{{ x.share }}">نسخ الرابط</button>{% endif %}
+      <span class="small muted" translate="no">{{ it.file_name }}</span>
+    {% endif %}
+    {% if it.body %}<details class="kitbody"><summary class="btn sm">عرض النص</summary><div class="kittext" translate="no">{{ it.body }}</div></details>
+      <button type="button" class="btn sm" data-copy="{{ it.body }}">نسخ النص</button>
+      {% if x.share and not it.file_data %}<button type="button" class="btn sm" data-copy="{{ x.share }}">نسخ الرابط</button>{% endif %}{% endif %}
+    {% if not x.has %}<span class="small muted">لم تُضف الإدارة محتوى هذا العنصر بعد.</span>{% endif %}
+  </div>
+  {% if manage %}
+  <details class="kitedit"><summary class="small">تعديل / رفع نسخة / نشر</summary>
+  <form method="post" action="/kit/{{ it.id }}/save" enctype="multipart/form-data">
+    <div class="row">
+      <div style="flex:2 1 260px"><label>الاسم</label><input name="title" value="{{ it.title }}"></div>
+      <div><label>النوع</label><select name="kind">{% for k, l in KINDS.items() %}<option value="{{ k }}" {{ 'selected' if k == it.kind }}>{{ l }}</option>{% endfor %}</select></div>
+      <div style="flex:2 1 260px"><label>وصف قصير للمندوب</label><input name="note" value="{{ it.note }}"></div>
+    </div>
+    <div class="row">
+      <div><label>{{ 'الرقم / العنوان / البريد (يُنسخ بضغطة)' }}</label><input name="value" value="{{ it.value or '' }}" dir="auto"></div>
+      <div><label>{{ 'رابط الآيفون' if it.kind == 'app' else 'الرابط' }}</label><input name="url" value="{{ it.url or '' }}" class="ltr" style="text-align:left"></div>
+      {% if it.kind == 'app' %}<div><label>رابط الأندرويد</label><input name="url2" value="{{ it.url2 or '' }}" class="ltr" style="text-align:left"></div>{% endif %}
+      <div style="flex:0 0 170px"><label>تاريخ انتهاء الوثيقة</label><input type="date" name="expires_on" value="{{ it.expires_on or '' }}"></div>
+    </div>
+    <div class="field"><label>النص (للأدلة والخطوات والأسئلة الشائعة)</label><textarea name="body" rows="3">{{ it.body or '' }}</textarea></div>
+    <div class="row" style="align-items:center">
+      <div><label>{{ 'استبدال الملف (نسخة جديدة)' if it.file_data else 'رفع الملف' }}</label><input type="file" name="file"></div>
+      {% if it.file_data %}<label class="small"><input type="checkbox" name="remove_file"> حذف الملف الحالي</label>{% endif %}
+    </div>
+    <div class="chips"><label><input type="checkbox" name="published" {{ 'checked' if it.published }}> معتمد ومنشور للمندوبين</label>
+      <label><input type="checkbox" name="share_enabled" {{ 'checked' if it.share_enabled }}> رابط المشاركة مع العملاء يعمل</label></div>
+    <button class="btn p">حفظ</button>
+    {% if it.file_data %}<a class="btn" href="/kit/{{ it.id }}/view" target="_blank" rel="noopener">معاينة قبل النشر</a>{% endif %}
+  </form>
+  <div class="row" style="margin-top:6px;gap:6px">
+    <form method="post" action="/kit/{{ it.id }}/move"><button class="btn sm" name="dir" value="up" {{ 'disabled' if loop.first }}>▲ أعلى</button></form>
+    <form method="post" action="/kit/{{ it.id }}/move"><button class="btn sm" name="dir" value="down" {{ 'disabled' if loop.last }}>▼ أسفل</button></form>
+    <form method="post" action="/kit/{{ it.id }}/delete" onsubmit="return confirm('حذف «{{ it.title|e }}»؟ سيتوقف رابط مشاركته.')"><button class="btn sm d">حذف العنصر</button></form>
+  </div></details>{% endif %}
+</div>{% endfor %}
+</div>
+
+{% if manage %}
+<div class="card"><h2>إضافة عنصر جديد</h2>
+<form method="post" action="/kit/new" enctype="multipart/form-data">
+  <div class="row">
+    <div style="flex:2 1 260px"><label>الاسم</label><input name="title" required></div>
+    <div><label>النوع</label><select name="kind">{% for k, l in KINDS.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></div>
+    <div><label>الرقم / العنوان / البريد</label><input name="value" dir="auto"></div>
+    <div><label>الرابط</label><input name="url" class="ltr" style="text-align:left"></div>
+  </div>
+  <div class="field"><label>النص</label><textarea name="body" rows="2"></textarea></div>
+  <div class="row" style="align-items:center"><div><label>الملف</label><input type="file" name="file"></div>
+  <div style="flex:0 0 170px"><label>تاريخ الانتهاء</label><input type="date" name="expires_on"></div></div>
+  <div class="chips"><label><input type="checkbox" name="published"> معتمد ومنشور للمندوبين</label><label><input type="checkbox" name="share_enabled" checked> رابط المشاركة يعمل</label></div>
+  <button class="btn p">إضافة</button>
+</form></div>
+{% if logs %}<div class="card"><h2>سجل النشاط</h2><div class="tablewrap"><table class="small"><tr><th>الوقت</th><th>الإجراء</th><th>العنصر</th><th>النسخة</th><th>بواسطة</th></tr>
+{% for l in logs %}<tr><td>{{ fmt(l.at) }}</td><td>{{ {'download':'تحميل','share_open':'فتح رابط المشاركة','sent':'تسجيل إرسال لعميل','publish':'نشر','update':'تحديث'}.get(l.action, l.action) }}</td>
+<td>{{ l.item_title }}{% if l.company_id %} <a class="small" href="/companies/{{ l.company_id }}">(العميل)</a>{% endif %}</td><td>{{ l.version or '—' }}</td><td translate="no">{{ l.user_name }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endif %}
+
+<script>
+(function(){
+  var toast=document.getElementById('kit-toast');
+  function say(t){toast.textContent=t;clearTimeout(say.t);say.t=setTimeout(function(){toast.textContent='';},2500);}
+  function copy(t){ if(navigator.clipboard&&window.isSecureContext){return navigator.clipboard.writeText(t);}
+    var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();return Promise.resolve();}
+  window.kitCopy=copy;
+  document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){
+    copy(b.dataset.copy).then(function(){var o=b.textContent;b.textContent='تم النسخ ✓';say('تم النسخ');setTimeout(function(){b.textContent=o;},1500);});});});
+  var picks=[].slice.call(document.querySelectorAll('.kit-pick')), n=document.getElementById('kit-n'),
+      msg=document.getElementById('kit-msg'), sent=document.getElementById('kit-sent'), ids=document.getElementById('kit-sent-ids');
+  function upd(){var on=picks.filter(function(p){return p.checked;});n.textContent=on.length;msg.disabled=!on.length;
+    if(sent){sent.disabled=!on.length;ids.innerHTML='';on.forEach(function(p){var i=document.createElement('input');i.type='hidden';i.name='item_ids';i.value=p.value;ids.appendChild(i);});}}
+  picks.forEach(function(p){p.addEventListener('change',upd);});
+  msg.addEventListener('click',function(){
+    var lines=[];picks.filter(function(p){return p.checked;}).forEach(function(p){JSON.parse(p.dataset.lines).forEach(function(l){lines.push('• '+l);});});
+    var t='السلام عليكم ورحمة الله،\nيسعدنا تواصلكم مع سيارة اب. هذه المعلومات المطلوبة:\n\n'+lines.join('\n')+'\n\nمع التحية،\n{{ user.name|e }}';
+    copy(t).then(function(){say('نُسخت الرسالة — الصقها وأرسلها للعميل');});});
+  upd();
+})();
+</script>
+{% endblock %}

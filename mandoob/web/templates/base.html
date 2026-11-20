@@ -19,7 +19,7 @@
       ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
   ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),
       ('/officials', 'موظفو الشركات'), ('/admin-lists', 'قائمة عملاء إدارية'), ('/random-leads', 'عملاء عشوائيون')]),
-  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/followups', 'متابعات اليوم'), ('/offers-report', 'الشركات التي أُرسلت إليها عروض'),
+  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/kit', 'ملفات طلبات العملاء'), ('/followups', 'متابعات اليوم'), ('/offers-report', 'الشركات التي أُرسلت إليها عروض'),
       ('/leads', 'طلبات العروض الواردة')] + ([('/offers', 'العروض والمرفقات'), ('/sandbox', 'صندوق التجربة')] if outreach_on else [])),
   ('rep', 'file', 'التقارير', None, [('/daily-report', 'التقرير اليومي'), ('/weekly-report', 'التقرير الأسبوعي للشرائح')]),
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
@@ -27,6 +27,7 @@
 ] %}{% else %}{% set groups = [
   ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات'),
       ('/portal/lists', 'قائمة عملاء إدارية')]),
+  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/portal/kit', 'ملفات طلبات العملاء')]),
   ('rep', 'file', 'التقارير', None, ([('/portal/reports', 'تقرير مبيعاتي')] if (user.perms or {}).get('see_reports') else [])),
 ] %}{% endif %}
 {% macro is_on(href) -%}{{ '1' if (path == href if href in ('/', '/portal') else (path == href or path.startswith(href + '/'))) and not (href == '/offers' and path.startswith('/offers-report')) }}{%- endmacro %}
