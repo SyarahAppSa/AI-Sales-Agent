@@ -2460,13 +2460,18 @@ def _official_cells(c, os_):
 
 
 @app.get("/officials", response_class=HTMLResponse)
-def admin_officials(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def admin_officials(request: Request, ostatus: str = "", user: User = Depends(current_user), s=Depends(get_db)):
     """«موظفو الشركات» في بوابة الإدارة: جهة القرار المقترحة + المسؤول الموثّق + وسائل التواصل وحالة التواصل."""
     from .. import officials as O
     rows = _portal_rows(s, user, "")
+    all_n = len(rows)
+    if ostatus == "pending":
+        rows = [r for r in rows if r["c"].officials_checked_at is None]
+    elif ostatus in ("verified", "needs_check", "none"):
+        rows = [r for r in rows if r["c"].official_status == ostatus and r["c"].officials_checked_at is not None]
     cfg = O.get_auto(s)
     cnt = lambda st: s.scalar(select(func.count(Company.id)).where(Company.official_status == st)) or 0  # noqa: E731
-    ostats = {"verified": cnt("verified"), "needs": cnt("needs_check"), "none": cnt("none"),
+    ostats = {"verified": cnt("verified"), "needs": cnt("needs_check"), "none": cnt("none"), "total": all_n,
               "pending": s.scalar(select(func.count(Company.id)).where(
                   Company.is_test.is_(False), Company.officials_checked_at.is_(None),
                   (Company.data_status == "complete") | Company.contactable.is_(True))) or 0,
@@ -2474,7 +2479,8 @@ def admin_officials(request: Request, user: User = Depends(current_user), s=Depe
               "last": fmt(datetime.fromisoformat(cfg["last_cycle_at"])) if cfg.get("last_cycle_at") else None}
     return render(request, "portal_officials.html", user, s, rows=rows, can=lambda p: True, cbase="/companies",
                   xlsx_url="/officials.xlsx", csum=_csum(s, [r["c"] for r in rows]),
-                  offs=_officials_map(s, [r["c"].id for r in rows]), ocfg=cfg, ostats=ostats, **_official_ctx())
+                  offs=_officials_map(s, [r["c"].id for r in rows]), ocfg=cfg, ostats=ostats, ostatus=ostatus,
+                  all_n=all_n, **_official_ctx())
 
 
 @app.post("/officials/control")

@@ -96,3 +96,15 @@ def test_none_found_shows_message(monkeypatch):
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
         assert "لم يُعثر على مسؤول موثّق" in cl.get("/officials").text
+
+
+def test_counts_cards_filter_lists():
+    import re
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/officials").text
+        n_ver = int(re.search(r'ostatus=verified"><div class="l">مسؤول موثّق</div><div class="v"[^>]*>(\d+)', html).group(1))
+        page = cl.get("/officials?ostatus=verified").text
+        shown = int(re.search(r"\((\d+) منشأة\)", page).group(1))
+        assert n_ver >= 1 and shown == n_ver and "فهد العتيبي" in page
+        assert "لم يُعثر على مسؤول موثّق" in cl.get("/officials?ostatus=none").text

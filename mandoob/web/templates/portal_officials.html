@@ -18,11 +18,18 @@
 {% if cbase and ocfg %}<div class="card"><div class="head2"><h2>البحث عن أصحاب القرار</h2>
 <div class="row" style="flex:0 0 auto">{% if ocfg.paused %}<form method="post" action="/officials/control"><input type="hidden" name="action" value="resume"><button class="btn p sm">استئناف</button></form>{% else %}<form method="post" action="/officials/control"><input type="hidden" name="action" value="pause"><button class="btn sm">إيقاف</button></form>{% endif %}
 <form method="post" action="/officials/control"><input type="hidden" name="action" value="run"><button class="btn sm">تشغيل دورة الآن</button></form></div></div>
-<div class="grid g4 small"><div>الحالة: <b>{{ 'موقوف' if ocfg.paused else 'يعمل كل %s ساعات'|format(ocfg.every_hours) }}</b></div>
-<div>آخر دورة: {{ ostats.last or '—' }}</div><div>موثّق: <b>{{ ostats.verified }}</b> — يحتاج تحقق: <b>{{ ostats.needs }}</b> — لم يُعثر: <b>{{ ostats.none }}</b> — لم يُبحث: <b>{{ ostats.pending }}</b></div>
+<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:10px">
+  <a class="kpi" href="/officials"><div class="l">كل المنشآت</div><div class="v">{{ ostats.total }}</div></a>
+  <a class="kpi" href="/officials?ostatus=verified"><div class="l">مسؤول موثّق</div><div class="v" style="color:var(--ok)">{{ ostats.verified }}</div></a>
+  <a class="kpi" href="/officials?ostatus=needs_check"><div class="l">يحتاج تحقق</div><div class="v" style="color:var(--warn)">{{ ostats.needs }}</div></a>
+  <a class="kpi" href="/officials?ostatus=none"><div class="l">لم يُعثر على مسؤول</div><div class="v">{{ ostats.none }}</div></a>
+  <a class="kpi" href="/officials?ostatus=pending"><div class="l">لم يُبحث بعد</div><div class="v">{{ ostats.pending }}</div></a>
+</div>
+<div class="grid g3 small"><div>الحالة: <b>{{ 'موقوف' if ocfg.paused else 'يعمل كل %s ساعات'|format(ocfg.every_hours) }}</b></div>
+<div>آخر دورة: {{ ostats.last or '—' }}</div>
 <div>تكلفة اليوم: ${{ ostats.spent }} من ${{ ocfg.daily_budget_usd }} — {{ ocfg.per_cycle }} منشأة لكل دورة</div></div>
 <p class="small muted" style="margin:8px 0 0">المصادر: صفحات «فريق الإدارة» في مواقع الشركات، الملفات المهنية العامة على لينكدإن كما تظهر في محركات البحث، منشورات التعيين على إكس، الأخبار والمقابلات، وصفحات متحدثي المؤتمرات. لا يُقبل اسم إلا إن ظهر مع اسم الشركة في الدليل نفسه.</p></div>{% endif %}
-<div class="card tablewrap"><table>
+<div class="card tablewrap">{% if cbase %}<div class="head2"><h2>{{ {'verified':'مسؤول موثّق','needs_check':'يحتاج تحقق','none':'لم يُعثر على مسؤول','pending':'لم يُبحث بعد'}.get(ostatus, 'كل المنشآت') }} <span class="muted small">({{ rows|length }} منشأة)</span></h2>{% if ostatus %}<a class="btn sm" href="/officials">عرض الكل</a>{% endif %}</div>{% endif %}<table>
 <tr><th>المنشأة وحالة التواصل</th><th>جهة القرار المقترحة</th><th>المسؤول الموثّق</th>{% if can('see_phone') %}<th>هاتف الشركة العام</th>{% endif %}{% if can('see_email') %}<th>بريد الشركة العام</th>{% endif %}</tr>
 {% for r in rows %}{% set c = r.c %}<tr><td style="min-width:240px"><a href="{{ cbase or '/portal/companies' }}/{{ c.id }}"><b><span translate="no">{{ c.name }}</span></b></a><div class="small muted">{{ c.activity }} — {{ c.city }}</div>{{ inline(csum[c.id], '/portal/companies/%d' % c.id, can('update_status')) }}</td>
 <td class="small">{{ c.decision_unit or '—' }}</td>

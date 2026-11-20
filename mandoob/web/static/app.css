@@ -182,3 +182,4 @@ td.telcol{white-space:nowrap;overflow-wrap:normal;width:1%}
 td.telcol .small{white-space:nowrap}
 .telrow+.telrow{margin-top:6px}
 .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (max-width:1100px){.kpis[style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}}@media (max-width:560px){.kpis[style*="repeat(5"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
