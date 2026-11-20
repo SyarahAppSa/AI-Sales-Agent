@@ -419,7 +419,14 @@ def home(request: Request, period: str = "7d", user: User = Depends(current_user
     p0, p1 = period_bounds(period)
     perf_today = sales_performance(s, user, t0, t1)
     perf = sales_performance(s, user, p0, p1)
-    return render(request, "dashboard.html", user, s, cards=cards, links=links, target=daily_target(s),
+    from ..models import AdminList, AdminListContact
+    lists_ = list(s.execute(select(AdminList.id, AdminList.rows)))
+    adm = {"lists": len(lists_), "rows": sum(len(r or []) for _, r in lists_),
+           "done": s.scalar(select(func.count(AdminListContact.id))) or 0,
+           "replied": s.scalar(select(func.count(AdminListContact.id)).where(AdminListContact.status == "replied")) or 0,
+           "first": lists_[-1][0] if lists_ else None}
+    adm["none"] = max(adm["rows"] - adm["done"], 0)
+    return render(request, "dashboard.html", user, s, adm=adm, cards=cards, links=links, target=daily_target(s),
                   today=riyadh_today(), recent=recent_customers(s, user), follow=needs_followup_today(s, user)[:8],
                   health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
 

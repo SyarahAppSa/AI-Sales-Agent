@@ -34,6 +34,18 @@
   </a>
 </div>
 
+<div class="card adm-strip">
+  <div class="head2"><h2>عملاء أضافتهم الإدارة</h2><a class="btn sm" href="/admin-lists">قائمة عملاء إدارية</a></div>
+  {% if adm.rows %}<div class="adm-nums">
+    <a href="/admin-lists"><b>{{ adm.rows }}</b><span>عميل في {{ adm.lists }} {{ 'قائمة' if adm.lists == 1 else 'قوائم' }}</span></a>
+    <a href="/admin-lists?lid={{ adm.first }}&cstate=done"><b style="color:var(--ok)">{{ adm.done }}</b><span>تم التواصل معهم</span></a>
+    <a href="/admin-lists?lid={{ adm.first }}&cstate=replied"><b style="color:var(--brand)">{{ adm.replied }}</b><span>ردّوا</span></a>
+    <a href="/admin-lists?lid={{ adm.first }}&cstate=none"><b style="color:var(--warn)">{{ adm.none }}</b><span>لم يُتواصل معهم بعد</span></a>
+  </div>
+  <div class="progress" style="margin-top:12px"><i style="width:{{ (100 * adm.done / adm.rows)|round(1) }}%"></i></div>
+  {% else %}<p class="muted" style="margin:0">لم تُرفع قوائم بعد — ارفع ملف Excel من «قائمة عملاء إدارية».</p>{% endif %}
+</div>
+
 <div class="grid g2">
 <div class="card">
   <div class="head2"><h2>أحدث العملاء</h2><a class="btn sm" href="/today">عملاء اليوم</a></div>

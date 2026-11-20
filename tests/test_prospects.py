@@ -315,3 +315,7 @@ def test_admin_list_contact_status_shared_and_no_double_call():
         with session_scope() as s:
             x = s.query(AdminListContact).filter_by(list_id=lid, row_idx=0).one()
             assert x.status == "replied" and x.by_name == "موظف القوائم" and len(x.history) == 1
+    with TestClient(app) as adm:
+        otp_login(adm, ADMIN, "admin")
+        html = adm.get("/").text
+        assert "عملاء أضافتهم الإدارة" in html and "تم التواصل معهم" in html and "لم يُتواصل معهم بعد" in html

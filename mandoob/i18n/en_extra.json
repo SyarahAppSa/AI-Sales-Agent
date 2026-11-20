@@ -308,5 +308,12 @@
 "الكل ({x})": "All ({x})",
 "لم يُتواصل معهم ({x})": "Not contacted ({x})",
 "تم التواصل ({x})": "Contacted ({x})",
-"ردّوا ({x})": "Answered ({x})"
+"ردّوا ({x})": "Answered ({x})",
+"عملاء أضافتهم الإدارة": "Customers added by management",
+"عميل في {x} قائمة": "customers in {x} list",
+"عميل في {x} قوائم": "customers in {x} lists",
+"تم التواصل معهم": "Contacted",
+"ردّوا": "Answered",
+"لم يُتواصل معهم بعد": "Not contacted yet",
+"لم تُرفع قوائم بعد — ارفع ملف Excel من «قائمة عملاء إدارية».": "No lists uploaded yet — upload an Excel file in “Admin customer list”."
 }
