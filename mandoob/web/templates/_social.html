@@ -1,0 +1,44 @@
+{# «المكان المستهدف» + «مواقع التواصل الاجتماعي» داخل نموذج الحملة. نماذج الرفع خارج النموذج الرئيسي وتُربط بسمة form= #}
+{% set picked = (camp.social_sources if camp and camp.social_sources else []) %}
+<div class="row social-head" id="social" style="margin-top:10px;align-items:flex-start">
+  <div style="flex:1 1 240px"><label for="target_place">المكان المستهدف</label>
+    <input id="target_place" name="target_place" list="place-list" value="{{ camp.target_place if camp and camp.target_place else '' }}" placeholder="مثل: الرياض">
+    <datalist id="place-list">{% for p in place_options %}<option value="{{ p }}">{% endfor %}</datalist></div>
+  <div style="flex:3 1 420px"><label>مواقع التواصل الاجتماعي <span class="small muted">(اختر مصدرًا أو أكثر)</span></label>
+    <input type="hidden" name="social_present" value="1">
+    <div class="chips social-pick">{% for k, lbl in SOCIAL.items() %}
+      <label><input type="checkbox" name="social_sources" value="{{ k }}" data-src-toggle="{{ k }}" {{ 'checked' if k in picked }}> {{ lbl }}</label>{% endfor %}</div></div>
+</div>
+{% if social_can %}
+<div class="social-rows">
+{% for k, lbl in SOCIAL.items() %}{% set fl = social_files.get(k, []) %}
+<div class="srcrow" id="src-{{ k }}" data-src="{{ k }}" {% if k not in picked %}hidden{% endif %}>
+  <div class="srchead"><b>{{ lbl }}</b>
+    {% if camp %}<label class="btn small-btn">رفع ملف Excel<input type="file" name="file" form="up-{{ k }}" accept=".xlsx,.xlsm,.xls,.csv" hidden onchange="socialSubmit(this)"></label>
+    {% else %}<span class="small muted">احفظ الحملة أولًا ثم ارفع الملف أمام المصدر</span>{% endif %}
+    {% if not fl and camp %}<span class="small muted">لم يُرفع ملف بعد</span>{% endif %}</div>
+  {% for x in fl %}{% set f = x.f %}{% set v = x.v %}
+  <div class="srcfile">
+    <div class="srcmeta">
+      <span translate="no">📄 {{ f.file_name }}</span>
+      <span class="pill">{{ v.total }} عميل</span>
+      {% if f.status == 'staged' %}<span class="pill warn">بانتظار الاعتماد والاستيراد</span>{% else %}<span class="pill ok">تم الاستيراد</span>{% endif %}
+      {% if f.place %}<span class="small muted">المكان: {{ f.place }}</span>{% endif %}
+      <button type="button" class="btn small-btn" data-toggle-table="tbl-{{ f.id }}" aria-expanded="{{ 'true' if request.query_params.get('open') == k else 'false' }}">عرض العملاء</button>
+      {% if f.status == 'staged' %}
+      <label class="btn small-btn">استبدال<input type="file" name="file" form="rep-{{ f.id }}" accept=".xlsx,.xlsm,.xls,.csv" hidden onchange="socialSubmit(this)"></label>
+      <button class="btn small-btn d" form="del-{{ f.id }}">حذف</button>{% endif %}
+    </div>
+    {% if f.stats %}<div class="small" style="margin:4px 0">نتيجة الاستيراد: <b>{{ f.stats.new }}</b> جديد · <b>{{ f.stats.duplicate }}</b> مكرر (دُمج مع عميل موجود وأُضيف إليه المصدر) · <b>{{ f.stats.failed }}</b> فشل
+      {% if f.stats.failures %}<details><summary class="small">أسباب الفشل</summary><ul class="small">{% for e in f.stats.failures[:100] %}<li>صف {{ e.row }}: {{ e.reason }}</li>{% endfor %}</ul></details>{% endif %}</div>{% endif %}
+    <div class="tablewrap srctable" id="tbl-{{ f.id }}" {% if request.query_params.get('open') != k %}hidden{% endif %}>
+      <table><tr><th>#</th>{% for h in v.headers %}<th>{{ h }}</th>{% endfor %}</tr>
+      {% for r in v.rows %}<tr><td class="muted small">{{ r.n }}</td>{% for c in r.cells %}{% if c.phones is defined %}<td class="phcell">{% for p in c.phones %}<div class="ph" translate="no" dir="ltr">{{ p }}</div>{% endfor %}</td>{% else %}<td translate="no">{{ c.text }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</table>
+      {% if v.total > v.rows|length %}<p class="small"><a href="/targets/{{ camp.id }}/social/{{ f.id }}">عرض كل العملاء ({{ v.total }})</a></p>{% endif %}
+    </div>
+  </div>{% endfor %}
+</div>{% endfor %}
+{% if camp and staged_n %}<div style="margin-top:10px"><button class="btn p" form="social-import">اعتماد واستيراد العملاء</button>
+  <span class="small muted">يُضاف العملاء إلى الحملة مع المكان المستهدف ومصدر كل ملف، بلا تكرار: العميل الموجود يُضاف إليه المصدر ويبقى مسؤوله وسجل تواصله.</span></div>{% endif %}
+</div>
+{% endif %}

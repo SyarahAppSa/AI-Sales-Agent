@@ -13,6 +13,7 @@
   <div style="flex:2 1 300px"><label>اسم الحملة</label><input name="name" value="{{ parsed.name }}"></div>
   <div style="flex:2 1 300px"><label>الأنشطة المستبعدة (افصل بفواصل)</label><input name="exclusions" value="{{ parsed.exclusions|join('، ') }}"></div>
 </div>
+{% include "_social.html" %}
 <div class="chips" style="margin-top:6px">
   <label><input type="checkbox" name="exclude_existing_customers" {{ 'checked' if parsed.exclude_existing_customers }}> استبعاد عملاء سيارة آب الحاليين</label>
   <label><input type="checkbox" name="allow_backfill" {{ 'checked' if camp and camp.allow_backfill }}> السماح بتعويض النقص من فئة أخرى</label>
@@ -66,6 +67,18 @@
 </div>{% endif %}
 <button class="btn p">{{ 'حفظ التعديلات' if camp else 'حفظ الحملة كمسودة' }}</button>
 </form>
+{% include "_social_forms.html" %}
+{% if camp and social_can and leads_all %}
+<div class="card" id="leads" style="margin-top:16px"><h2>عملاء الحملة من مواقع التواصل الاجتماعي</h2>
+<form method="get" action="/targets/{{ camp.id }}" class="row" style="align-items:flex-end;margin-bottom:8px">
+  <div style="flex:0 1 260px"><label for="lead-src">مصدر العميل</label><select id="lead-src" name="src" onchange="this.form.submit()">
+    <option value="">كل المصادر</option>{% for k, lbl in SOCIAL.items() %}<option value="{{ k }}" {{ 'selected' if lead_src == k }}>{{ lbl }}</option>{% endfor %}</select></div>
+  <div class="small muted">{{ leads|length }} من {{ leads_all }} عميل</div></form>
+<div class="tablewrap"><table><tr><th>العميل</th><th>رقم التواصل</th><th>مصدر العميل</th><th>المكان المستهدف</th><th>المسؤول</th></tr>
+{% for d in leads %}{% set c = d.company %}<tr><td><a href="/companies/{{ c.id }}" translate="no">{{ c.name }}</a></td>
+<td class="phcell">{% for ct in c.contacts if ct.kind == 'phone' %}<div class="ph" translate="no" dir="ltr">{{ ct.raw_value or ct.value }}</div>{% endfor %}</td>
+<td>{% for k in d.sources %}<span class="pill info">{{ SOCIAL.get(k, k) }}</span> {% endfor %}</td>
+<td>{{ d.place or '—' }}</td><td>{{ lead_owners.get(c.owner_id, '—') if c.owner_id else '—' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
 
 {% if runs %}<div class="card" style="margin-top:16px"><h2>آخر عمليات التشغيل</h2>
 <table><tr><th>اليوم</th><th>الحالة</th><th>مكتملة</th><th>قيد الاستكمال</th><th>مكررة</th><th>العجز وسببه</th></tr>

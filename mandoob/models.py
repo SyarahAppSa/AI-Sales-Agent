@@ -127,6 +127,8 @@ class Campaign(Base):
     allow_backfill: Mapped[bool] = mapped_column(Boolean, default=False)
     exclusions: Mapped[list] = mapped_column(JSON, default=list)  # أنشطة مستبعدة (وسطاء...)
     exclude_existing_customers: Mapped[bool] = mapped_column(Boolean, default=True)
+    target_place: Mapped[Optional[str]] = mapped_column(String(200))  # «المكان المستهدف» كما كتبه المدير
+    social_sources: Mapped[Optional[list]] = mapped_column(JSON)  # مفاتيح «مواقع التواصل الاجتماعي» المختارة
     # الإرسال
     send_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     send_days: Mapped[list] = mapped_column(JSON, default=lambda: [6, 0, 1, 2, 3])  # Python weekday: الأحد=6
@@ -808,3 +810,35 @@ class AdminListAssignment(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     assigned_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     assigned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CampaignSourceFile(Base):
+    """ملف Excel مرفوع أمام مصدر من «مواقع التواصل الاجتماعي» في حملة: يُعرض كما هو للمعاينة، ثم يُستورد عند الاعتماد."""
+    __tablename__ = "campaign_source_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    source_key: Mapped[str] = mapped_column(String(30))
+    place: Mapped[str] = mapped_column(String(200), default="")
+    file_name: Mapped[str] = mapped_column(String(200), default="")
+    headers: Mapped[list] = mapped_column(JSON, default=list)
+    rows: Mapped[list] = mapped_column(JSON, default=list)
+    cols: Mapped[dict] = mapped_column(JSON, default=dict)  # {"name": i, "phone": [i..], "email": i, ...}
+    status: Mapped[str] = mapped_column(String(20), default="staged")  # staged / imported
+    stats: Mapped[Optional[dict]] = mapped_column(JSON)  # {"new", "duplicate", "failed", "failures": [{row, reason}]}
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    imported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class CampaignLead(Base):
+    """عميل في حملة ومصدره: سجل عميل واحد (Company) وقد يرتبط بأكثر من مصدر في الحملة نفسها."""
+    __tablename__ = "campaign_leads"
+    __table_args__ = (UniqueConstraint("campaign_id", "company_id", "source_key", name="uq_campaign_lead_src"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    source_key: Mapped[str] = mapped_column(String(30), index=True)
+    place: Mapped[str] = mapped_column(String(200), default="")
+    file_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaign_source_files.id"))
+    row_idx: Mapped[Optional[int]] = mapped_column(Integer)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

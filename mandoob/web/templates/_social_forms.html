@@ -1,0 +1,19 @@
+{# نماذج الرفع/الحذف/الاستيراد — خارج نموذج الحملة الرئيسي #}
+{% if camp and social_can %}
+{% for k in SOCIAL %}<form id="up-{{ k }}" method="post" action="/targets/{{ camp.id }}/social/upload" enctype="multipart/form-data" hidden>
+<input type="hidden" name="source" value="{{ k }}"><input type="hidden" name="target_place" value=""></form>
+{% for x in social_files.get(k, []) if x.f.status == 'staged' %}
+<form id="rep-{{ x.f.id }}" method="post" action="/targets/{{ camp.id }}/social/upload" enctype="multipart/form-data" hidden>
+<input type="hidden" name="source" value="{{ k }}"><input type="hidden" name="replace_id" value="{{ x.f.id }}"><input type="hidden" name="target_place" value=""></form>
+<form id="del-{{ x.f.id }}" method="post" action="/targets/{{ camp.id }}/social/{{ x.f.id }}/delete" hidden onsubmit="return confirm('حذف الملف «{{ x.f.file_name|e }}»؟')"></form>
+{% endfor %}{% endfor %}
+<form id="social-import" method="post" action="/targets/{{ camp.id }}/social/import" hidden onsubmit="return confirm('استيراد عملاء الملفات إلى الحملة؟')"></form>
+{% endif %}
+<script>
+function socialSubmit(inp){var f=inp.form;var tp=document.getElementById('target_place');
+  if(tp&&f.elements['target_place'])f.elements['target_place'].value=tp.value;f.submit();}
+document.querySelectorAll('[data-src-toggle]').forEach(function(cb){cb.addEventListener('change',function(){
+  var row=document.getElementById('src-'+cb.dataset.srcToggle);if(row)row.hidden=!cb.checked;});});
+document.querySelectorAll('[data-toggle-table]').forEach(function(b){b.addEventListener('click',function(){
+  var t=document.getElementById(b.dataset.toggleTable);if(!t)return;t.hidden=!t.hidden;b.setAttribute('aria-expanded',String(!t.hidden));});});
+</script>

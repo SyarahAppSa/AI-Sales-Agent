@@ -1298,7 +1298,8 @@ def targets_parse(request: Request, text: str = Form(...), daily_target: int = F
                   user: User = Depends(require_manager), s=Depends(get_db)):
     parsed = parse_request(text, daily_target)
     offers = list(s.scalars(select(Offer).order_by(Offer.id)))
-    return render(request, "target_review.html", user, s, parsed=parsed, text=text, offers=offers, camp=None)
+    return render(request, "target_review.html", user, s, parsed=parsed, text=text, offers=offers, camp=None,
+                  **_social_ctx(s, None, user))
 
 
 def _split(v: str) -> list[str]:
@@ -1352,6 +1353,12 @@ def _save_campaign_fields(camp: Campaign, form) -> None:
     camp.daily_send_cap = int(form.get("daily_send_cap") or 150)
     camp.followup_days = int(form.get("followup_days") or 0)
     camp.test_recipient = normalize_email(form.get("test_recipient")) or None
+    if "target_place" in form:
+        camp.target_place = (form.get("target_place") or "").strip()[:200] or None
+    if form.get("social_present"):
+        from ..campaign_sources import SOCIAL_SOURCES
+        picked = form.getlist("social_sources") if hasattr(form, "getlist") else []
+        camp.social_sources = [k for k in SOCIAL_SOURCES if k in picked]
 
 
 @app.post("/targets/save")
@@ -1380,7 +1387,104 @@ def target_edit(cid: int, request: Request, user: User = Depends(current_user), 
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.campaign_id == cid)
                           .order_by(DiscoveryRun.id.desc()).limit(10)))
     return render(request, "target_review.html", user, s, parsed=parsed, text=camp.request_text, offers=offers,
-                  camp=camp, runs=runs)
+                  camp=camp, runs=runs, **_social_ctx(s, camp, user, request.query_params.get("src", "")))
+
+
+def _social_ctx(s, camp, user, src: str = "") -> dict:
+    """قسم «مواقع التواصل الاجتماعي»: ملفات كل مصدر ومعاينتها، وعملاء الحملة مع فلتر «مصدر العميل»."""
+    from ..campaign_sources import SOCIAL_SOURCES, campaign_leads, view
+    from ..models import CampaignSourceFile
+    can = user.role in ("admin", "manager")
+    files: dict[str, list] = {}
+    if camp is not None and can:
+        for f in s.scalars(select(CampaignSourceFile).where(CampaignSourceFile.campaign_id == camp.id)
+                           .order_by(CampaignSourceFile.id)):
+            files.setdefault(f.source_key, []).append({"f": f, "v": view(f, limit=200)})
+    leads = campaign_leads(s, camp.id, src if src in SOCIAL_SOURCES else "") if camp is not None and can else []
+    all_n = len(campaign_leads(s, camp.id)) if camp is not None and can else 0
+    owners = {u.id: u.name for u in s.scalars(select(User))} if leads else {}
+    return {"SOCIAL": SOCIAL_SOURCES, "social_files": files, "lead_owners": owners, "social_can": can, "leads": leads, "leads_all": all_n,
+            "lead_src": src if src in SOCIAL_SOURCES else "", "place_options": list(CITIES),
+            "staged_n": sum(1 for v in files.values() for x in v if x["f"].status == "staged")}
+
+
+@app.post("/targets/{cid}/social/upload")
+async def social_upload(cid: int, request: Request, source: str = Form(...), file: UploadFile = File(...),
+                        replace_id: int = Form(0), target_place: str = Form(""),
+                        user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..campaign_sources import SOCIAL_SOURCES, parse_file
+    from ..models import CampaignSourceFile
+    from ..prospects import UploadError
+    camp = s.get(Campaign, cid) or _404()
+    if source not in SOCIAL_SOURCES:
+        raise HTTPException(400)
+    data = await file.read()
+    name = (file.filename or "ملف").strip()[:200]
+    if not data:
+        flash(request, "اختر ملف Excel أولًا", "err")
+        return back(f"/targets/{cid}#src-{source}")
+    try:
+        headers, rows, cols = parse_file(name, data)
+    except UploadError as e:
+        flash(request, f"تعذّر قراءة «{name}»: {e}", "err")
+        return back(f"/targets/{cid}#src-{source}")
+    if target_place.strip():
+        camp.target_place = target_place.strip()[:200]
+    picked = list(camp.social_sources or [])
+    if source not in picked:
+        camp.social_sources = [k for k in SOCIAL_SOURCES if k in picked + [source]]
+    old = s.get(CampaignSourceFile, replace_id) if replace_id else None
+    if old is not None and old.campaign_id == cid and old.status == "staged":
+        s.delete(old)
+    s.add(CampaignSourceFile(campaign_id=cid, source_key=source, place=camp.target_place or "", file_name=name,
+                             headers=headers, rows=rows, cols=cols, uploaded_by=user.id))
+    flash(request, f"رُفع «{name}» أمام {SOCIAL_SOURCES[source]}: {len(rows)} عميل للمعاينة. راجع الأسماء والأرقام "
+                   "ثم اضغط «اعتماد واستيراد العملاء».")
+    return back(f"/targets/{cid}?open={source}#src-{source}")
+
+
+@app.post("/targets/{cid}/social/{fid}/delete")
+def social_delete(cid: int, fid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..models import CampaignSourceFile
+    f = s.get(CampaignSourceFile, fid)
+    if f is None or f.campaign_id != cid:
+        _404()
+    if f.status != "staged":
+        flash(request, "لا يُحذف ملف بعد استيراده — عملاؤه أصبحوا ضمن الحملة", "err")
+    else:
+        s.delete(f)
+        flash(request, f"حُذف «{f.file_name}»")
+    return back(f"/targets/{cid}#src-{f.source_key}")
+
+
+@app.post("/targets/{cid}/social/import")
+def social_import(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from ..campaign_sources import SOCIAL_SOURCES, import_campaign
+    camp = s.get(Campaign, cid) or _404()
+    done = import_campaign(s, camp, user.id)
+    if not done:
+        flash(request, "لا توجد ملفات بانتظار الاستيراد", "err")
+    else:
+        flash(request, "استُورد العملاء: " + " — ".join(
+            f"{SOCIAL_SOURCES.get(f.source_key, f.source_key)} «{f.file_name}»: {st['new']} جديد، {st['duplicate']} مكرر، "
+            f"{st['failed']} فشل" for f, st in done))
+    return back(f"/targets/{cid}#social")
+
+
+@app.get("/targets/{cid}/social/{fid}", response_class=HTMLResponse)
+def social_file(cid: int, fid: int, request: Request, page: int = 1, user: User = Depends(require_manager),
+                s=Depends(get_db)):
+    from ..campaign_sources import SOCIAL_SOURCES, view
+    from ..models import CampaignSourceFile
+    camp = s.get(Campaign, cid) or _404()
+    f = s.get(CampaignSourceFile, fid)
+    if f is None or f.campaign_id != cid:
+        _404()
+    per = 200
+    page = max(1, page)
+    v = view(f, limit=per, offset=(page - 1) * per)
+    return render(request, "social_file.html", user, s, camp=camp, f=f, v=v, page=page,
+                  pages=max(1, -(-v["total"] // per)), SOCIAL=SOCIAL_SOURCES)
 
 
 @app.post("/targets/{cid}")
@@ -1404,7 +1508,11 @@ def target_status(cid: int, request: Request, action: str = Form(...), user: Use
             flash(request, "اعتمد العروض المرتبطة أولًا: " + "، ".join(missing), "err")
             return back(f"/targets/{cid}")
         camp.status, camp.approved_at = "active", now_utc()
-        flash(request, "اعتُمدت الحملة وأصبحت نشطة. ستعمل يوميًا في الوقت المحدد.")
+        from ..campaign_sources import import_campaign
+        done = import_campaign(s, camp, user.id)
+        extra = (" واستُورد عملاء الملفات: " + "، ".join(f"«{f.file_name}» {st['new']} جديد/{st['duplicate']} مكرر/"
+                                                       f"{st['failed']} فشل" for f, st in done)) if done else ""
+        flash(request, "اعتُمدت الحملة وأصبحت نشطة. ستعمل يوميًا في الوقت المحدد." + extra)
     elif action == "pause":
         camp.status = "paused"
         flash(request, "أُوقفت الحملة مؤقتًا")

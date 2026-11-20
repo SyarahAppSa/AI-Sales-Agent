@@ -232,3 +232,14 @@ td.telcol .small{white-space:nowrap}
 .flist th{position:sticky;top:0;z-index:1}
 .xbtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:17px;line-height:1;width:30px;height:30px;border-radius:50%;cursor:pointer;margin-inline-start:6px;vertical-align:middle}
 .xbtn:hover{background:var(--err-soft);color:var(--err);border-color:var(--err-soft)}
+/* مواقع التواصل الاجتماعي في الحملة */
+.social-rows{display:grid;gap:10px;margin-top:10px}
+.srcrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card,#fff)}
+.srcrow[hidden]{display:none}
+.srchead{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.srcfile{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
+.srcmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.small-btn{padding:4px 12px;font-size:13px;cursor:pointer}
+.srctable{max-height:460px;overflow:auto;margin-top:6px}
+.srctable[hidden]{display:none}
+.phcell .ph{direction:ltr;unicode-bidi:isolate;white-space:nowrap;text-align:left;font-variant-numeric:tabular-nums}

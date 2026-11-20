@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}
+<div class="top"><div><h1>{{ SOCIAL.get(f.source_key, f.source_key) }} — <span translate="no">{{ f.file_name }}</span></h1>
+<p class="sub">حملة <a href="/targets/{{ camp.id }}#src-{{ f.source_key }}">{{ camp.name }}</a> · {{ v.total }} عميل{% if f.place %} · المكان: {{ f.place }}{% endif %}</p></div></div>
+<div class="card"><div class="tablewrap srctable">
+<table><tr><th>#</th>{% for h in v.headers %}<th>{{ h }}</th>{% endfor %}</tr>
+{% for r in v.rows %}<tr><td class="muted small">{{ r.n }}</td>{% for c in r.cells %}{% if c.phones is defined %}<td class="phcell">{% for p in c.phones %}<div class="ph" translate="no" dir="ltr">{{ p }}</div>{% endfor %}</td>{% else %}<td translate="no">{{ c.text }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</table></div>
+{% if pages > 1 %}<div class="row small" style="margin-top:8px;gap:8px">{% if page > 1 %}<a class="btn" href="?page={{ page - 1 }}">السابق</a>{% endif %}<span>صفحة {{ page }} من {{ pages }}</span>{% if page < pages %}<a class="btn" href="?page={{ page + 1 }}">التالي</a>{% endif %}</div>{% endif %}
+</div>
+{% endblock %}
