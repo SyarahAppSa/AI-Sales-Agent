@@ -89,3 +89,24 @@ def _add_missing_columns() -> None:
                 # IF NOT EXISTS: الموقع والعامل قد يبدآن معًا بعد النشر فيحاول كلاهما إضافة العمود نفسه
                 ine = "" if _is_sqlite else "IF NOT EXISTS "
                 conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {ine}{col.name} {ddl_type}{default}'))
+
+
+# ---------------------------------------------------------------- حماية أطوال النصوص
+# نص أطول من عموده (مثل «النشاط» يكتبه البحث الآلي جملةً طويلة) كان يُفشل الإدراج كله على Postgres
+# (StringDataRightTruncation) فتسقط دفعة الاكتشاف بالكامل. يُقصّ النص إلى طول العمود قبل الكتابة.
+from sqlalchemy import String as _String, event as _event  # noqa: E402
+
+
+def _clip_strings(mapper, connection, target):
+    for col in mapper.columns:
+        n = getattr(col.type, "length", None)
+        if not n or not isinstance(col.type, _String):
+            continue
+        key = mapper.get_property_by_column(col).key
+        v = target.__dict__.get(key)
+        if isinstance(v, str) and len(v) > n:
+            setattr(target, key, v[: n - 1] + "…")
+
+
+_event.listen(Base, "before_insert", _clip_strings, propagate=True)
+_event.listen(Base, "before_update", _clip_strings, propagate=True)

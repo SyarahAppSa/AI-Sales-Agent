@@ -37,6 +37,8 @@ DAILY_TARGET = 1000
 BP = "https://bluepages.com.sa"
 UA = "Mozilla/5.0 (compatible; SyarahAppSalesAgent/1.0; +https://mandoob.live)"
 DELAY = 1.2  # ثانية بين طلبات الدليل (زحف مهذب)
+RETRY_WAIT = 20  # ثانية × رقم المحاولة قبل إعادة صفحة تعذّرت (انقطاع المصدر)
+PAGE_TRIES = 3   # صفحة تتعذر ٣ مرات تُترك لدفعة اليوم التالي
 SOURCE_LABEL = {"import": "ملف مزوّد بيانات مرخّص",
                 "google_places": "خرائط Google (الواجهة الرسمية) — الاكتشاف فقط، والتواصل من موقع المنشأة",
                 "bluepages": "دليل الصفحات الزرقاء (bluepages.com.sa)",
@@ -613,8 +615,11 @@ def _is_customer(s, rec, phones, email) -> bool:
     return is_existing_customer(s, cand, fcs)
 
 
-def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") -> str:
-    """يعيد: ready / needs / duplicate / existing_customer / rejected."""
+def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages", recount_since=None) -> str:
+    """يعيد: ready / needs / duplicate / existing_customer / rejected.
+
+    recount_since: عند استئناف صفحة انقطعت أثناءها، المنشأة التي أضافتها الدفعة نفسها قبل الانقطاع تُحتسب بنتيجتها
+    الأصلية (لا «مكررة») لأن عدّها ضاع مع الانقطاع."""
     from .companies import _add_contact, _refresh_preferred, find_hq, is_complete, log_activity
     from .discovery.base import FoundContact
     from .geo import PLACES, resolve_city
@@ -632,7 +637,10 @@ def process(rec: dict, crawler, stats: dict, day: date, src: str = "bluepages") 
     with session_scope() as s:
         if _is_customer(s, rec, phones, email):
             return "existing_customer"
-        if _existing(s, rec, phones, email, rec.get("unified")) is not None:
+        ex = _existing(s, rec, phones, email, rec.get("unified"))
+        if ex is not None:
+            if recount_since and ex.prospect_on == day and ex.first_found_at and ex.first_found_at >= recount_since:
+                return "ready" if ex.contactable else "needs"
             return "duplicate"
     # التحقق من موقع المنشأة نفسها (زاحف بلا تكلفة ذكاء اصطناعي)
     site = None
@@ -744,6 +752,14 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
         src_list = r.sources or r.source
         stats = dict(r.stats or {})
         done_pages = set(stats.get("_pages") or [])
+        run_started = r.started_at
+        resume_key = stats.pop("_inflight", None)  # الصفحة/السجل الذي انقطعت الدفعة أثناءه
+        resume_at = stats.pop("_inflight_at", None)
+        try:
+            from datetime import datetime as _dt
+            resume_at = _dt.fromisoformat(resume_at) if resume_at else None
+        except ValueError:
+            resume_at = None
         _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصادر: {r.sources or r.source}")
     sources = [x for x in (src_list or "bluepages").split(",") if x in SOURCE_LABEL]
 
@@ -759,21 +775,28 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
     def ready_total():
         return sum((stats.get(x) or {}).get("ready", 0) for x in SOURCE_LABEL)
 
-    def handle(src, url, items):
+    def handle(src, url, items, key=None):
         st = stats.setdefault(src, {})
         took = 0
+        key = key or url
+        # فقط ما أُضيف بعد بدء الصفحة المنقطعة يُحتسب بنتيجته الأصلية؛ المكرر الحقيقي من صفحة سابقة يبقى «مكررًا»
+        recount = (resume_at or run_started) if resume_key and key == resume_key else None
+        stats["_inflight"], stats["_inflight_at"] = key, now_utc().isoformat()
+        beat()
         for rec in items:
             if (took >= per_page and src in ("bluepages", "earabicmarket")) or ready_total() >= target:
                 break
             st["examined"] = st.get("examined", 0) + 1
             try:
-                out = process(rec, crawler, stats, day, src)
+                out = process(rec, crawler, stats, day, src, recount_since=recount)
             except Exception as e:  # noqa: BLE001
                 out = "error"
                 log.warning("prospect failed: %s", type(e).__name__)
             st[out] = st.get(out, 0) + 1
             if out in ("ready", "needs"):
                 took += 1
+        stats.pop("_inflight", None)
+        stats.pop("_inflight_at", None)
         if src != "import":
             beat(f"[{src}] {unquote(url).split('.com', 1)[-1][:80]}: {len(items)} بطاقة — جاهزة {ready_total()} من {target}")
 
@@ -791,7 +814,7 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
                     return
                 for pid, rec in batch:
                     before = dict(st)
-                    handle(src, rec["listing_url"], [rec])
+                    handle(src, rec["listing_url"], [rec], key=f"pool:{pid}")
                     res = next((k for k in ("ready", "needs", "duplicate", "existing_customer", "error")
                                 if st.get(k, 0) > before.get(k, 0)), "skipped")
                     with session_scope() as s:
@@ -864,13 +887,22 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
                             seen_q.add(n)
                             queue.append(n)
             except Exception as e:  # noqa: BLE001
+                tries = stats.setdefault("_tries", {})
+                tries[url] = tries.get(url, 0) + 1
+                if tries[url] < PAGE_TRIES:  # انقطاع مؤقت: تُعاد الصفحة لاحقًا في الدفعة نفسها
+                    queue.append(url)
+                    st["page_retries"] = st.get("page_retries", 0) + 1
+                    beat(f"[{src}] تعذّرت صفحة ({type(e).__name__}) — ستُعاد المحاولة {tries[url] + 1} من {PAGE_TRIES}")
+                    if RETRY_WAIT:
+                        time.sleep(RETRY_WAIT * tries[url])
+                    continue
                 st["page_errors"] = st.get("page_errors", 0) + 1
-                beat(f"[{src}] تعذّرت صفحة: {type(e).__name__}")
-                done_pages.add(url)
+                beat(f"[{src}] تعذّرت صفحة {PAGE_TRIES} مرات: {type(e).__name__} — تُترك لدفعة اليوم التالي")
                 continue
-            done_pages.add(url)
-            st["pages"] = st.get("pages", 0) + 1
             handle(src, url, items if src == "bluepages" else items[:50])
+            st["pages"] = st.get("pages", 0) + 1
+            done_pages.add(url)  # بعد معالجة كل سجلاتها — توقف العامل أثناءها يعيدها عند الاستئناف
+            beat()
     with session_scope() as s:
         r = s.get(ProspectRun, run_id)
         r.status, r.finished_at = "done", now_utc()

@@ -471,3 +471,94 @@ def test_assigning_already_assigned_customer_shows_who_has_it():
         with session_scope() as s:
             got = {a.row_idx for a in s.query(AdminListAssignment).filter_by(list_id=l2id)}
             assert got == {1}
+
+
+def _fetch_fixture(prefix, base_id, phone_base):
+    from urllib.parse import quote
+    urls = [f"{BP}/{quote('الرياض')}/{quote(prefix)}-{i}" for i in range(6)]
+    pages, first, truth = {}, [], {"ready": 0, "needs": 0}
+    n = 0
+    for pi, u in enumerate(urls):
+        items = []
+        for j in range(5):
+            n += 1
+            if j == 4 and pi > 0:
+                items.append(first[pi - 1])
+                continue
+            if j == 3:
+                items.append(card(base_id + n, f"{prefix} بلا تواصل {n}", "الرياض", "خدمات لوجستية"))
+                truth["needs"] += 1
+                continue
+            c = card(base_id + n, f"{prefix} {n}", "الرياض", "خدمات لوجستية", phone=f"05{phone_base + n:08d}")
+            items.append(c)
+            truth["ready"] += 1
+            if j == 0:
+                first.append(c)
+        pages[u] = page(items)
+    pages[BP + "/sitemap.xml"] = "<urlset>" + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>"
+    return urls, pages, truth
+
+
+def test_fetch_source_outage_retries_and_crash_resume_counts(monkeypatch):
+    """فحص الإطلاق: انقطاع المصدر أثناء الدفعة تُعاد صفحاته في الدفعة نفسها، والاستئناف بعد توقف العامل لا يكرر
+    المنشآت ولا يُحسب ما أُضيف قبل التوقف «مكررًا»."""
+    from datetime import timedelta
+    import httpx
+    from mandoob import prospects as P
+    from mandoob.timeutil import now_utc
+    monkeypatch.setattr(P, "DELAY", 0)
+    monkeypatch.setattr(P, "RETRY_WAIT", 0)
+    urls, pages, truth = _fetch_fixture("منشأة انقطاع", 70000, 71000000)
+    fails = {u: 1 for u in urls[2:4]}  # تتعذر مرة ثم تعود
+
+    class C:
+        def get(self, url, **k):
+            if fails.get(url):
+                fails[url] -= 1
+                raise httpx.ConnectError("down")
+            return FakeResp(pages[url])
+    with session_scope() as s:
+        rid = P.request_run(s, None, target=1000, sources="bluepages").id
+    P.run(rid, crawler=FakeCrawler(), client=C(), per_page=50)
+    with session_scope() as s:
+        st = s.get(ProspectRun, rid).stats["bluepages"]
+        assert st["ready"] == truth["ready"] and st["needs"] == truth["needs"] and st["page_retries"] == 2
+        assert not st.get("page_errors")
+        assert s.query(Company).filter(Company.name.like("منشأة انقطاع %"), Company.contactable.is_(True)).count() == truth["ready"]
+    # توقف العامل في منتصف صفحة ثم الاستئناف
+    urls, pages, truth = _fetch_fixture("منشأة توقف", 80000, 81000000)
+
+    class Crash(BaseException):
+        pass
+    orig, calls = P.process, {"n": 0}
+
+    def crashing(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 8:
+            raise Crash()
+        return orig(*a, **k)
+
+    class C2:
+        def get(self, url, **k):
+            return FakeResp(pages[url])
+    with session_scope() as s:
+        rid = P.request_run(s, None, target=1000, sources="bluepages").id
+    monkeypatch.setattr(P, "process", crashing)
+    try:
+        P.run(rid, crawler=FakeCrawler(), client=C2(), per_page=50)
+    except Crash:
+        pass
+    monkeypatch.setattr(P, "process", orig)
+    with session_scope() as s:
+        r = s.get(ProspectRun, rid)
+        assert r.status == "running"
+        r.heartbeat = now_utc() - timedelta(minutes=15)
+    with session_scope() as s:  # منطق tick(): نبض قديم ← pending
+        r = s.get(ProspectRun, rid)
+        r.status = "pending"
+    P.run(rid, crawler=FakeCrawler(), client=C2(), per_page=50)
+    with session_scope() as s:
+        st = s.get(ProspectRun, rid).stats["bluepages"]
+        names = [c.name for c in s.query(Company).filter(Company.name.like("منشأة توقف %"))]
+        assert len(names) == len(set(names)) == truth["ready"] + truth["needs"]
+        assert st["ready"] == truth["ready"] and st["needs"] == truth["needs"] and st["duplicate"] == 5 and st["pages"] == 6

@@ -285,6 +285,7 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
                                                        CompanySource.url == url)):
             s.add(CompanySource(company_id=comp.id, source_type=f"social:{f.source_key}", url=url,
                                 snippet=f"{label} — {f.file_name}"[:1000]))
+            s.flush()  # الجلسة بلا autoflush: صف مكرر في الملف نفسه يجب أن يرى المصدر المضاف
         lead = s.scalar(select(CampaignLead).where(CampaignLead.campaign_id == f.campaign_id,
                                                    CampaignLead.company_id == comp.id,
                                                    CampaignLead.source_key == f.source_key))

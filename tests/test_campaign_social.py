@@ -201,3 +201,23 @@ def test_social_delete_imported_file_keeps_company():
             assert s.get(CampaignSourceFile, fid) is None
             assert s.query(CampaignLead).filter_by(file_id=fid).count() == 0
             assert s.query(Company).filter_by(name="شركة فيسبوك للحذف").count() == 1
+
+
+def test_social_import_same_company_twice_in_one_file():
+    """صف مكرر داخل الملف نفسه لا يُفشل الاستيراد كله (كشفه فحص الإطلاق)."""
+    init_db()
+    with session_scope() as s:
+        camp = Campaign(name="حملة تكرار داخل الملف", status="draft")
+        s.add(camp)
+        s.flush()
+        cid = camp.id
+    data = xlsx([["الاسم", "الجوال"], ["شركة مكررة داخل الملف", "0549990001"], ["شركة ثانية للتكرار", "0549990002"],
+                 ["شركة مكررة داخل الملف", "0549990001"]])
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        cl.post(f"/targets/{cid}/social/upload", data={"source": "tiktok"},
+                files={"file": ("dup.xlsx", data, "application/octet-stream")})
+        r = cl.post(f"/targets/{cid}/social/import", follow_redirects=True)
+        assert r.status_code == 200 and "2 جديد، 1 مكرر، 0 فشل" in r.text
+        with session_scope() as s:
+            assert s.query(CampaignLead).filter_by(campaign_id=cid).count() == 2

@@ -12,3 +12,6 @@ os.environ["DOWNLOADS_BLOCKED"] = "0"  # اختبارات محتوى Excel ال�
 # الكود المحفوظ (الاتصال الآلي والإرسال التلقائي) يُختبر مفعّلًا؛ واختبارات الوضع الحالي تعطّله صراحة
 os.environ["ENABLE_VOICE_CALLS"] = "1"
 os.environ["ENABLE_AUTO_OUTREACH"] = "1"
+
+import mandoob.prospects as _prospects  # noqa: E402
+_prospects.RETRY_WAIT = 0  # إعادة محاولة صفحة المصدر بلا انتظار في الاختبارات

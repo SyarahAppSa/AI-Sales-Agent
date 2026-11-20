@@ -170,7 +170,7 @@ def _session_user(request: Request, s, portal: str) -> User | None:
     return user
 
 
-def current_user(request: Request, s=Depends(get_db)) -> User:
+def current_user(request: Request, s=Depends(get_db, scope="function")) -> User:
     """بوابة الإدارة."""
     user = _session_user(request, s, "admin")
     if user is None:
@@ -178,7 +178,7 @@ def current_user(request: Request, s=Depends(get_db)) -> User:
     return user
 
 
-def staff_user(request: Request, s=Depends(get_db)) -> User:
+def staff_user(request: Request, s=Depends(get_db, scope="function")) -> User:
     """بوابة الموظفين."""
     user = _session_user(request, s, "staff")
     if user is None:
@@ -284,12 +284,12 @@ def _login_page(request: Request, portal: str, s):
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_page(request: Request, s=Depends(get_db)):
+def admin_login_page(request: Request, s=Depends(get_db, scope="function")):
     return _login_page(request, "admin", s)
 
 
 @app.get("/portal/login", response_class=HTMLResponse)
-def staff_login_page(request: Request, s=Depends(get_db)):
+def staff_login_page(request: Request, s=Depends(get_db, scope="function")):
     return _login_page(request, "staff", s)
 
 
@@ -331,24 +331,24 @@ def _verify_code(request: Request, portal: str, code: str, s):
 
 
 @app.post("/admin/login/request")
-def admin_request_code(request: Request, email: str = Form(...), s=Depends(get_db)):
+def admin_request_code(request: Request, email: str = Form(...), s=Depends(get_db, scope="function")):
     _request_code(request, "admin", email, s)
     return back("/admin/login")
 
 
 @app.post("/portal/login/request")
-def staff_request_code(request: Request, email: str = Form(...), s=Depends(get_db)):
+def staff_request_code(request: Request, email: str = Form(...), s=Depends(get_db, scope="function")):
     _request_code(request, "staff", email, s)
     return back("/portal/login")
 
 
 @app.post("/admin/login/verify")
-def admin_verify(request: Request, code: str = Form(...), s=Depends(get_db)):
+def admin_verify(request: Request, code: str = Form(...), s=Depends(get_db, scope="function")):
     return back("/" if _verify_code(request, "admin", code, s) else "/admin/login")
 
 
 @app.post("/portal/login/verify")
-def staff_verify(request: Request, code: str = Form(...), s=Depends(get_db)):
+def staff_verify(request: Request, code: str = Form(...), s=Depends(get_db, scope="function")):
     return back("/portal" if _verify_code(request, "staff", code, s) else "/portal/login")
 
 
@@ -365,7 +365,7 @@ def staff_restart(request: Request):
 
 
 @app.post("/admin/login/password")
-def admin_bootstrap_password(request: Request, email: str = Form(...), password: str = Form(...), s=Depends(get_db)):
+def admin_bootstrap_password(request: Request, email: str = Form(...), password: str = Form(...), s=Depends(get_db, scope="function")):
     """دخول تأسيسي بكلمة المرور لحساب ADMIN_EMAIL فقط، ويُعطَّل تلقائيًا بعد ربط بريد الشركة."""
     from ..auth import audit, mail_ready
     if mail_ready(s) or email.strip().lower() != settings.admin_email.lower():
@@ -390,7 +390,7 @@ def _remember_lang(request: Request, user: User) -> str:
 
 
 @app.get("/lang")
-def switch_lang(request: Request, to: str = "ar", next: str = "/", s=Depends(get_db)):
+def switch_lang(request: Request, to: str = "ar", next: str = "/", s=Depends(get_db, scope="function")):
     """«العربية | English»: يحفظ الاختيار (الحساب + الجلسة + المتصفح) ويعيد الصفحة نفسها بفلاترها."""
     from ..i18n import LANGS
     to = to if to in LANGS else "ar"
@@ -424,7 +424,7 @@ def require_emergency(user: User = Depends(current_user)) -> User:
 
 @app.get("/emergency", response_class=HTMLResponse)
 def emergency_page(request: Request, who: str = "", day_from: str = "", day_to: str = "", etype: str = "",
-                   user: User = Depends(require_emergency), s=Depends(get_db)):
+                   user: User = Depends(require_emergency), s=Depends(get_db, scope="function")):
     from .. import emergency as E
     from ..config import settings as _st
     from ..models import DownloadAttempt
@@ -459,7 +459,7 @@ def healthz():
 # ---------------------------------------------------------------- الرئيسية
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, period: str = "7d", user: User = Depends(current_user), s=Depends(get_db)):
+def home(request: Request, period: str = "7d", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from urllib.parse import parse_qsl
     from ..health import search_status
     from ..reports import (PERIODS, card_links, daily_target, period_bounds, recent_customers,
@@ -504,7 +504,7 @@ def _prospect_args(day: str):
 
 @app.get("/prospects", response_class=HTMLResponse)
 def prospects_page(request: Request, day: str = "", city: str = "", sector: str = "", level: str = "", state: str = "ready",
-                   q: str = "", owner: str = "", all: int = 0, user: User = Depends(current_user), s=Depends(get_db)):
+                   q: str = "", owner: str = "", all: int = 0, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     from ..activities import SECTORS as ASECTORS
     from ..models import ProspectRun
@@ -530,7 +530,7 @@ def prospects_page(request: Request, day: str = "", city: str = "", sector: str 
 
 @app.get("/prospects.xlsx")
 def prospects_xlsx(request: Request, day: str = "", city: str = "", sector: str = "", level: str = "", state: str = "ready",
-                   q: str = "", owner: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+                   q: str = "", owner: str = "", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     from ..activities import SECTORS as ASECTORS
     from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
@@ -559,7 +559,7 @@ def prospects_xlsx(request: Request, day: str = "", city: str = "", sector: str 
 
 
 @app.post("/prospects/run")
-def prospects_run(request: Request, target: int = Form(100), user: User = Depends(require_manager), s=Depends(get_db)):
+def prospects_run(request: Request, target: int = Form(100), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     r = P.request_run(s, user, target, P.get_auto(s)["sources"])
     from ..auth import audit
@@ -572,7 +572,7 @@ def prospects_run(request: Request, target: int = Form(100), user: User = Depend
 @app.post("/prospects/import")
 async def prospects_import(request: Request, file: UploadFile = File(...), license_note: str = Form(""),
                            src_kind: str = Form("device"), src_url: str = Form(""),
-                           user: User = Depends(require_manager), s=Depends(get_db)):
+                           user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """ملف مزوّد بيانات مرخّص (CSV أو Excel): يُضاف إلى طابور المعالجة اليومية."""
     from .. import prospects as P
     from ..auth import audit
@@ -752,12 +752,12 @@ def _admin_lists_view(request, user, s, lid, q, page, cstate, base, owner=""):
 
 @app.get("/admin-lists", response_class=HTMLResponse)
 def admin_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "", owner: str = "",
-                user: User = Depends(require_manager), s=Depends(get_db)):
+                user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     return _admin_lists_view(request, user, s, lid, q, page, cstate, "/admin-lists", owner)
 
 
 @app.post("/admin-lists/{lid}/assign")
-async def admin_lists_assign(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def admin_lists_assign(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """إسناد عملاء من القائمة لموظف: عدد (١٠/٥٠/١٠٠) من غير المسندين بالترتيب ضمن البحث/الفلتر الحالي، أو المحدد يدويًا.
     المسند لموظف آخر لا يُنقل إلا بتأكيد «نقل المسند لموظف آخر»."""
     from ..auth import audit
@@ -860,7 +860,7 @@ def _assigned_elsewhere(s, exclude_list: int | None = None) -> dict:
 
 @app.get("/portal/lists", response_class=HTMLResponse)
 def portal_lists(request: Request, lid: Optional[int] = None, q: str = "", page: int = 1, cstate: str = "",
-                 user: User = Depends(staff_user), s=Depends(get_db)):
+                 user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     """بوابة الموظفين: نفس القائمة الإدارية مع تسجيل التواصل (بلا رفع أو حذف)."""
     return _admin_lists_view(request, user, s, lid, q, page, cstate, "/portal/lists")
 
@@ -899,13 +899,13 @@ def _list_contact(request, s, user, lid, idx, status, note, confirm, base):
 
 @app.post("/admin-lists/{lid}/row/{idx}/contact")
 def admin_list_contact(lid: int, idx: int, request: Request, status: str = Form(""), note: str = Form(""),
-                       confirm: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db)):
+                       confirm: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     return _list_contact(request, s, user, lid, idx, status, note, bool(confirm), "/admin-lists")
 
 
 @app.post("/portal/lists/{lid}/row/{idx}/contact")
 def portal_list_contact(lid: int, idx: int, request: Request, status: str = Form(""), note: str = Form(""),
-                        confirm: str = Form(""), user: User = Depends(staff_user), s=Depends(get_db)):
+                        confirm: str = Form(""), user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..models import AdminListAssignment
     if not s.scalar(select(AdminListAssignment.id).where(AdminListAssignment.list_id == lid, AdminListAssignment.row_idx == idx,
                                                           AdminListAssignment.owner_id == user.id)):
@@ -987,7 +987,7 @@ def _dedupe_rows(head, body, known_phones, known_names):
 
 
 @app.post("/admin-lists/dedupe")
-def admin_lists_dedupe(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def admin_lists_dedupe(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """إزالة المكرر من القوائم الحالية: يبقى أول ظهور (الأقدم رفعًا)، ولا يُحذف صف مسند أو مسجّل عليه تواصل."""
     from ..auth import audit
     from ..models import AdminList, AdminListAssignment, AdminListContact
@@ -1026,7 +1026,7 @@ def admin_lists_dedupe(request: Request, user: User = Depends(require_manager), 
 
 @app.post("/admin-lists/upload")
 async def admin_lists_upload(request: Request, file: UploadFile = File(...), note: str = Form(""),
-                             user: User = Depends(require_manager), s=Depends(get_db)):
+                             user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     from ..auth import audit
     from ..models import AdminList
@@ -1084,7 +1084,7 @@ async def admin_lists_upload(request: Request, file: UploadFile = File(...), not
 
 
 @app.post("/admin-lists/{lid}/delete")
-def admin_lists_delete(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def admin_lists_delete(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..models import AdminList, AdminListAssignment, AdminListContact
     al = s.get(AdminList, lid)
@@ -1101,7 +1101,7 @@ def admin_lists_delete(lid: int, request: Request, user: User = Depends(require_
 
 
 @app.post("/admin-lists/{lid}/verify")
-def admin_lists_verify(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def admin_lists_verify(lid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """اختياري: إرسال صفوف القائمة إلى «عملاء عشوائيون» ثم التحقق — القائمة الأصلية تبقى كما هي."""
     from .. import prospects as P
     from ..models import AdminList, ProspectPool
@@ -1126,13 +1126,13 @@ def admin_lists_verify(lid: int, request: Request, user: User = Depends(require_
 
 
 @app.get("/portal/lists/{lid}.xlsx")
-def portal_lists_xlsx(lid: int, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_lists_xlsx(lid: int, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     _require(user, "export")
     return admin_lists_xlsx(lid, user, s)
 
 
 @app.get("/admin-lists/{lid}.xlsx")
-def admin_lists_xlsx(lid: int, user: User = Depends(require_manager), s=Depends(get_db)):
+def admin_lists_xlsx(lid: int, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import AdminList
     from ..xlsx import response, workbook
     from ..models import AdminListContact
@@ -1173,7 +1173,7 @@ def _random_q(q: str, status: str):
 
 @app.get("/random-leads", response_class=HTMLResponse)
 def random_leads(request: Request, q: str = "", status: str = "random", page: int = 1,
-                 user: User = Depends(require_manager), s=Depends(get_db)):
+                 user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import ProspectPool
     qq = _random_q(q, status)
     total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
@@ -1189,7 +1189,7 @@ def random_leads(request: Request, q: str = "", status: str = "random", page: in
 @app.post("/random-leads/upload")
 async def random_leads_upload(request: Request, file: UploadFile = File(...), source_note: str = Form(""),
                               src_kind: str = Form("device"), src_url: str = Form(""),
-                              user: User = Depends(require_manager), s=Depends(get_db)):
+                              user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     from ..auth import audit
     data = await file.read()
@@ -1216,7 +1216,7 @@ async def random_leads_upload(request: Request, file: UploadFile = File(...), so
 
 
 @app.post("/random-leads/verify")
-async def random_leads_verify(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def random_leads_verify(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """نقل السجلات المحددة (أو كل نتائج البحث) إلى طابور التحقق: تكرار ← موقع المنشأة ← أولوية."""
     from ..models import ProspectPool
     form = await request.form()
@@ -1231,7 +1231,7 @@ async def random_leads_verify(request: Request, user: User = Depends(require_man
 
 
 @app.get("/random-leads.xlsx")
-def random_leads_xlsx(request: Request, q: str = "", status: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def random_leads_xlsx(request: Request, q: str = "", status: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..xlsx import response, workbook
     st = {"random": "لم يُتحقق منها", "queued": "في طابور التحقق", "done": "عولجت"}
     rows = [[p.row.get("name", ""), p.row.get("phone", ""), p.row.get("email", ""), p.row.get("city", ""), p.row.get("activity", ""),
@@ -1244,7 +1244,7 @@ def random_leads_xlsx(request: Request, q: str = "", status: str = "", user: Use
 @app.post("/prospects/auto")
 def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form("05:30", alias="time"),
                    target: int = Form(1000), google_budget_usd: float = Form(10.0),
-                   user: User = Depends(require_manager), s=Depends(get_db)):
+                   user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospects as P
     if not re.fullmatch(r"\d{2}:\d{2}", time_ or ""):
         time_ = "05:30"
@@ -1256,7 +1256,7 @@ def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form(
 
 
 @app.post("/prospects/stop")
-def prospects_stop(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def prospects_stop(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import ProspectRun
     from ..auth import audit
     for r in s.scalars(select(ProspectRun).where(ProspectRun.status.in_(["pending", "running"]))):
@@ -1267,7 +1267,7 @@ def prospects_stop(request: Request, user: User = Depends(require_manager), s=De
 
 
 @app.post("/companies/{cid}/enrich")
-def company_enrich_now(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def company_enrich_now(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """يقدّم العميل في طابور إعادة البحث عن الهاتف/البريد (ينفذه العامل خلال ١٠ دقائق)."""
     c = s.get(Company, cid)
     if c is None:
@@ -1281,7 +1281,7 @@ def company_enrich_now(cid: int, request: Request, user: User = Depends(require_
 # ---------------------------------------------------------------- الفئات المستهدفة
 
 @app.get("/targets", response_class=HTMLResponse)
-def targets(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def targets(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     camps = list(s.scalars(select(Campaign).where(func.coalesce(Campaign.kind, "") != "social")
                            .order_by(Campaign.id.desc())))
     today = riyadh_today()
@@ -1296,7 +1296,7 @@ def targets(request: Request, user: User = Depends(current_user), s=Depends(get_
 
 @app.post("/targets/parse", response_class=HTMLResponse)
 def targets_parse(request: Request, text: str = Form(...), daily_target: int = Form(400),
-                  user: User = Depends(require_manager), s=Depends(get_db)):
+                  user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     parsed = parse_request(text, daily_target)
     offers = list(s.scalars(select(Offer).order_by(Offer.id)))
     return render(request, "target_review.html", user, s, parsed=parsed, text=text, offers=offers, camp=None,
@@ -1363,7 +1363,7 @@ def _save_campaign_fields(camp: Campaign, form) -> None:
 
 
 @app.post("/targets/save")
-async def targets_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def targets_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     form = await request.form()
     camp = Campaign(name=form.get("name") or "حملة جديدة", request_text=form.get("request_text", ""),
                     created_by=user.id, status="draft")
@@ -1376,7 +1376,7 @@ async def targets_save(request: Request, user: User = Depends(require_manager), 
 
 
 @app.get("/targets/{cid}", response_class=HTMLResponse)
-def target_edit(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def target_edit(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     camp = s.get(Campaign, cid) or _404()
     offers = list(s.scalars(select(Offer).order_by(Offer.id)))
     parsed = {"name": camp.name, "exclusions": camp.exclusions, "categories": [
@@ -1421,7 +1421,7 @@ def _social_home(s) -> Campaign:
 
 
 @app.get("/social", response_class=HTMLResponse)
-def social_page(request: Request, c: int = 0, src: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def social_page(request: Request, c: int = 0, src: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     home = _social_home(s)
     camp = s.get(Campaign, c) if c else home
     camp = camp or home
@@ -1431,7 +1431,7 @@ def social_page(request: Request, c: int = 0, src: str = "", user: User = Depend
 
 
 @app.post("/social/settings")
-async def social_settings(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def social_settings(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..campaign_sources import SOCIAL_SOURCES
     form = await request.form()
     camp = s.get(Campaign, int(form.get("cid") or 0)) or _social_home(s)
@@ -1445,7 +1445,7 @@ async def social_settings(request: Request, user: User = Depends(require_manager
 @app.post("/targets/{cid}/social/upload")
 async def social_upload(cid: int, request: Request, source: str = Form(...), file: UploadFile = File(...),
                         replace_id: int = Form(0), target_place: str = Form(""),
-                        user: User = Depends(require_manager), s=Depends(get_db)):
+                        user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..campaign_sources import SOCIAL_SOURCES, parse_file
     from ..models import CampaignSourceFile
     from ..prospects import UploadError
@@ -1482,7 +1482,7 @@ async def social_upload(cid: int, request: Request, source: str = Form(...), fil
 
 
 @app.post("/targets/{cid}/social/{fid}/delete")
-def social_delete(cid: int, fid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def social_delete(cid: int, fid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import CampaignSourceFile
     f = s.get(CampaignSourceFile, fid)
     if f is None or f.campaign_id != cid:
@@ -1503,7 +1503,7 @@ def social_delete(cid: int, fid: int, request: Request, user: User = Depends(req
 
 
 @app.post("/targets/{cid}/social/import")
-def social_import(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def social_import(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..campaign_sources import SOCIAL_SOURCES, import_campaign
     camp = s.get(Campaign, cid) or _404()
     done = import_campaign(s, camp, user.id)
@@ -1518,7 +1518,7 @@ def social_import(cid: int, request: Request, user: User = Depends(require_manag
 
 @app.post("/targets/{cid}/social/{fid}/mark")
 def social_mark(cid: int, fid: int, request: Request, row: int = Form(...), field: str = Form(...), value: str = Form(""),
-                user: User = Depends(require_manager), s=Depends(get_db)):
+                user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """«تم التواصل؟» و«مهتم؟» أمام كل عميل في الملف."""
     from ..campaign_sources import CONTACT_CHOICES, INTEREST_CHOICES
     from ..models import CampaignSourceFile, CampaignSourceMark
@@ -1544,7 +1544,7 @@ def social_mark(cid: int, fid: int, request: Request, row: int = Form(...), fiel
 
 @app.get("/targets/{cid}/social/{fid}", response_class=HTMLResponse)
 def social_file(cid: int, fid: int, request: Request, page: int = 1, user: User = Depends(require_manager),
-                s=Depends(get_db)):
+                s=Depends(get_db, scope="function")):
     from ..campaign_sources import SOCIAL_SOURCES, view
     from ..models import CampaignSourceFile
     camp = s.get(Campaign, cid) or _404()
@@ -1560,7 +1560,7 @@ def social_file(cid: int, fid: int, request: Request, page: int = 1, user: User 
 
 
 @app.post("/targets/{cid}")
-async def target_update(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def target_update(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     camp = s.get(Campaign, cid) or _404()
     form = await request.form()
     _save_campaign_fields(camp, form)
@@ -1571,7 +1571,7 @@ async def target_update(cid: int, request: Request, user: User = Depends(require
 
 @app.post("/targets/{cid}/status")
 def target_status(cid: int, request: Request, action: str = Form(...), user: User = Depends(require_manager),
-                  s=Depends(get_db)):
+                  s=Depends(get_db, scope="function")):
     camp = s.get(Campaign, cid) or _404()
     if action == "activate":
         missing = [c.label for c in camp.categories if c.active and c.offer_id and not c.offer.approved] \
@@ -1592,7 +1592,7 @@ def target_status(cid: int, request: Request, action: str = Form(...), user: Use
 
 
 @app.post("/targets/{cid}/run")
-def target_run(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def target_run(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     camp = s.get(Campaign, cid) or _404()
     if camp.status != "active":
         flash(request, "فعّل الحملة أولًا", "err")
@@ -1614,7 +1614,7 @@ def save_schedule(request: Request, discovery_time: str = Form(...), daily_repor
 # ---------------------------------------------------------------- البحث عن العملاء (الأداة الرئيسية للمرحلة الحالية)
 
 @app.get("/prospecting", response_class=HTMLResponse)
-def prospecting_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def prospecting_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospecting as P
     st = P.status(s)
     from .. import geo
@@ -1662,7 +1662,7 @@ def _scope_from_form(form) -> dict:
 
 
 @app.post("/prospecting")
-async def prospecting_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def prospecting_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospecting as P
     from ..auth import audit
     form = await request.form()
@@ -1689,7 +1689,7 @@ async def prospecting_save(request: Request, user: User = Depends(require_manage
 
 
 @app.post("/prospecting/run")
-def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends(require_manager), s=Depends(get_db)):
+def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import prospecting as P
     cfg = P.get_config(s)
     if not cfg.get("campaign_id"):
@@ -1739,7 +1739,7 @@ def _companies_query(user, status, q, city, sector, source, operator, signals, k
 @app.get("/companies", response_class=HTMLResponse)
 def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
               page: int = 1, source: str = "", operator: str = "", signals: str = "", kind: str = "",
-              owner: str = "", contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+              owner: str = "", contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..models import CompanySignal
     qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact, found)
     total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
@@ -1825,13 +1825,13 @@ def _safe_back(request, default):
 
 
 @app.post("/companies/{cid}/contact/start")
-def company_contact_start(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def company_contact_start(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     c = s.get(Company, cid) or _404()
     return _contact_start(request, s, user, c, _safe_back(request, f"/companies/{cid}"))
 
 
 @app.post("/companies/{cid}/contact/update")
-async def company_contact_update(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+async def company_contact_update(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     c = s.get(Company, cid) or _404()
     form = await request.form()
     owners = {u.id for u in s.scalars(select(User).where(User.active.is_(True)))}
@@ -1845,7 +1845,7 @@ DISCOVER_DEFAULT = ["transport.freight", "transport.parcels", "transport.cold_ch
 
 
 @app.get("/discover", response_class=HTMLResponse)
-def discover_page(request: Request, run: Optional[int] = None, user: User = Depends(require_manager), s=Depends(get_db)):
+def discover_page(request: Request, run: Optional[int] = None, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import directory as D, geo
     from ..activities import ACTIVITIES, SECTORS
     from ..models import DirectoryRun, LeadStub
@@ -1875,7 +1875,7 @@ def discover_page(request: Request, run: Optional[int] = None, user: User = Depe
 
 @app.post("/discover/auto")
 def discover_auto(request: Request, enabled: str = Form(""), time: str = Form("05:30"), target: int = Form(400),
-                  budget: float = Form(20), user: User = Depends(require_manager), s=Depends(get_db)):
+                  budget: float = Form(20), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import directory as D
     from ..auth import audit
     v = D.set_auto(s, enabled=bool(enabled), time=(time or "05:30")[:5], target_complete=max(1, min(target, 5000)),
@@ -1903,7 +1903,7 @@ def _scope_regions(form) -> dict:
 
 
 @app.post("/discover/run")
-async def discover_run(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def discover_run(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import directory as D
     from ..auth import audit
     form = await request.form()
@@ -1923,7 +1923,7 @@ async def discover_run(request: Request, user: User = Depends(require_manager), 
 
 @app.post("/discover/import")
 async def discover_import(request: Request, file: UploadFile = File(...), label: str = Form("ملف"),
-                          user: User = Depends(require_manager), s=Depends(get_db)):
+                          user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """المرحلة ١ من ملف رسمي: تُحفظ المنشآت وتُطابق مع القاعدة فورًا (بلا تكلفة)، ثم تُستكمل في دفعة «ملف بيانات»."""
     from .. import directory as D
     from ..auth import audit
@@ -1947,7 +1947,7 @@ async def discover_import(request: Request, file: UploadFile = File(...), label:
 
 
 @app.post("/companies/{cid}/similar")
-async def company_similar(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def company_similar(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """«ابحث عن شركات مشابهة»: النشاط وطريقة استخدام المركبات، في المناطق المختارة — دفعة بميزانية محددة."""
     from .. import directory as D
     from ..auth import audit
@@ -1968,7 +1968,7 @@ async def company_similar(cid: int, request: Request, user: User = Depends(requi
 
 
 @app.post("/companies/{cid}/reasons/find")
-def company_reasons_find(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def company_reasons_find(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import directory as D
     halt_reason = getattr(__import__("mandoob.prospecting", fromlist=["x"]), "halt_reason", lambda: None)
     s.get(Company, cid) or _404()
@@ -1983,7 +1983,7 @@ def company_reasons_find(cid: int, request: Request, user: User = Depends(requir
 @app.post("/companies/{cid}/reasons/add")
 def company_reasons_add(cid: int, request: Request, kind: str = Form("other"), title: str = Form(...),
                         when: str = Form(""), url: str = Form(""), user: User = Depends(current_user),
-                        s=Depends(get_db)):
+                        s=Depends(get_db, scope="function")):
     from .. import directory as D
     from ..models import CompanySignal
     c = s.get(Company, cid) or _404()
@@ -2006,7 +2006,7 @@ def company_reasons_add(cid: int, request: Request, kind: str = Form("other"), t
 @app.get("/companies.xlsx")
 def companies_xlsx(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
                    source: str = "", operator: str = "", signals: str = "", kind: str = "", owner: str = "",
-                   contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+                   contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..xlsx import CONTACT_HEADERS, response, workbook
     qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact, found)
@@ -2018,7 +2018,7 @@ def companies_xlsx(request: Request, status: str = "complete", q: str = "", city
 
 
 @app.get("/followups.xlsx")
-def followups_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def followups_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..xlsx import CONTACT_HEADERS, response, workbook
     items = needs_followup_today(s, user)
     rows = [[it["task"].title, fmt(it["task"].due_at), "متأخرة" if it["overdue"] else "اليوم", it["owner"]]
@@ -2028,7 +2028,7 @@ def followups_xlsx(request: Request, user: User = Depends(current_user), s=Depen
 
 
 @app.get("/daily-report.xlsx")
-def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..xlsx import response, workbook
     d = date.fromisoformat(day) if day else riyadh_today()
     r = daily_report(s, d)
@@ -2055,7 +2055,7 @@ def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(requ
 
 
 @app.get("/weekly-report.xlsx")
-def weekly_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def weekly_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..reports import weekly_segments
     from ..xlsx import response, workbook
     d = date.fromisoformat(day) if day else riyadh_today()
@@ -2070,7 +2070,7 @@ def weekly_report_xlsx(request: Request, day: str = "", user: User = Depends(req
 
 
 @app.get("/leads.xlsx")
-def leads_xlsx(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def leads_xlsx(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..leads import source_label
     from ..models import InboundLead
     from ..xlsx import response, workbook
@@ -2083,7 +2083,7 @@ def leads_xlsx(request: Request, user: User = Depends(require_manager), s=Depend
 
 
 @app.post("/companies/assign")
-async def companies_bulk_assign(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def companies_bulk_assign(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """إسناد مجموعة منشآت لموظف مبيعات. المنشأة المسندة لموظف آخر لا تُنقل إلا بتأكيد صريح،
     حتى لا يتواصل موظفان مع المنشأة نفسها."""
     from ..auth import audit
@@ -2120,7 +2120,7 @@ async def companies_bulk_assign(request: Request, user: User = Depends(require_m
 
 
 @app.get("/companies/{cid}", response_class=HTMLResponse)
-def company_detail(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def company_detail(cid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     c = s.get(Company, cid) or _404()
     if not _company_visible(user, c):
         raise HTTPException(403)
@@ -2153,7 +2153,7 @@ def company_detail(cid: int, request: Request, user: User = Depends(current_user
 @app.post("/companies/{cid}/action")
 def company_action(cid: int, request: Request, action: str = Form(...), note: str = Form(""),
                    owner_id: Optional[int] = Form(None), when: str = Form(""), value: Optional[float] = Form(None),
-                   user: User = Depends(current_user), s=Depends(get_db)):
+                   user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     c = s.get(Company, cid) or _404()
     if not _company_visible(user, c):
         raise HTTPException(403)
@@ -2234,7 +2234,7 @@ def company_action(cid: int, request: Request, action: str = Form(...), note: st
 
 
 @app.get("/messages/{mid}", response_class=HTMLResponse)
-def message_view(mid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def message_view(mid: int, request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     m = s.get(OutboundMessage, mid) or _404()
     if not _company_visible(user, m.company):
         raise HTTPException(403)
@@ -2242,7 +2242,7 @@ def message_view(mid: int, request: Request, user: User = Depends(current_user),
 
 
 @app.get("/messages/{mid}/attachment")
-def message_attachment(mid: int, user: User = Depends(current_user), s=Depends(get_db)):
+def message_attachment(mid: int, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     m = s.get(OutboundMessage, mid) or _404()
     if not _company_visible(user, m.company) or not m.attachment_id:
         raise HTTPException(404)
@@ -2269,7 +2269,7 @@ def _filters(request: Request) -> OfferFilters:
 
 
 @app.get("/offers-report", response_class=HTMLResponse)
-def offers_report_page(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def offers_report_page(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     f = _filters(request)
     rep = offers_report(s, user, f)
     return render(request, "offers_report.html", user, s, rep=rep, f=f, qs=str(request.query_params),
@@ -2278,7 +2278,7 @@ def offers_report_page(request: Request, user: User = Depends(current_user), s=D
 
 
 @app.get("/offers-report.xlsx")
-def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     rep = offers_report(s, user, _filters(request))
     data = export_offers_xlsx(rep)
     fname = f"offers-report-{riyadh_today().isoformat()}.xlsx"
@@ -2287,12 +2287,12 @@ def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=D
 
 
 @app.get("/followups", response_class=HTMLResponse)
-def followups(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def followups(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     return render(request, "followups.html", user, s, items=needs_followup_today(s, user))
 
 
 @app.post("/tasks/{tid}/done")
-def task_done(tid: int, request: Request, note: str = Form(""), user: User = Depends(current_user), s=Depends(get_db)):
+def task_done(tid: int, request: Request, note: str = Form(""), user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     t = s.get(Task, tid) or _404()
     if user.role == "rep" and t.owner_id != user.id:
         raise HTTPException(403)
@@ -2309,13 +2309,13 @@ def task_done(tid: int, request: Request, note: str = Form(""), user: User = Dep
 # ---------------------------------------------------------------- العروض والمرفقات
 
 @app.get("/offers", response_class=HTMLResponse)
-def offers_page(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def offers_page(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     return render(request, "offers.html", user, s, offers=list(s.scalars(select(Offer).order_by(Offer.id))),
                   attachments=list(s.scalars(select(Attachment).order_by(Attachment.id.desc()))))
 
 
 @app.post("/offers")
-async def offers_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def offers_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     form = await request.form()
     oid = form.get("id")
     o = s.get(Offer, int(oid)) if oid else None
@@ -2356,7 +2356,7 @@ def _store_attachment(s, filename: str, data: bytes, title: str | None = None) -
 
 
 @app.post("/offers/{oid}/approve")
-def offer_approve(oid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def offer_approve(oid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     o = s.get(Offer, oid) or _404()
     o.approved, o.approved_by, o.approved_at = True, user.id, now_utc()
     flash(request, f"اعتُمد العرض «{o.service_name}»")
@@ -2365,7 +2365,7 @@ def offer_approve(oid: int, request: Request, user: User = Depends(require_manag
 
 @app.get("/offers/{oid}/preview", response_class=HTMLResponse)
 def offer_preview(oid: int, request: Request, company_id: Optional[int] = None, user: User = Depends(current_user),
-                  s=Depends(get_db)):
+                  s=Depends(get_db, scope="function")):
     from ..outreach import active_account, compose, render_html
     o = s.get(Offer, oid) or _404()
     c = s.get(Company, company_id) if company_id else s.scalar(
@@ -2381,7 +2381,7 @@ def offer_preview(oid: int, request: Request, company_id: Optional[int] = None, 
 # ---------------------------------------------------------------- ربط بريد الشركة
 
 @app.get("/mail", response_class=HTMLResponse)
-def mail_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def mail_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     accounts = list(s.scalars(select(MailAccount).order_by(MailAccount.id)))
     status = {"microsoft365": bool(settings.ms_tenant_id and settings.ms_client_id and settings.ms_client_secret),
               "google": bool(settings.google_client_id and settings.google_refresh_token)}
@@ -2391,7 +2391,7 @@ def mail_page(request: Request, user: User = Depends(require_manager), s=Depends
 @app.post("/mail")
 def mail_save(request: Request, provider: str = Form(...), sender_address: str = Form(...),
               sender_name: str = Form("سيارة آب"), signature_html: str = Form(""), reply_mailbox: str = Form(""),
-              user: User = Depends(require_manager), s=Depends(get_db)):
+              user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     for a in s.scalars(select(MailAccount)):
         a.active = False
     s.add(MailAccount(provider=provider, sender_address=sender_address.strip().lower(), sender_name=sender_name,
@@ -2402,7 +2402,7 @@ def mail_save(request: Request, provider: str = Form(...), sender_address: str =
 
 @app.post("/mail/smtp")
 def mail_smtp(request: Request, password: str = Form(...), smtp_user: str = Form(""), smtp_host: str = Form(""),
-              user: User = Depends(require_manager), s=Depends(get_db)):
+              user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """كلمة سر بريد SMTP (مثل Zoho) من الصفحة: تُختبر بالدخول دون إرسال، ثم تُحفظ مشفّرة ولا تُعرض أبدًا."""
     from ..auth import audit
     from ..mail.smtp import check_login
@@ -2425,7 +2425,7 @@ def mail_smtp(request: Request, password: str = Form(...), smtp_user: str = Form
 
 @app.post("/mail/test")
 def mail_test(request: Request, to: str = Form(""), message: str = Form(""), user: User = Depends(require_manager),
-              s=Depends(get_db)):
+              s=Depends(get_db, scope="function")):
     from ..auth import provider_configured
     from ..mail import get_provider
     from ..mail.base import OutgoingEmail
@@ -2488,7 +2488,7 @@ def outreach_run(request: Request, ignore_window: str = Form(""), user: User = D
 # ---------------------------------------------------------------- صندوق التجربة
 
 @app.get("/sandbox", response_class=HTMLResponse)
-def sandbox_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def sandbox_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     msgs = list(s.scalars(select(OutboundMessage).join(MailAccount, MailAccount.id == OutboundMessage.mail_account_id)
                           .where(MailAccount.provider == "sandbox", OutboundMessage.status.in_(["sent", "delivered", "bounced"]))
                           .order_by(OutboundMessage.id.desc()).limit(50)))
@@ -2497,7 +2497,7 @@ def sandbox_page(request: Request, user: User = Depends(require_manager), s=Depe
 
 @app.post("/sandbox/reply")
 def sandbox_reply(request: Request, message_id: int = Form(...), text: str = Form(...),
-                  user: User = Depends(require_manager), s=Depends(get_db)):
+                  user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..mail.sandbox import SandboxProvider
     m = s.get(OutboundMessage, message_id) or _404()
     SandboxProvider.inject_reply(from_addr=m.to_address, original_message_id=m.internet_message_id,
@@ -2510,7 +2510,7 @@ def sandbox_reply(request: Request, message_id: int = Form(...), text: str = For
 # ---------------------------------------------------------------- الفريق
 
 @app.get("/team", response_class=HTMLResponse)
-def team(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def team(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     users = list(s.scalars(select(User).order_by(User.role, User.name)))
     perf = {}
     for u in users:
@@ -2527,7 +2527,7 @@ def team(request: Request, user: User = Depends(require_manager), s=Depends(get_
 
 
 @app.post("/team")
-async def team_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def team_save(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     form = await request.form()
     uid = form.get("id")
     u = s.get(User, int(uid)) if uid else None
@@ -2560,7 +2560,7 @@ async def team_save(request: Request, user: User = Depends(require_manager), s=D
 # ---------------------------------------------------------------- الإعدادات والاستيراد
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def settings_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     voice = jobs.get_setting("voice", {"enabled": False})
     integrations = {
         "Claude (الذكاء الاصطناعي)": settings.ai_enabled,
@@ -2587,7 +2587,7 @@ def settings_voice(request: Request, enabled: str = Form(""), user: User = Depen
 
 @app.post("/settings/customers")
 async def import_customers(request: Request, file: UploadFile = File(...), user: User = Depends(require_manager),
-                           s=Depends(get_db)):
+                           s=Depends(get_db, scope="function")):
     import csv
     import io
     text = (await file.read()).decode("utf-8-sig")
@@ -2634,7 +2634,7 @@ async def import_directory(request: Request, file: UploadFile = File(...), campa
 
 
 @app.post("/settings/seed-test")
-def settings_seed_test(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def settings_seed_test(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..seed_test import seed, verify
     res = seed(s)
@@ -2648,7 +2648,7 @@ def settings_seed_test(request: Request, user: User = Depends(require_manager), 
 
 
 @app.post("/demo-view")
-def toggle_demo_view(request: Request, on: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db)):
+def toggle_demo_view(request: Request, on: str = Form(""), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..training_demo import _set_demo_view
     _set_demo_view(s, bool(on))
@@ -2660,7 +2660,7 @@ def toggle_demo_view(request: Request, on: str = Form(""), user: User = Depends(
 
 @app.post("/settings/training")
 def settings_training(request: Request, action: str = Form("create"), user: User = Depends(require_manager),
-                      s=Depends(get_db)):
+                      s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..training_demo import create, remove
     if action == "remove":
@@ -2678,7 +2678,7 @@ def settings_training(request: Request, action: str = Form("create"), user: User
 
 
 @app.post("/settings/suppress")
-def add_suppression(request: Request, value: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
+def add_suppression(request: Request, value: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     v = value.strip().lower()
     kind = "email" if "@" in v else ("phone" if normalize_phone(v) else "domain")
     v = normalize_phone(v) if kind == "phone" else v
@@ -2690,7 +2690,7 @@ def add_suppression(request: Request, value: str = Form(...), user: User = Depen
 # ---------------------------------------------------------------- سجل التشغيل والتقارير
 
 @app.get("/runs", response_class=HTMLResponse)
-def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..directory import SOURCES as DSRC
     from ..health import classify, search_status
     from ..models import DirectoryRun
@@ -2701,14 +2701,14 @@ def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db)
 
 
 @app.get("/daily-report", response_class=HTMLResponse)
-def daily_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def daily_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     d = date.fromisoformat(day) if day else riyadh_today()
     from ..directory import daily_by_source
     return render(request, "daily_report.html", user, s, r=daily_report(s, d), by_src=daily_by_source(s, d))
 
 
 @app.get("/notifications", response_class=HTMLResponse)
-def notifications(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def notifications(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     rows = list(s.scalars(select(Notification).where(Notification.user_id == user.id)
                           .order_by(Notification.id.desc()).limit(100)))
     page = render(request, "notifications.html", user, s, rows=rows)
@@ -2724,7 +2724,7 @@ AUTO_EXAMPLE = ("ابحث لي يوميًا في الرياض وجدة والد�
 
 
 @app.get("/auto-search", response_class=HTMLResponse)
-def auto_search_page(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def auto_search_page(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     camps = list(s.scalars(select(Campaign).where(Campaign.name.like("البحث الآلي%")).order_by(Campaign.id.desc())))
     runs = {c.id: s.scalar(select(DiscoveryRun).where(DiscoveryRun.campaign_id == c.id)
                            .order_by(DiscoveryRun.id.desc())) for c in camps}
@@ -2734,7 +2734,7 @@ def auto_search_page(request: Request, user: User = Depends(current_user), s=Dep
 
 @app.post("/auto-search")
 def auto_search_create(request: Request, text: str = Form(...), daily_target: int = Form(400),
-                       user: User = Depends(require_manager), s=Depends(get_db)):
+                       user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..discovery.agent import plan_queries
     parsed = parse_request(text, daily_target)
     cities = list(dict.fromkeys(c for cat in parsed["categories"] for c in cat["cities"]))
@@ -2758,7 +2758,7 @@ def auto_search_create(request: Request, text: str = Form(...), daily_target: in
 
 @app.post("/auto-search/{cid}/run")
 def auto_search_run(cid: int, request: Request, batch: int = Form(20), user: User = Depends(require_manager),
-                    s=Depends(get_db)):
+                    s=Depends(get_db, scope="function")):
     from ..discovery.runner import run_campaign_discovery
     camp = s.get(Campaign, cid) or _404()
     if camp.status != "active":
@@ -2791,7 +2791,7 @@ def _period(mode: str, day: str, date_from: str, date_to: str):
 @app.get("/today", response_class=HTMLResponse)
 def today_page(request: Request, mode: str = "day", day: str = "", date_from: str = Query("", alias="from"),
                date_to: str = Query("", alias="to"), campaign: Optional[int] = None,
-               user: User = Depends(current_user), s=Depends(get_db)):
+               user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     """استعراض العملاء حسب تاريخ الجمع (يوم أو فترة) — قراءة فقط: لا بحث جديد ولا تكلفة إضافية."""
     from ..reports import customers_in_period
     mode = "range" if mode == "range" else "day"
@@ -2806,7 +2806,7 @@ def today_page(request: Request, mode: str = "day", day: str = "", date_from: st
 @app.get("/today.xlsx")
 def today_xlsx(request: Request, mode: str = "day", day: str = "", date_from: str = Query("", alias="from"),
                date_to: str = Query("", alias="to"), campaign: Optional[int] = None,
-               user: User = Depends(current_user), s=Depends(get_db)):
+               user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..reports import customers_in_period, export_today_xlsx
     a, b, err = _period("range" if mode == "range" else "day", day, date_from, date_to)
     if err:
@@ -2820,7 +2820,7 @@ def today_xlsx(request: Request, mode: str = "day", day: str = "", date_from: st
 # ---------------------------------------------------------------- اطلب عرضًا لأسطولك (صفحة عامة)
 
 @app.get("/request-quote", response_class=HTMLResponse)
-def request_quote_page(request: Request, s=Depends(get_db)):
+def request_quote_page(request: Request, s=Depends(get_db, scope="function")):
     p = request.query_params
     offers = list(s.scalars(select(Offer).where(Offer.approved.is_(True), Offer.audience != "partner")))
     return templates.TemplateResponse(request, "request_quote.html", {
@@ -2834,7 +2834,7 @@ def request_quote_submit(request: Request, company_name: str = Form(...), city: 
                          service_text: str = Form(""), contact_name: str = Form(...), phone: str = Form(""),
                          email: str = Form(""), preferred_channel: str = Form("phone"), consent: str = Form(""),
                          notes: str = Form(""), src: str = Form(""), ref: str = Form(""), utm: str = Form(""),
-                         website_url: str = Form(""), s=Depends(get_db)):
+                         website_url: str = Form(""), s=Depends(get_db, scope="function")):
     from ..leads import create_lead, hash_ip, normalize_source, too_many
     if website_url:  # حقل مخفي لاصطياد البرامج الآلية
         return back("/request-quote?done=1")
@@ -2859,7 +2859,7 @@ def request_quote_submit(request: Request, company_name: str = Form(...), city: 
 
 
 @app.get("/leads", response_class=HTMLResponse)
-def leads_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def leads_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..leads import source_label
     from ..models import InboundLead
     rows = list(s.scalars(select(InboundLead).order_by(InboundLead.id.desc()).limit(200)))
@@ -2870,7 +2870,7 @@ def leads_page(request: Request, user: User = Depends(require_manager), s=Depend
 
 
 @app.get("/weekly-report", response_class=HTMLResponse)
-def weekly_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def weekly_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..reports import weekly_segments
     d = date.fromisoformat(day) if day else riyadh_today()
     w = weekly_segments(s, d)
@@ -2891,7 +2891,7 @@ def _perm_form(form) -> tuple[str, str, dict]:
 
 
 @app.get("/staff", response_class=HTMLResponse)
-def staff_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def staff_page(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import AuditLog
     from ..permissions import ACTION_PERMS, DATA_PERMS, PROFILES, SCOPES, describe
     users = list(s.scalars(select(User).order_by(User.active.desc(), User.role, User.name)))
@@ -2904,7 +2904,7 @@ def staff_page(request: Request, user: User = Depends(require_manager), s=Depend
 
 
 @app.post("/staff/add")
-async def staff_add(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def staff_add(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit, send_invite_email
     form = await request.form()
     email = (form.get("email") or "").strip().lower()
@@ -2929,7 +2929,7 @@ async def staff_add(request: Request, user: User = Depends(require_manager), s=D
 
 
 @app.get("/staff/{uid}", response_class=HTMLResponse)
-def staff_edit(uid: int, request: Request, q: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
+def staff_edit(uid: int, request: Request, q: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..models import AuditLog
     from ..permissions import ACTION_PERMS, DATA_PERMS, PROFILES, SCOPES
     u = s.get(User, uid) or _404()
@@ -2947,7 +2947,7 @@ def staff_edit(uid: int, request: Request, q: str = "", user: User = Depends(req
 
 
 @app.post("/staff/{uid}/update")
-async def staff_update(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def staff_update(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     if u.role == "admin" and user.role != "admin":
@@ -2965,7 +2965,7 @@ async def staff_update(uid: int, request: Request, user: User = Depends(require_
 
 
 @app.post("/staff/{uid}/assign")
-async def staff_assign(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+async def staff_assign(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     form = await request.form()
@@ -2987,7 +2987,7 @@ async def staff_assign(uid: int, request: Request, user: User = Depends(require_
 
 @app.post("/staff/{uid}/deactivate")
 def staff_deactivate(uid: int, request: Request, transfer_to: Optional[int] = Form(None),
-                     user: User = Depends(require_manager), s=Depends(get_db)):
+                     user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     if u.id == user.id or (u.role == "admin" and user.role != "admin"):
@@ -3012,7 +3012,7 @@ def staff_deactivate(uid: int, request: Request, transfer_to: Optional[int] = Fo
 
 
 @app.post("/staff/{uid}/activate")
-def staff_activate(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def staff_activate(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit
     u = s.get(User, uid) or _404()
     u.active = True
@@ -3022,7 +3022,7 @@ def staff_activate(uid: int, request: Request, user: User = Depends(require_mana
 
 
 @app.post("/staff/{uid}/invite")
-def staff_invite(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+def staff_invite(uid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..auth import audit, send_invite_email
     u = s.get(User, uid) or _404()
     ok = send_invite_email(s, u)
@@ -3082,7 +3082,7 @@ def _portal_rows(s, u: User, q: str = ""):
 
 
 @app.get("/portal", response_class=HTMLResponse)
-def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..permissions import can, describe
     page = max(1, page)
     all_rows = _portal_rows(s, user, q)
@@ -3093,7 +3093,7 @@ def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depen
 
 
 @app.get("/portal/export.xlsx")
-def portal_export(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_export(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from openpyxl import Workbook
     import io as _io
     from ..auth import audit
@@ -3147,7 +3147,7 @@ def _portal_company(s, user: User, cid: int) -> Company:
 
 
 @app.get("/portal/companies/{cid}", response_class=HTMLResponse)
-def portal_company(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_company(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..permissions import can
     c = _portal_company(s, user, cid)
     offer_kinds = {"email_sent", "email_delivered", "email_bounced"}
@@ -3179,7 +3179,7 @@ def _require(user: User, perm: str):
 
 
 @app.post("/portal/companies/{cid}/note")
-def portal_note(cid: int, request: Request, note: str = Form(...), user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_note(cid: int, request: Request, note: str = Form(...), user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     _require(user, "add_note")
     c = _portal_company(s, user, cid)
     c.last_action, c.last_action_at = note[:300], now_utc()
@@ -3191,7 +3191,7 @@ def portal_note(cid: int, request: Request, note: str = Form(...), user: User = 
 @app.post("/portal/companies/{cid}/status")
 def portal_status(cid: int, request: Request, stage: str = Form(""), next_title: str = Form(""), next_at: str = Form(""),
                   done_task: Optional[int] = Form(None), offer_at: str = Form(""), offer_note: str = Form(""),
-                  user: User = Depends(staff_user), s=Depends(get_db)):
+                  user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     _require(user, "update_status")
     c = _portal_company(s, user, cid)
     changes = []
@@ -3227,7 +3227,7 @@ def portal_status(cid: int, request: Request, stage: str = Form(""), next_title:
 
 
 @app.post("/portal/companies/{cid}/send-offer")
-def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..outreach import active_account, check_eligibility, compose, dedupe_key, ensure_email_basis, offer_for, \
         render_html, render_text, send_due
     _require(user, "send_offer")
@@ -3261,14 +3261,14 @@ def portal_send_offer(cid: int, request: Request, user: User = Depends(staff_use
 
 
 @app.post("/portal/companies/{cid}/contact/start")
-def portal_contact_start(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_contact_start(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     _require(user, "update_status")
     c = _portal_company(s, user, cid)
     return _contact_start(request, s, user, c, _safe_back(request, f"/portal/companies/{cid}"))
 
 
 @app.post("/portal/companies/{cid}/contact/update")
-async def portal_contact_update(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+async def portal_contact_update(cid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..permissions import visible_owner_ids
     _require(user, "update_status")
     c = _portal_company(s, user, cid)
@@ -3279,7 +3279,7 @@ async def portal_contact_update(cid: int, request: Request, user: User = Depends
 
 
 @app.get("/portal/officials", response_class=HTMLResponse)
-def portal_officials(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_officials(request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     """تقرير مسؤولي الشركات: جهة القرار ووسائل التواصل وحالة التواصل للمنشآت المسندة للموظف فقط."""
     from ..permissions import can
     rows = _portal_rows(s, user, "")
@@ -3316,7 +3316,7 @@ def _official_cells(c, os_):
 
 
 @app.get("/officials", response_class=HTMLResponse)
-def admin_officials(request: Request, ostatus: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+def admin_officials(request: Request, ostatus: str = "", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     """«موظفو الشركات» في بوابة الإدارة: جهة القرار المقترحة + المسؤول الموثّق + وسائل التواصل وحالة التواصل."""
     from .. import officials as O
     rows = _portal_rows(s, user, "")
@@ -3340,7 +3340,7 @@ def admin_officials(request: Request, ostatus: str = "", user: User = Depends(cu
 
 
 @app.post("/officials/control")
-def officials_control(request: Request, action: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
+def officials_control(request: Request, action: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import officials as O
     from ..auth import audit
     audit(s, user, "officials_control", None, op=action)
@@ -3357,7 +3357,7 @@ def officials_control(request: Request, action: str = Form(...), user: User = De
 
 
 @app.get("/officials.xlsx")
-def admin_officials_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+def admin_officials_xlsx(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
     prs = _portal_rows(s, user, "")
     offs = _officials_map(s, [r["c"].id for r in prs])
@@ -3369,7 +3369,7 @@ def admin_officials_xlsx(request: Request, user: User = Depends(current_user), s
 
 
 @app.get("/portal/officials.xlsx")
-def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..auth import audit
     from ..permissions import can
     from ..xlsx import CONTACT_HEADERS, contact_cells, response, workbook
@@ -3389,7 +3389,7 @@ def portal_officials_xlsx(request: Request, user: User = Depends(staff_user), s=
 
 
 @app.get("/portal/reports.xlsx")
-def portal_reports_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_reports_xlsx(request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..contact import STATUSES
     from ..permissions import scoped
     from ..xlsx import response, workbook
@@ -3405,7 +3405,7 @@ def portal_reports_xlsx(request: Request, user: User = Depends(staff_user), s=De
 
 
 @app.get("/portal/messages/{mid}", response_class=HTMLResponse)
-def portal_message(mid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_message(mid: int, request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     _require(user, "see_offers")
     m = s.get(OutboundMessage, mid) or _404()
     _portal_company(s, user, m.company_id)
@@ -3413,7 +3413,7 @@ def portal_message(mid: int, request: Request, user: User = Depends(staff_user),
 
 
 @app.get("/portal/reports", response_class=HTMLResponse)
-def portal_reports(request: Request, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_reports(request: Request, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     from ..permissions import scoped
     _require(user, "see_reports")
     base = scoped(select(Company), s, user).subquery()
@@ -3490,12 +3490,12 @@ def _kit_page(request: Request, s, user: User, base: str, company_id: int | None
 
 
 @app.get("/kit", response_class=HTMLResponse)
-def kit_page(request: Request, company: int = 0, user: User = Depends(current_user), s=Depends(get_db)):
+def kit_page(request: Request, company: int = 0, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     return _kit_page(request, s, user, "/kit", company or None)
 
 
 @app.get("/portal/kit", response_class=HTMLResponse)
-def portal_kit_page(request: Request, company: int = 0, user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_kit_page(request: Request, company: int = 0, user: User = Depends(staff_user), s=Depends(get_db, scope="function")):
     return _kit_page(request, s, user, "/portal/kit", company or None)
 
 
@@ -3540,7 +3540,7 @@ async def _kit_file(it, form) -> bool:
 
 
 @app.post("/kit/new")
-async def kit_new(request: Request, s=Depends(get_db)):
+async def kit_new(request: Request, s=Depends(get_db, scope="function")):
     from .. import kit
     from ..models import KitItem
     user = _kit_manager(request, s)
@@ -3557,7 +3557,7 @@ async def kit_new(request: Request, s=Depends(get_db)):
 
 
 @app.post("/kit/{iid}/save")
-async def kit_save(iid: int, request: Request, s=Depends(get_db)):
+async def kit_save(iid: int, request: Request, s=Depends(get_db, scope="function")):
     from .. import kit
     from ..models import KitItem
     user = _kit_manager(request, s)
@@ -3580,7 +3580,7 @@ async def kit_save(iid: int, request: Request, s=Depends(get_db)):
 
 
 @app.post("/kit/{iid}/move")
-def kit_move(iid: int, request: Request, dir: str = Form(...), s=Depends(get_db)):
+def kit_move(iid: int, request: Request, dir: str = Form(...), s=Depends(get_db, scope="function")):
     from ..models import KitItem
     _kit_manager(request, s)
     items = list(s.scalars(select(KitItem).order_by(KitItem.position, KitItem.id)))
@@ -3596,7 +3596,7 @@ def kit_move(iid: int, request: Request, dir: str = Form(...), s=Depends(get_db)
 
 
 @app.post("/kit/{iid}/delete")
-def kit_delete(iid: int, request: Request, s=Depends(get_db)):
+def kit_delete(iid: int, request: Request, s=Depends(get_db, scope="function")):
     from ..models import KitItem
     _kit_manager(request, s)
     it = s.get(KitItem, iid) or _404()
@@ -3630,13 +3630,13 @@ def _kit_file_response(it, inline: bool) -> Response:
 
 
 @app.get("/kit/{iid}/view")
-def kit_view(iid: int, request: Request, s=Depends(get_db)):
+def kit_view(iid: int, request: Request, s=Depends(get_db, scope="function")):
     user, it = _kit_item_for(request, s, iid)
     return _kit_file_response(it, inline=True)
 
 
 @app.get("/kit/{iid}/file")
-def kit_download(iid: int, request: Request, company: int = 0, s=Depends(get_db)):
+def kit_download(iid: int, request: Request, company: int = 0, s=Depends(get_db, scope="function")):
     from .. import kit
     user, it = _kit_item_for(request, s, iid)
     kit.log(s, "download", it, user, company or None)
@@ -3644,7 +3644,7 @@ def kit_download(iid: int, request: Request, company: int = 0, s=Depends(get_db)
 
 
 @app.get("/kit/s/{token}")
-def kit_share(token: str, s=Depends(get_db)):
+def kit_share(token: str, s=Depends(get_db, scope="function")):
     """رابط المشاركة العام: المستند المعتمد وحده، بلا حساب وبلا أي جزء آخر من المنصة."""
     from .. import kit
     from ..models import KitItem
@@ -3665,7 +3665,7 @@ def kit_share(token: str, s=Depends(get_db)):
 
 
 @app.post("/kit/sent")
-async def kit_sent(request: Request, s=Depends(get_db)):
+async def kit_sent(request: Request, s=Depends(get_db, scope="function")):
     """«تسجيل ما تم إرساله»: اسم المستند ونسخته واسم المندوب والتاريخ في سجل العميل."""
     from .. import kit
     from ..models import KitItem

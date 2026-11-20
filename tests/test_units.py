@@ -55,3 +55,19 @@ def test_intents():
     assert classify_intent("غير مهتم شكرا") == "not_interested"
     assert classify_intent("الرجاء إيقاف المراسلات") == "unsubscribe"
     assert classify_intent("نبغى عرض سعر") == "quote_request"
+
+
+def test_long_text_is_clipped_not_failing_insert():
+    """فحص الإطلاق: «النشاط» الطويل من البحث الآلي أسقط دفعة اكتشاف كاملة على Postgres."""
+    from mandoob.db import init_db, session_scope
+    from mandoob.models import Company
+    init_db()
+    long_activity = "محل حلويات ومخبز " + "شرح طويل " * 60
+    with session_scope() as s:
+        c = Company(name="حلويات اختبار القص", name_norm="clip-test", activity=long_activity)
+        s.add(c)
+        s.flush()
+        cid = c.id
+    with session_scope() as s:
+        a = s.get(Company, cid).activity
+        assert len(a) == 200 and a.startswith("محل حلويات ومخبز") and a.endswith("…")
