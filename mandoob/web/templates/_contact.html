@@ -26,6 +26,7 @@
   <div class="row"><div><label>تحديث المتابعة — الحالة</label><select name="status" required>{% for k in UPDATE_CHOICES %}<option value="{{ k }}">{{ STATUSES[k] }}</option>{% endfor %}</select></div>
   <div><label>موعد المتابعة القادمة (الرياض)</label><input type="datetime-local" name="next_at"></div>
   <div><label>المسؤول عن المتابعة</label><select name="next_owner"><option value="">أنا</option>{% for u in owners if u.id != me %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select></div></div>
+  <div class="chips"><label><input type="checkbox" name="reached_dm" value="1" {{ 'checked disabled' if cs.reached_dm }}> وصلت إلى المسؤول / صاحب القرار{% if cs.reached_dm %} ({{ fmt(cs.reached_dm) }}){% endif %}</label></div>
   <div class="field"><label>ملاحظة</label><textarea name="note" rows="2" placeholder="مثل: تحدثت مع مدير الأسطول وطلب العرض يوم الأحد"></textarea></div>
   <button class="btn p">حفظ المتابعة</button>
 </form>

@@ -6,6 +6,7 @@ import os
 import json
 import logging
 import threading
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -679,7 +680,7 @@ def _contact_update(request, s, user, c, form, back_to, owner_choices):
     if owner_id and owner_id not in owner_choices:
         raise HTTPException(403, "لا يمكنك إسناد المتابعة لهذا الموظف")
     try:
-        update_followup(s, c, user, status, form.get("note") or "", nxt, owner_id)
+        update_followup(s, c, user, status, form.get("note") or "", nxt, owner_id, bool(form.get("reached_dm")))
         flash(request, "حُفظت المتابعة وظهرت لكل الزملاء فورًا.")
     except (ContactBlocked, ValueError) as e:
         flash(request, str(e), "err")
@@ -705,6 +706,145 @@ async def company_contact_update(cid: int, request: Request, user: User = Depend
     form = await request.form()
     owners = {u.id for u in s.scalars(select(User).where(User.active.is_(True)))}
     return _contact_update(request, s, user, c, form, _safe_back(request, f"/companies/{cid}"), owners)
+
+
+# ---------------------------------------------------------------- اكتشاف عملاء جدد (أدلة النقل والمقاولين والمصانع)
+
+DISCOVER_DEFAULT = ["transport.freight", "transport.parcels", "transport.cold_chain", "construction.contractors",
+                    "industry.food_factories", "industry.water_factories", "industry.building_material_factories"]
+
+
+@app.get("/discover", response_class=HTMLResponse)
+def discover_page(request: Request, run: Optional[int] = None, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import directory as D, geo
+    from ..activities import ACTIVITIES, SECTORS
+    from ..models import DirectoryRun, LeadStub
+    runs = list(s.scalars(select(DirectoryRun).order_by(DirectoryRun.id.desc()).limit(10)))
+    cur = s.get(DirectoryRun, run) if run else (runs[0] if runs else None)
+    stubs = list(s.scalars(select(LeadStub).where(LeadStub.run_id == cur.id).order_by(LeadStub.id))) if cur else []
+    busy = any(r.status in ("pending", "running") for r in runs)
+    return render(request, "discover.html", user, s, sources=D.source_status(s), runs=runs, cur=cur, stubs=stubs,
+                  busy=busy, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
+                  defaults=DISCOVER_DEFAULT, KIND={"works": ("ok", "يعمل"), "needs_key": ("warn", "يحتاج ربطًا (مفتاح)"),
+                                                   "needs_file": ("warn", "ينتظر ملفًا"),
+                                                   "blocked": ("err", "غير متاح آليًا من الخادم")})
+
+
+@app.post("/discover/probe")
+def discover_probe(request: Request, user: User = Depends(require_manager)):
+    from .. import directory as D
+    _bg(D.probe_sources)
+    flash(request, "بدأ فحص الوصول للمصادر من الخادم — حدّث الصفحة بعد نصف دقيقة.")
+    return back("/discover")
+
+
+def _scope_regions(form) -> dict:
+    from .. import geo
+    regs = [r for r in form.getlist("regions") if r in geo.REGIONS]
+    if form.get("all_regions") or not regs:
+        return {"all": True} if form.get("all_regions") else {"places": ["SA-01/riyadh", "SA-02/jeddah", "SA-04/dammam"]}
+    return {"regions": regs}
+
+
+@app.post("/discover/run")
+async def discover_run(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import directory as D
+    from ..auth import audit
+    form = await request.form()
+    halt_reason = getattr(__import__("mandoob.prospecting", fromlist=["x"]), "halt_reason", lambda: None)
+    if halt_reason():
+        flash(request, "البحث موقوف أو بلغ سقف الإنفاق اليومي: " + halt_reason(), "err")
+        return back("/discover")
+    sources = [x for x in form.getlist("sources") if x in D.SOURCES] or ["claude_directory"]
+    budget = max(0.5, min(float(form.get("budget") or 5), 500))
+    params = {"activities": list(form.getlist("activities")) or DISCOVER_DEFAULT, "scope": _scope_regions(form),
+              "stage1_limit": max(5, min(int(form.get("limit") or 30), 2000))}
+    r = D.request(s, sources=sources, params=params, budget=budget, user_id=user.id)
+    audit(s, user, "directory_run", None, run=r.id, sources=sources, budget=budget, limit=params["stage1_limit"])
+    flash(request, f"بدأت الدفعة #{r.id} على الخادم (يلتقطها العامل خلال دقيقة) — الميزانية ${budget:.2f}.")
+    return back(f"/discover?run={r.id}")
+
+
+@app.post("/discover/import")
+async def discover_import(request: Request, file: UploadFile = File(...), label: str = Form("ملف"),
+                          user: User = Depends(require_manager), s=Depends(get_db)):
+    """المرحلة ١ من ملف رسمي: تُحفظ المنشآت وتُطابق مع القاعدة فورًا (بلا تكلفة)، ثم تُستكمل في دفعة «ملف بيانات»."""
+    from .. import directory as D
+    from ..auth import audit
+    from ..models import LeadStub
+    raw = (await file.read())[:10_000_000].decode("utf-8-sig", errors="replace")
+    rows = D.parse_file(raw)
+    counts = {"new": 0, "duplicate": 0, "existing_customer": 0}
+    key = "file:" + re.sub(r"[^\w\u0600-\u06FF-]+", "-", label.strip())[:30]
+    for it in rows:
+        st = LeadStub(source=key, name=it["name"][:300], name_norm=normalize_name(it["name"]), city=it["city"][:120],
+                      activity=it["activity"][:200], website=it["website"] or None, phone_hint=it["phone"] or None,
+                      source_url=it["listing_url"][:500], vehicle_hint=it["vehicle_hint"] or None)
+        s.add(st)
+        s.flush()
+        st.status, st.duplicate_of = D.dedupe(s, st)
+        counts[st.status] = counts.get(st.status, 0) + 1
+    audit(s, user, "directory_import", None, label=label, rows=len(rows), **counts)
+    flash(request, f"استُورد {len(rows)} سجلًا: جديد {counts['new']}، مكرر {counts['duplicate']}، "
+                   f"من عملائنا {counts['existing_customer']}. شغّل دفعة بمصدر «ملف بيانات» لاستكمال الجديد.")
+    return back("/discover")
+
+
+@app.post("/companies/{cid}/similar")
+async def company_similar(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    """«ابحث عن شركات مشابهة»: النشاط وطريقة استخدام المركبات، في المناطق المختارة — دفعة بميزانية محددة."""
+    from .. import directory as D
+    from ..auth import audit
+    c = s.get(Company, cid) or _404()
+    form = await request.form()
+    how = (c.fit_phrase or c.fit_reason or "")[:120]
+    queries = [c.activity or c.name]
+    if how:
+        queries.append(f"{c.activity} — {how}")
+    budget = max(0.5, min(float(form.get("budget") or 3), 100))
+    params = {"queries": queries, "sector": c.sector_key or "vehicle_users", "sector_label": f"مشابهة لـ {c.name}"[:60],
+              "scope": _scope_regions(form), "stage1_limit": max(5, min(int(form.get("limit") or 15), 300)),
+              "similar_to": cid}
+    r = D.request(s, sources=["claude_directory"], params=params, budget=budget, user_id=user.id)
+    audit(s, user, "directory_similar", None, company=cid, run=r.id)
+    flash(request, f"بدأ البحث عن شركات مشابهة لـ {c.name} (الدفعة #{r.id}، الميزانية ${budget:.2f}).")
+    return back(f"/discover?run={r.id}")
+
+
+@app.post("/companies/{cid}/reasons/find")
+def company_reasons_find(cid: int, request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
+    from .. import directory as D
+    halt_reason = getattr(__import__("mandoob.prospecting", fromlist=["x"]), "halt_reason", lambda: None)
+    s.get(Company, cid) or _404()
+    if halt_reason():
+        flash(request, halt_reason(), "err")
+        return back(f"/companies/{cid}")
+    _bg(D.find_reasons, cid)
+    flash(request, "يبحث الآن عن دليل محدد (توظيف، افتتاح، عقد…) — حدّث الصفحة بعد دقيقة.")
+    return back(f"/companies/{cid}#reasons")
+
+
+@app.post("/companies/{cid}/reasons/add")
+def company_reasons_add(cid: int, request: Request, kind: str = Form("other"), title: str = Form(...),
+                        when: str = Form(""), url: str = Form(""), user: User = Depends(current_user),
+                        s=Depends(get_db)):
+    from .. import directory as D
+    from ..models import CompanySignal
+    c = s.get(Company, cid) or _404()
+    if not _company_visible(user, c):
+        raise HTTPException(403)
+    if url and not url.startswith(("http://", "https://")):
+        flash(request, "الرابط يجب أن يبدأ بـ https://", "err")
+        return back(f"/companies/{cid}#reasons")
+    try:
+        d = date.fromisoformat(when) if when else None
+    except ValueError:
+        d = None
+    s.add(CompanySignal(company_id=cid, kind=kind if kind in D.REASON_KINDS else "other",
+                        label=D.REASON_KINDS.get(kind, D.REASON_KINDS["other"]), title=f"{title[:300]} — أضافه {user.name}",
+                        announced_on=d, url=url[:500]))
+    flash(request, "أُضيف سبب الترشيح.")
+    return back(f"/companies/{cid}#reasons")
 
 
 @app.get("/companies.xlsx")
@@ -748,6 +888,12 @@ def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(requ
                               ("القطاعات", ["القطاع", "تم التواصل", "ردود", "اجتماعات", "صفقات"], sectors),
                               ("العروض", ["العرض", "أُرسل", "ردود", "اجتماعات", "صفقات"], offers),
                               ("المصادر", ["المصدر", "مرشحون", "مكتملة", "قيد الاستكمال", "مكررة", "مرفوضة"], sources),
+                              ("اكتشاف حسب المصدر", ["المصدر", "المكتشفة", "الجديدة بعد استبعاد التكرار", "المكررة",
+                                                     "المكتملة (هاتف + بريد)", "قيد الاستكمال", "التكلفة ($)",
+                                                     "تكلفة المنشأة المكتملة ($)", "وصل الفريق إلى المسؤول"],
+                               [[x["source"], x["discovered"], x["new"], x["duplicates"], x["complete"], x["incomplete"],
+                                 x["cost"], x["cost_per_complete"] or "", x["reached_dm"]]
+                                for x in __import__("mandoob.directory", fromlist=["x"]).daily_by_source(s, d)]),
                               ("مهام الغد والمتأخرة", ["المنشأة", "المهمة", "الموعد", "المسؤول"], actions)]),
                     f"daily-report-{d.isoformat()}.xlsx")
 
@@ -843,7 +989,9 @@ def company_detail(cid: int, request: Request, user: User = Depends(current_user
     call_ok, call_why = check_call_eligibility(s, c)
     return render(request, "company.html", user, s, c=c, timeline=timeline, msgs=msgs, replies=replies, tasks=tasks,
                   calls=calls, meetings=meetings, consents=consents, reps=reps, call_ok=call_ok, call_why=call_why,
-                  relations=relations, signals=signals, source_label=source_label, **_contact_ctx(s, c))
+                  relations=relations, signals=signals, source_label=source_label, **_contact_ctx(s, c),
+                  REASON_KINDS=__import__("mandoob.directory", fromlist=["REASON_KINDS"]).REASON_KINDS,
+                  GEO_REGIONS=__import__("mandoob.geo", fromlist=["REGIONS"]).REGIONS)
 
 
 @app.post("/companies/{cid}/action")
@@ -1369,7 +1517,8 @@ def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db)
 @app.get("/daily-report", response_class=HTMLResponse)
 def daily_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db)):
     d = date.fromisoformat(day) if day else riyadh_today()
-    return render(request, "daily_report.html", user, s, r=daily_report(s, d))
+    from ..directory import daily_by_source
+    return render(request, "daily_report.html", user, s, r=daily_report(s, d), by_src=daily_by_source(s, d))
 
 
 @app.get("/notifications", response_class=HTMLResponse)

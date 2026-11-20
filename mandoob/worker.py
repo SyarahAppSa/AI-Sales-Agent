@@ -20,6 +20,8 @@ def configure(scheduler) -> None:
     # «ابحث الآن» من لوحة الإدارة: يلتقطه العامل خلال دقيقة
     scheduler.add_job(jobs.discovery_request_tick, "interval", minutes=1, id="discovery_request", max_instances=1,
                       coalesce=True)
+    from . import directory
+    scheduler.add_job(directory.tick, "interval", minutes=1, id="directory", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.daily_report_tick, "interval", minutes=5, id="daily_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.weekly_report_tick, "interval", minutes=15, id="weekly_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.outreach_tick, "interval", minutes=10, id="outreach", max_instances=1, coalesce=True)

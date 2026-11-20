@@ -53,7 +53,7 @@ def summary(s: Session, c: Company) -> dict:
             "attempt_today": bool(c.last_attempt_at and c.last_attempt_at >= today0),
             "attempts": c.attempts_count or 0, "next_at": c.next_followup_at,
             "next_owner": _name(s, c.next_followup_owner_id), "locked": locked,
-            "locked_by_id": c.contact_lock_by_id if locked else None}
+            "locked_by_id": c.contact_lock_by_id if locked else None, "reached_dm": c.reached_dm_at}
 
 
 def start_contact(s: Session, c: Company, user: User) -> None:
@@ -85,7 +85,8 @@ def _hm(dt: datetime) -> str:
 
 
 def update_followup(s: Session, c: Company, user: User, status: str, note: str = "",
-                    next_at: datetime | None = None, next_owner_id: int | None = None) -> None:
+                    next_at: datetime | None = None, next_owner_id: int | None = None,
+                    reached_dm: bool = False) -> None:
     if status not in STATUSES or status == "in_progress":
         raise ValueError("حالة غير معروفة")
     if c.contact_lock_by_id and lock_active(c) and c.contact_lock_by_id != user.id and user.role == "rep":
@@ -103,6 +104,8 @@ def update_followup(s: Session, c: Company, user: User, status: str, note: str =
     if status == "offer_sent":
         c.offer_sent_at, c.offer_sent_by_id = c.offer_sent_at or now, c.offer_sent_by_id or user.id
     c.contact_lock_by_id = c.contact_lock_at = None  # التحديث يحرر الحجز
+    if reached_dm and not c.reached_dm_at:  # وصل الفريق إلى المسؤول/صاحب القرار
+        c.reached_dm_at, c.reached_dm_by_id = now, user.id
     if status in STAGE_OF:
         c.stage = STAGE_OF[status]
     owner_name = None

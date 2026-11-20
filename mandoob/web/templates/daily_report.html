@@ -1,6 +1,11 @@
 {% extends "base.html" %}{% block content %}
 <div class="top"><div><h1>التقرير اليومي</h1><p class="sub">{{ fmt_date(r.day) }}</p></div>
 <form method="get" class="row" style="flex:0 0 auto"><input type="date" name="day" value="{{ r.day }}"><button class="btn" style="flex:0 0 auto">عرض</button><a class="btn p" style="flex:0 0 auto" href="/daily-report.xlsx?day={{ r.day }}">تنزيل Excel</a></form></div>
+<div class="card tablewrap"><h2>اكتشاف العملاء حسب المصدر</h2><table>
+<tr><th>المصدر</th><th>المكتشفة</th><th>الجديدة بعد استبعاد التكرار</th><th>المكتملة (هاتف + بريد)</th><th>قيد الاستكمال</th><th>التكلفة</th><th>تكلفة المنشأة المكتملة</th><th>وصل الفريق إلى المسؤول</th></tr>
+{% for x in by_src %}<tr><td><b>{{ x.source }}</b></td><td>{{ x.discovered }}</td><td>{{ x.new }}</td><td><b>{{ x.complete }}</b></td><td>{{ x.incomplete }}</td><td>${{ x.cost }}</td><td>{{ '$' ~ x.cost_per_complete if x.cost_per_complete else '—' }}</td><td>{{ x.reached_dm }}</td></tr>{% endfor %}
+<tr><td><b>المجموع</b></td><td>{{ by_src|sum(attribute='discovered') }}</td><td>{{ by_src|sum(attribute='new') }}</td><td><b>{{ by_src|sum(attribute='complete') }}</b></td><td>{{ by_src|sum(attribute='incomplete') }}</td><td>${{ by_src|sum(attribute='cost')|round(2) }}</td><td></td><td>{{ by_src|sum(attribute='reached_dm') }}</td></tr>
+</table><p class="small muted">«وصل الفريق إلى المسؤول» يُسجَّل من «تحديث المتابعة» (خانة «وصلت إلى المسؤول / صاحب القرار»)، وهو تراكمي لكل مصدر.</p></div>
 <div class="grid g4" style="margin-bottom:14px">
 <div class="stat"><div class="v">{{ r.complete }}</div><div class="l">شركات مكتملة جديدة</div></div>
 <div class="stat"><div class="v">${{ r.total_cost }}</div><div class="l">التكلفة التقديرية لليوم</div></div>
