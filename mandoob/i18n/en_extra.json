@@ -429,5 +429,6 @@
  "تم التواصل {x}": "Contacted {x}",
  "مهتم {x}": "Interested {x}",
  "غير مهتم {x}": "Not interested {x}",
- "تعذّر الحفظ — أعد المحاولة": "Could not save — try again"
+ "تعذّر الحفظ — أعد المحاولة": "Could not save — try again",
+ "حذف الملف": "Delete file"
 }

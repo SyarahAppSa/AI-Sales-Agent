@@ -7,8 +7,9 @@
 {% for x in social_files.get(k, []) if x.f.status == 'staged' %}
 <form id="rep-{{ x.f.id }}" method="post" action="/targets/{{ camp.id }}/social/upload" enctype="multipart/form-data" hidden>
 <input type="hidden" name="source" value="{{ k }}"><input type="hidden" name="replace_id" value="{{ x.f.id }}"><input type="hidden" name="target_place" value=""></form>
-<form id="del-{{ x.f.id }}" method="post" action="/targets/{{ camp.id }}/social/{{ x.f.id }}/delete" hidden onsubmit="return confirm('حذف الملف «{{ x.f.file_name|e }}»؟')"></form>
-{% endfor %}{% endfor %}
+{% endfor %}
+{% for x in social_files.get(k, []) %}<form id="del-{{ x.f.id }}" method="post" action="/targets/{{ camp.id }}/social/{{ x.f.id }}/delete" hidden onsubmit="return confirm('حذف الملف «{{ x.f.file_name|e }}»؟{% if x.f.status != 'staged' %} سيُزال ربط عملائه بهذا المصدر، وتبقى سجلاتهم وتواصلهم في المنصة.{% endif %}')"></form>{% endfor %}
+{% endfor %}
 <form id="social-import" method="post" action="/targets/{{ camp.id }}/social/import" hidden onsubmit="return confirm('استيراد عملاء الملفات إلى الحملة؟')"></form>
 {% endif %}
 {% include "_social_js.html" %}

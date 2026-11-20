@@ -1487,16 +1487,19 @@ def social_delete(cid: int, fid: int, request: Request, user: User = Depends(req
     f = s.get(CampaignSourceFile, fid)
     if f is None or f.campaign_id != cid:
         _404()
-    if f.status != "staged":
-        flash(request, "لا يُحذف ملف بعد استيراده — عملاؤه أصبحوا ضمن الحملة", "err")
-    else:
-        from ..models import CampaignSourceMark
-        for m in s.scalars(select(CampaignSourceMark).where(CampaignSourceMark.file_id == f.id)):
-            s.delete(m)
-        s.flush()
-        s.delete(f)
-        flash(request, f"حُذف «{f.file_name}»")
-    return back(f"/social?c={cid}#src-{f.source_key}")
+    from ..models import CampaignLead, CampaignSourceMark
+    for m in s.scalars(select(CampaignSourceMark).where(CampaignSourceMark.file_id == f.id)):
+        s.delete(m)
+    removed = 0
+    for lead in s.scalars(select(CampaignLead).where(CampaignLead.file_id == f.id)):
+        s.delete(lead)
+        removed += 1
+    s.flush()
+    name, key = f.file_name, f.source_key
+    s.delete(f)
+    flash(request, f"حُذف «{name}»" + (f" وأُزيل ربط {removed} عميل بمصدره في هذه الصفحة (سجلات العملاء وتواصلهم باقية في المنصة)"
+                                      if removed else ""))
+    return back(f"/social?c={cid}#src-{key}")
 
 
 @app.post("/targets/{cid}/social/import")

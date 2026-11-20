@@ -179,3 +179,25 @@ def test_social_person_company_columns_and_contact_marks():
             ct = s.query(Contact).filter_by(company_id=comp.id, kind="phone").one()
             assert ct.label == "أحمد سالم" and ct.raw_value == "0541239876"
             assert s.query(CampaignSourceMark).filter_by(file_id=fid).count() == 2
+
+
+def test_social_delete_imported_file_keeps_company():
+    init_db()
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        cl.get("/social")
+        with session_scope() as s:
+            hid = s.query(Campaign).filter_by(kind="social").one().id
+        cl.post(f"/targets/{hid}/social/upload", data={"source": "facebook"},
+                files={"file": ("fb.xlsx", xlsx([["الاسم", "الجوال"], ["شركة فيسبوك للحذف", "0548881122"]]), "application/octet-stream")})
+        with session_scope() as s:
+            fid = s.query(CampaignSourceFile).filter_by(file_name="fb.xlsx").one().id
+        cl.post(f"/targets/{hid}/social/{fid}/mark", data={"row": "0", "field": "contacted", "value": "yes"})
+        cl.post(f"/targets/{hid}/social/import")
+        assert f'id="del-{fid}"' in cl.get("/social").text
+        r = cl.post(f"/targets/{hid}/social/{fid}/delete", follow_redirects=True)
+        assert "حُذف «fb.xlsx»" in r.text and "fb.xlsx" not in r.text.split('id="src-facebook"')[1].split('id="src-instagram"')[0]
+        with session_scope() as s:
+            assert s.get(CampaignSourceFile, fid) is None
+            assert s.query(CampaignLead).filter_by(file_id=fid).count() == 0
+            assert s.query(Company).filter_by(name="شركة فيسبوك للحذف").count() == 1
