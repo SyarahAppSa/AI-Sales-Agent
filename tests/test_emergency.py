@@ -89,7 +89,10 @@ def test_rep_then_admin_downloads_blocked_and_alerted():
         assert "مدير المبيعات" in em and "أحمد المندوب" in em and REP in em and "جديد" in em
         assert "مسموح لمدير المنصة" in em
         assert 'class="count"' not in adm.get("/").text.split("لوحة طوارئ")[1][:60]      # قُرئت بعد فتح اللوحة
-        assert "--wm:url(" in em and "data:image/svg+xml" in em                         # علامة مائية باسم المستخدم
+        assert "--wm:url(" not in em                                                    # لا علامة مائية لمدير المنصة
+    with TestClient(app) as rep:
+        otp_login(rep, REP, "portal")
+        assert "--wm:url(" in rep.get("/portal").text                                   # وللموظفين تبقى
 
 
 def test_rep_cannot_open_emergency_panel():

@@ -216,7 +216,8 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
             emerg = s.scalar(select(func.count(DownloadAttempt.id)).where(DownloadAttempt.read.is_(False))) or 0
     return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
                                                       "emerg_unread": emerg, "can_emergency": _can_emerg(user),
-                                                      "wm": _watermark(user) if user is not None else "",
+                                                      # العلامة المائية لكل الحسابات عدا مدير المنصة (المالك)
+                                                      "wm": _watermark(user) if user is not None and user.role != "admin" else "",
                                                       "voice_on": settings.voice_calls_enabled,
                                                       "outreach_on": settings.auto_outreach_enabled,
                                                       "path": request.url.path, **ctx})
