@@ -18,6 +18,7 @@ with session_scope() as s:
     for r in s.scalars(select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"]))):
         r.status = "failed"
         r.log = (r.log or []) + [f"{now_utc():%H:%M:%S} أُلغيت: تعلّقت قبل إصلاح مهلة النداء"]
+    s.flush()
     r = D.request(s, sources=["web_search", "social", "claude_directory"], params={
         "activities": ["industry.water_factories", "education.private_schools", "field_services.maintenance",
                        "transport.freight", "construction.contractors", "food.bakeries"],

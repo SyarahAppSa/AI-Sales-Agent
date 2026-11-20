@@ -609,6 +609,7 @@ def run(run_id: int, crawler=None) -> None:
 
 
 def request(s, *, sources: list[str], params: dict, budget: float, user_id: int | None) -> DirectoryRun:
+    s.flush()
     busy = s.scalar(select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"])))
     if busy:
         return busy
