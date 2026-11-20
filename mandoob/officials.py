@@ -120,8 +120,11 @@ def verify(c: Company, it: dict, pages, results) -> tuple[str | None, str, str]:
     texts = [(p.url, p.text) for p in pages if p.url == url or (dom and domain_of(p.url) == dom)]
     texts += [(u, t) for u, t in results if u == url]
     where = next((u for u, t in texts if _hit(t, name_t, need) and (comp_ok(t) or (c.domain and dom == c.domain))), None)
-    if where is None:  # صفحة أخرى قرأها الوكيل تذكر الاسم والشركة معًا
-        where = next((p.url for p in pages if _hit(p.text, name_t, need) and comp_ok(p.text)), None)
+    if where is None:  # صفحة أخرى قرأها الوكيل، أو عنوان نتيجة بحث حقيقية، يذكر الاسم والشركة معًا
+        where = next((p.url for p in pages if _hit(p.text, name_t, need) and comp_ok(p.text)), None) or \
+            next((u for u, t in results if _hit(t, name_t, need) and comp_ok(t)), None)
+        if where:
+            texts = [(u, t) for u, t in results if u == where] + [(p.url, p.text) for p in pages if p.url == where]
     if where is None:
         return None, "", "الاسم أو الشركة لا يظهران في الدليل"
     status, why = "verified", ""
