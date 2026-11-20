@@ -102,6 +102,8 @@ class LangMiddleware:
 
 
 app.add_middleware(LangMiddleware)  # داخل الجلسة: يقرأ لغة المستخدم المحفوظة فيها
+from ..emergency import DownloadGuard  # noqa: E402
+app.add_middleware(DownloadGuard)  # منع كل تنزيل وتسجيل المحاولة (يحتاج الجلسة لمعرفة المستخدم)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 12, same_site="lax",
                    https_only=settings.public_base_url.startswith("https"))
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -206,10 +208,34 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
     if user is not None and s is not None:
         from ..reports import demo_view
         demo = demo_view(s)
+    emerg = 0
+    if user is not None and s is not None:
+        from ..emergency import can_access
+        from ..models import DownloadAttempt
+        if can_access(user):
+            emerg = s.scalar(select(func.count(DownloadAttempt.id)).where(DownloadAttempt.read.is_(False))) or 0
     return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
+                                                      "emerg_unread": emerg, "can_emergency": _can_emerg(user),
+                                                      "wm": _watermark(user) if user is not None else "",
                                                       "voice_on": settings.voice_calls_enabled,
                                                       "outreach_on": settings.auto_outreach_enabled,
                                                       "path": request.url.path, **ctx})
+
+
+def _can_emerg(user) -> bool:
+    from ..emergency import can_access
+    return can_access(user)
+
+
+def _watermark(user) -> str:
+    """علامة مائية متكررة: اسم المستخدم ومعرّفه ووقت العرض (بتوقيت الرياض) — صورة SVG خفيفة خلف المحتوى."""
+    from html import escape
+    from urllib.parse import quote
+    t = escape(f"{user.name} · #{user.id} · {fmt(now_utc())}")
+    svg = (f"<svg xmlns='http://www.w3.org/2000/svg' width='380' height='190'><text x='16' y='105' "
+           f"transform='rotate(-20 190 95)' font-family='Tahoma,Arial' font-size='14' font-weight='700' fill='%23292431' "
+           f"fill-opacity='0.13'>{t}</text></svg>")
+    return "url(\"data:image/svg+xml;utf8," + quote(svg, safe="/:=' %,.()") + "\")"
 
 
 def flash(request: Request, msg: str, kind: str = "ok") -> None:
@@ -389,6 +415,41 @@ def logout(request: Request):
     return back("/portal/login" if portal == "staff" else "/admin/login")
 
 
+def require_emergency(user: User = Depends(current_user)) -> User:
+    if not _can_emerg(user):
+        raise HTTPException(403, "لوحة الطوارئ للمالك ومن يمنحه صلاحية الطوارئ فقط")
+    return user
+
+
+@app.get("/emergency", response_class=HTMLResponse)
+def emergency_page(request: Request, who: str = "", day_from: str = "", day_to: str = "", etype: str = "",
+                   user: User = Depends(require_emergency), s=Depends(get_db)):
+    from .. import emergency as E
+    from ..config import settings as _st
+    from ..models import DownloadAttempt
+    attempts = list(s.scalars(select(DownloadAttempt).order_by(DownloadAttempt.id.desc()).limit(100)))
+    repeats = {(u, t): n for u, t, n in s.execute(select(DownloadAttempt.user_id, DownloadAttempt.target,
+                                                         func.count(DownloadAttempt.id))
+                                                  .group_by(DownloadAttempt.user_id, DownloadAttempt.target))}
+    unread_ids = [a.id for a in attempts if not a.read]
+    def _d(v):
+        try:
+            return date.fromisoformat(v) if v else None
+        except ValueError:
+            return None
+    page = render(request, "emergency.html", user, s, attempts=attempts, repeats=repeats, unread_ids=set(unread_ids),
+                  svcs=E.services(s), tl=E.timeline(s, who, _d(day_from), _d(day_to), etype), EVENT_TYPES=E.EVENT_TYPES,
+                  who=who, day_from=day_from, day_to=day_to, etype=etype, blocked=_st.downloads_blocked,
+                  render_key=bool(_st.render_api_key), now=now_utc(), dt=E._dt)
+    # فتح اللوحة = قراءة التنبيهات (تبقى غير مقروءة حتى تُفتح)
+    for a in s.scalars(select(DownloadAttempt).where(DownloadAttempt.read.is_(False))):
+        a.read = True
+    for n in s.scalars(select(Notification).where(Notification.user_id == user.id, Notification.read.is_(False),
+                                                  Notification.title.like("مُنع تنزيل%"))):
+        n.read = True
+    return page
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
@@ -500,6 +561,8 @@ def prospects_xlsx(request: Request, day: str = "", city: str = "", sector: str 
 def prospects_run(request: Request, target: int = Form(100), user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import prospects as P
     r = P.request_run(s, user, target, P.get_auto(s)["sources"])
+    from ..auth import audit
+    audit(s, user, "prospects_run", None, batch=r.id, target=r.target)
     flash(request, f"بدأت دفعة «العملاء المحتملون» #{r.id} على الخادم — الهدف {r.target} منشأة قابلة للتواصل. "
                    "تتحدث الصفحة تلقائيًا.")
     return back("/prospects")
@@ -900,8 +963,10 @@ def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form(
 @app.post("/prospects/stop")
 def prospects_stop(request: Request, user: User = Depends(require_manager), s=Depends(get_db)):
     from ..models import ProspectRun
+    from ..auth import audit
     for r in s.scalars(select(ProspectRun).where(ProspectRun.status.in_(["pending", "running"]))):
         r.status = "stopped"
+        audit(s, user, "prospects_stop", None, batch=r.id)
     flash(request, "أُوقفت الدفعة. ما جُمع يبقى في القائمة.")
     return back("/prospects")
 
@@ -2541,10 +2606,13 @@ def _portal_rows(s, u: User, q: str = ""):
 
 
 @app.get("/portal", response_class=HTMLResponse)
-def portal_home(request: Request, q: str = "", user: User = Depends(staff_user), s=Depends(get_db)):
+def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depends(staff_user), s=Depends(get_db)):
     from ..permissions import can, describe
-    rows = _portal_rows(s, user, q)
-    return render(request, "portal_home.html", user, s, rows=rows, q=q, can=lambda p: can(user, p),
+    page = max(1, page)
+    all_rows = _portal_rows(s, user, q)
+    total = len(all_rows)
+    rows = all_rows[(page - 1) * 50: page * 50]  # يُرسل للجهاز ما تعرضه الصفحة فقط
+    return render(request, "portal_home.html", user, s, rows=rows, q=q, can=lambda p: can(user, p), page=page, total=total,
                   d=describe(user), mask=lambda t: mask_text(user, t), csum=_csum(s, [r["c"] for r in rows]))
 
 
@@ -2798,6 +2866,8 @@ def admin_officials(request: Request, ostatus: str = "", user: User = Depends(cu
 @app.post("/officials/control")
 def officials_control(request: Request, action: str = Form(...), user: User = Depends(require_manager), s=Depends(get_db)):
     from .. import officials as O
+    from ..auth import audit
+    audit(s, user, "officials_control", None, op=action)
     if action == "pause":
         O.set_auto(s, paused=True)
         flash(request, "أُوقف البحث عن أصحاب القرار. ما وُجد يبقى كما هو.")

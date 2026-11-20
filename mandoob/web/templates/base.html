@@ -21,7 +21,8 @@
       ('/leads', 'طلبات العروض الواردة')] + ([('/offers', 'العروض والمرفقات'), ('/sandbox', 'صندوق التجربة')] if outreach_on else [])),
   ('rep', 'file', 'التقارير', None, [('/daily-report', 'التقرير اليومي'), ('/weekly-report', 'التقرير الأسبوعي للشرائح')]),
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
-      ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]),
+      ('/mail', 'ربط بريد الشركة'), ('/notifications', 'التنبيهات'), ('/runs', 'سجل التشغيل'), ('/settings', 'الإعدادات العامة')]
+      + ([('/emergency', 'لوحة طوارئ')] if can_emergency else [])),
 ] %}{% else %}{% set groups = [
   ('cust', 'building', 'العملاء والشركات', None, [('/portal', 'عملائي ومتابعاتي'), ('/portal/officials', 'موظفو الشركات'),
       ('/portal/lists', 'قائمة عملاء إدارية')]),
@@ -42,10 +43,10 @@
     {% elif items %}
       {% set ns = namespace(open=False) %}{% for h, l in items %}{% if is_on(h) == '1' %}{% set ns.open = True %}{% endif %}{% endfor %}
       <div class="ngrp {{ 'open cur' if ns.open }}" data-grp="{{ key }}">
-        <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>
+        <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if key == 'admin' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}
           <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
         <div class="gitems">
-        {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>{% endfor %}
+        {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}{% if h == '/emergency' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}</a>{% endfor %}
         </div>
       </div>
     {% endif %}
@@ -54,11 +55,11 @@
     <a href="/logout" class="top1" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>
   </nav>
 </aside>
-<main class="main">
+<main class="main wmk">{% if wm %}<style>.wmk{--wm:{{ wm|safe }}}</style>{% endif %}
   <div class="topbar">
     {{ langsw() }}
     <a class="chip" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="{{ user.name }} — {{ ROLE_LABELS[user.role] }}" style="color:inherit;text-decoration:none"><span>{{ user.email }}</span>{{ icon('user', 30) }}</a>
-    <a class="round" href="{{ '/notifications' if user.role in ('admin','manager') else '/portal' }}" title="التنبيهات">{{ icon('bell') }}{% if unread %}<span class="dot"></span>{% endif %}</a>
+    <a class="round" href="{{ '/emergency' if emerg_unread else ('/notifications' if user.role in ('admin','manager') else '/portal') }}" title="التنبيهات">{{ icon('bell') }}{% if unread or emerg_unread %}<span class="dot"></span>{% endif %}{% if emerg_unread %}<span class="bellcount">{{ emerg_unread }}</span>{% endif %}</a>
     <span class="flag" title="المملكة العربية السعودية"><i></i></span>
   </div>
 {% if demo_on and user.role in ('admin','manager') %}<div class="flash" style="margin-top:70px;background:var(--warn-soft);color:var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">

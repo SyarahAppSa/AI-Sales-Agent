@@ -8,6 +8,7 @@ os.environ["ANTHROPIC_API_KEY"] = ""          # الاختبارات حتمية 
 os.environ["ADMIN_EMAIL"] = "admin@sayaraup.test"
 os.environ["ADMIN_PASSWORD"] = "admin-pass-123"
 os.environ["OTP_IP_LIMIT"] = "1000"  # كل الاختبارات تأتي من «جهاز» واحد
+os.environ["DOWNLOADS_BLOCKED"] = "0"  # اختبارات محتوى Excel القديمة؛ اختبار «لوحة طوارئ» يفعّل المنع صراحة
 # الكود المحفوظ (الاتصال الآلي والإرسال التلقائي) يُختبر مفعّلًا؛ واختبارات الوضع الحالي تعطّله صراحة
 os.environ["ENABLE_VOICE_CALLS"] = "1"
 os.environ["ENABLE_AUTO_OUTREACH"] = "1"

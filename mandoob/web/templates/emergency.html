@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block title %}لوحة طوارئ — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+<meta http-equiv="refresh" content="60">
+<div class="dash-head"><div><h1>لوحة طوارئ</h1><div class="date">محاولات التنزيل، وحالة الخوادم، وسجل النشاط — تتحدث كل دقيقة. آخر تحديث: {{ fmt(now) }}</div></div>
+<span class="pill {{ 'err' if blocked else 'warn' }}" style="align-self:center">{{ 'التنزيل محظور لكل الحسابات' if blocked else 'منع التنزيل غير مفعّل' }}</span></div>
+
+{% set fresh = attempts|selectattr('id', 'in', unread_ids)|list %}
+<div class="em-alert" {% if not fresh %}style="border-color:var(--line);background:var(--panel)"{% endif %}>
+  <div class="head2"><h2 {% if not fresh %}style="color:var(--ink)"{% endif %}>محاولات التنزيل {% if fresh %}— {{ fresh|length }} جديدة{% endif %}</h2></div>
+  {% for a in attempts[:30] %}{% set n = repeats.get((a.user_id, a.target), 1) %}
+  <div class="em-row"><div class="t">
+    <b class="big">مُنع تنزيل {{ a.label }}.</b> المستخدم: <b translate="no">{{ a.user_name }}</b>{% if a.user_email %} (<span class="ltr">{{ a.user_email }}</span>){% endif %}.
+    {% if a.report_id %}رقم التقرير: <b>{{ a.report_id }}</b>.{% endif %} الوقت: <b>{{ fmt(a.at) }}</b>. محاولة رقم: <b>{{ a.id }}</b>.
+    <div class="small muted">الصفحة: <span class="ltr">{{ a.page or '—' }}</span> — الرابط المطلوب: <span class="ltr">{{ a.target }}</span> — النتيجة: {{ a.result }}{% if a.portal %} — البوابة: {{ 'الموظفين' if a.portal == 'staff' else 'الإدارة' }}{% endif %}</div>
+    {% if n > 1 %}<div class="small"><span class="pill err">كرّر المحاولة {{ n }} مرات</span> — كل الأوقات في السجل أدناه</div>{% endif %}
+  </div>{% if a.id in unread_ids %}<span class="pill err">جديد</span>{% endif %}</div>
+  {% else %}<p class="muted" style="margin:0">لا توجد محاولات تنزيل.</p>{% endfor %}
+</div>
+
+<h2>حالة الخوادم</h2>
+<div class="svc">
+{% for v in svcs %}<div class="card"><div class="st {{ 'ok' if v.ok else 'bad' }}"><i></i>{{ v.name }}</div>
+  <div class="mrow"><span>الحالة</span><span>{{ v.state }}</span></div>
+  <div class="mrow"><span>آخر فحص</span><span>{{ fmt(v.checked) if v.checked else '—' }}</span></div>
+  <div class="mrow"><span>آخر عطل مسجّل</span><span>{% if v.last_error %}{{ fmt(v.last_error.at) }} — {{ v.last_error.message }}{% else %}لا يوجد{% endif %}</span></div>
+  {% if v.key == 'scheduler' %}
+  <div class="mrow"><span>آخر دفعة نجحت</span><span>{% if v.last_ok_run %}{{ v.last_ok_run[0] }} #{{ v.last_ok_run[1].id }} — {{ fmt(v.last_ok_run[2]) }}{% else %}—{% endif %}</span></div>
+  <div class="mrow"><span>آخر دفعة فشلت/توقفت</span><span>{% if v.last_bad_run %}{{ v.last_bad_run[0] }} #{{ v.last_bad_run[1].id }} — {{ fmt(v.last_bad_run[2]) }}{% if v.bad_reason %} — السبب: {{ v.bad_reason }}{% endif %}{% else %}لا يوجد{% endif %}</span></div>
+  {% endif %}
+  {% set m = v.metrics %}{% if m is not none %}
+  <h3 style="font-size:14px;margin:12px 0 4px">القياسات (من داخل الحاوية)</h3>
+  {% if m.error %}<div class="small" style="color:var(--err);font-weight:700">تعذّر التحديث — آخر قراءة ناجحة: {{ fmt(dt(m.ok_at)) if m.ok_at else 'لا توجد' }}</div>{% endif %}
+  {% set x = m.get('values') or {} %}
+  <div class="mrow"><span>الذاكرة المستخدمة / المخصّصة</span><span class="ltr">{{ x.mem_used_mb if x.mem_used_mb is not none else '—' }} / {{ x.mem_limit_mb or 'غير محددة' }} MB</span></div>
+  {% if x.mem_limit_mb and x.mem_used_mb %}<div class="mrow"><span>الذاكرة المتاحة</span><span class="ltr">{{ (x.mem_limit_mb - x.mem_used_mb)|round(1) }} MB</span></div>{% endif %}
+  <div class="mrow"><span>المعالج</span><span class="ltr">{{ (x.cpu_pct ~ '%') if x.cpu_pct is not none else 'يُحسب في القراءة التالية' }} من {{ x.cpu_limit or '—' }} vCPU</span></div>
+  <div class="mrow"><span>التخزين المستخدم / الكلي (المتاح)</span><span class="ltr">{{ x.disk_used_gb or '—' }} / {{ x.disk_total_gb or '—' }} GB ({{ x.disk_free_gb or '—' }})</span></div>
+  {% if v.key == 'web' %}<div class="mrow"><span>زمن الاستجابة (الوسيط / ٩٥٪)</span><span class="ltr">{{ x.latency_ms_p50 if x.latency_ms_p50 is not none else '—' }} / {{ x.latency_ms_p95 if x.latency_ms_p95 is not none else '—' }} ms</span></div>{% endif %}
+  <div class="small muted">آخر قراءة ناجحة: {{ fmt(dt(m.ok_at)) if m.ok_at else '—' }}</div>
+  {% elif v.key == 'scheduler' %}<div class="small muted" style="margin-top:8px">قياسات العامل: تعذّر التحديث — لم يرسل العامل قراءة بعد.</div>{% endif %}
+</div>{% endfor %}
+</div>
+<p class="small muted">{% if render_key %}قياسات Render API مفعّلة.{% else %}القياسات أعلاه تقرؤها المنصة من داخل حاويات الخدمات نفسها. قياسات لوحة Render الرسمية (مثل حركة الشبكة) تتطلب مفتاح Render API على الخادم (RENDER_API_KEY).{% endif %}
+رصد التصوير: <b>غير متاح</b> — المتصفح لا يكشف التقاط الشاشة؛ يتطلب ربط نظام إدارة أجهزة الشركة (MDM). العلامة المائية مفعّلة على جداول العملاء والتقارير.</p>
+
+<div class="card"><div class="head2"><h2>السجل الزمني</h2></div>
+<form method="get" class="row" style="margin-bottom:10px">
+  <div><label>المستخدم (الاسم أو البريد)</label><input name="who" value="{{ who }}"></div>
+  <div><label>من تاريخ</label><input type="date" name="day_from" value="{{ day_from }}"></div>
+  <div><label>إلى تاريخ</label><input type="date" name="day_to" value="{{ day_to }}"></div>
+  <div><label>نوع الحدث</label><select name="etype"><option value="">الكل</option>{% for k, lab in EVENT_TYPES.items() %}<option value="{{ k }}" {{ 'selected' if etype == k }}>{{ lab }}</option>{% endfor %}</select></div>
+  <button class="btn p">تصفية</button></form>
+<div class="tablewrap"><table><tr><th>الوقت (الرياض)</th><th>النوع</th><th>المستخدم</th><th>الحدث</th></tr>
+{% for e in tl %}<tr><td class="small" style="white-space:nowrap">{{ fmt(e.at) }}</td><td><span class="pill {{ 'err' if e.type in ('download','incident') else '' }}">{{ EVENT_TYPES.get(e.type, e.type) }}</span></td>
+<td><span translate="no">{{ e.who }}</span>{% if e.email %}<div class="small muted ltr">{{ e.email }}</div>{% endif %}</td><td class="small">{{ e.what }}{% if e.where %} <span class="muted ltr">{{ e.where }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">لا توجد أحداث مطابقة.</td></tr>{% endfor %}</table></div>
+<p class="small muted">لا يعرض السجل رموز الدخول ولا مفاتيح الخدمات ولا محتوى ملفات العملاء.</p></div>
+{% endblock %}

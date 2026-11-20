@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% block content %}
 <div class="top"><div><h1>عملائي ومتابعاتي</h1><p class="sub" style="margin:0">مرحبًا {{ user.name }} — نطاقك: {{ d.scope }} — صلاحياتك: {{ d.actions|join('، ') }}</p></div>
-<div class="row">{% if can('see_phone') %}<button type="button" class="btn" onclick="copyAll('ph')">نسخ كل الأرقام</button>{% endif %}{% if can('see_email') %}<button type="button" class="btn" onclick="copyAll('em')">نسخ كل الإيميلات</button>{% endif %}{% if can('export') %}<a class="btn p" href="/portal/export.xlsx?q={{ q }}">تنزيل Excel</a>{% endif %}</div></div>
+<div class="row">{% if can('see_phone') %}<a class="btn" href="/portal/export/phones.csv">نسخ كل الأرقام</a>{% endif %}{% if can('see_email') %}<a class="btn" href="/portal/export/emails.csv">نسخ كل الإيميلات</a>{% endif %}{% if can('export') %}<a class="btn p" href="/portal/export.xlsx?q={{ q }}">تنزيل Excel</a>{% endif %}</div></div>
 <p class="small muted" style="margin:-4px 0 12px">تواصل مع العميل بنفسك، ثم افتح سجله وحدّث حالته إلى «تم التواصل» أو «أُرسل عرض» أو «تحتاج متابعة» حتى يظهر في تقرير العروض باسمك وتاريخ الإرسال.</p>
 <form class="card row" method="get"><div><label>بحث</label><input name="q" value="{{ q }}" placeholder="اسم العميل أو نشاطه أو مدينته"></div><div style="flex:0 0 auto"><button class="btn">بحث</button></div></form>
 <div class="card tablewrap"><table>
@@ -12,7 +12,8 @@
 {% if can('see_replies') %}<td class="small" style="max-width:260px">{% if r.reply %}<span class="pill info">{{ r.reply.intent_label }}</span> «{{ mask(r.reply.body_text[:120]) }}»{% else %}—{% endif %}</td>{% endif %}
 <td class="small">{% if r.next %}<b>{{ r.next.title.split(' — ')[0] }}</b><div>{{ r.next.window_label or fmt(r.next.due_at) }}</div>{% else %}—{% endif %}</td>
 </tr>{% else %}<tr><td colspan="5" class="muted">لا يوجد عملاء مسندون إليك حاليًا.</td></tr>{% endfor %}
-</table></div>
+</table>
+{% if total > 50 %}<div class="row" style="margin-top:10px">{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="/portal?q={{ q }}&page={{ page - 1 }}">السابق</a>{% endif %}<span class="small muted" style="flex:0 0 auto;align-self:center">صفحة {{ page }} من {{ ((total + 49) // 50) }} ({{ total }} عميل)</span>{% if page * 50 < total %}<a class="btn sm" style="flex:0 0 auto" href="/portal?q={{ q }}&page={{ page + 1 }}">التالي</a>{% endif %}</div>{% endif %}</div>
 <script>
 function cp(b,t){try{navigator.clipboard.writeText(t);b.textContent='نُسخ ✓';setTimeout(()=>b.textContent='نسخ',1500)}catch(e){prompt('انسخ:',t)}}
 function copyAll(k){const v=[...document.querySelectorAll('.'+k)].map(x=>x.textContent.trim()).filter(Boolean).join('\n');try{navigator.clipboard.writeText(v);alert('نُسخ '+v.split('\n').length+' عنصر')}catch(e){prompt('انسخ:',v)}}

@@ -769,3 +769,30 @@ class AdminListContact(Base):
     by_name: Mapped[str] = mapped_column(String(120), default="")
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     history: Mapped[list] = mapped_column(JSON, default=list)  # كل التحديثات السابقة (لا يُمسح شيء)
+
+
+class DownloadAttempt(Base):
+    """محاولة تنزيل مُنعت (سياسة حماية البيانات): رقم التتبّع = المعرّف."""
+    __tablename__ = "download_attempts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    user_name: Mapped[str] = mapped_column(String(120), default="")
+    user_email: Mapped[str] = mapped_column(String(200), default="")
+    portal: Mapped[str] = mapped_column(String(20), default="")
+    page: Mapped[str] = mapped_column(String(300), default="")      # الصفحة التي ضُغط منها
+    target: Mapped[str] = mapped_column(String(300), default="")    # المسار المطلوب (بلا معاملات)
+    label: Mapped[str] = mapped_column(String(200), default="")     # اسم الملف/التقرير
+    report_id: Mapped[Optional[str]] = mapped_column(String(40))
+    result: Mapped[str] = mapped_column(String(40), default="blocked")
+    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+
+class Incident(Base):
+    """عطل مسجّل في إحدى الخدمات (بلا أسرار ولا بيانات عملاء)."""
+    __tablename__ = "incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    service: Mapped[str] = mapped_column(String(20))   # web / db / scheduler
+    kind: Mapped[str] = mapped_column(String(40), default="error")
+    message: Mapped[str] = mapped_column(String(500), default="")
