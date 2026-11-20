@@ -1393,14 +1393,15 @@ def target_edit(cid: int, request: Request, user: User = Depends(current_user), 
 
 def _social_ctx(s, camp, user, src: str = "") -> dict:
     """قسم «مواقع التواصل الاجتماعي»: ملفات كل مصدر ومعاينتها، وعملاء الحملة مع فلتر «مصدر العميل»."""
-    from ..campaign_sources import SOCIAL_SOURCES, campaign_leads, view
+    from ..campaign_sources import SOCIAL_SOURCES, campaign_leads, mark_counts, marks_for, view
     from ..models import CampaignSourceFile
     can = user.role in ("admin", "manager")
     files: dict[str, list] = {}
     if camp is not None and can:
         for f in s.scalars(select(CampaignSourceFile).where(CampaignSourceFile.campaign_id == camp.id)
                            .order_by(CampaignSourceFile.id)):
-            files.setdefault(f.source_key, []).append({"f": f, "v": view(f, limit=200)})
+            files.setdefault(f.source_key, []).append({"f": f, "v": view(f, limit=200, marks=marks_for(s, f.id)),
+                                                       "mc": mark_counts(s, f.id)})
     leads = campaign_leads(s, camp.id, src if src in SOCIAL_SOURCES else "") if camp is not None and can else []
     all_n = len(campaign_leads(s, camp.id)) if camp is not None and can else 0
     owners = {u.id: u.name for u in s.scalars(select(User))} if leads else {}
@@ -1468,6 +1469,10 @@ async def social_upload(cid: int, request: Request, source: str = Form(...), fil
         camp.social_sources = [k for k in SOCIAL_SOURCES if k in picked + [source]]
     old = s.get(CampaignSourceFile, replace_id) if replace_id else None
     if old is not None and old.campaign_id == cid and old.status == "staged":
+        from ..models import CampaignSourceMark
+        for m in s.scalars(select(CampaignSourceMark).where(CampaignSourceMark.file_id == old.id)):
+            s.delete(m)
+        s.flush()
         s.delete(old)
     s.add(CampaignSourceFile(campaign_id=cid, source_key=source, place=camp.target_place or "", file_name=name,
                              headers=headers, rows=rows, cols=cols, uploaded_by=user.id))
@@ -1485,6 +1490,10 @@ def social_delete(cid: int, fid: int, request: Request, user: User = Depends(req
     if f.status != "staged":
         flash(request, "لا يُحذف ملف بعد استيراده — عملاؤه أصبحوا ضمن الحملة", "err")
     else:
+        from ..models import CampaignSourceMark
+        for m in s.scalars(select(CampaignSourceMark).where(CampaignSourceMark.file_id == f.id)):
+            s.delete(m)
+        s.flush()
         s.delete(f)
         flash(request, f"حُذف «{f.file_name}»")
     return back(f"/social?c={cid}#src-{f.source_key}")
@@ -1504,6 +1513,32 @@ def social_import(cid: int, request: Request, user: User = Depends(require_manag
     return back(f"/social?c={cid}#social")
 
 
+@app.post("/targets/{cid}/social/{fid}/mark")
+def social_mark(cid: int, fid: int, request: Request, row: int = Form(...), field: str = Form(...), value: str = Form(""),
+                user: User = Depends(require_manager), s=Depends(get_db)):
+    """«تم التواصل؟» و«مهتم؟» أمام كل عميل في الملف."""
+    from ..campaign_sources import CONTACT_CHOICES, INTEREST_CHOICES
+    from ..models import CampaignSourceFile, CampaignSourceMark
+    f = s.get(CampaignSourceFile, fid)
+    if f is None or f.campaign_id != cid or not (0 <= row < len(f.rows or [])):
+        _404()
+    choices = {"contacted": CONTACT_CHOICES, "interest": INTEREST_CHOICES}.get(field)
+    if choices is None or (value and value not in choices):
+        raise HTTPException(400)
+    m = s.scalar(select(CampaignSourceMark).where(CampaignSourceMark.file_id == fid, CampaignSourceMark.row_idx == row))
+    if m is None:
+        m = CampaignSourceMark(file_id=fid, row_idx=row)
+        s.add(m)
+    setattr(m, field, value or None)
+    if field == "interest" and value and not m.contacted:
+        m.contacted = "yes"  # من عُرف اهتمامه فقد تُوصل معه
+    m.by_id, m.by_name, m.at = user.id, user.name, now_utc()
+    s.flush()
+    if request.headers.get("x-requested-with") == "fetch":
+        return JSONResponse({"ok": True, "contacted": m.contacted or "", "interest": m.interest or "", "by": user.name})
+    return back(f"/social?c={cid}&open={f.source_key}#src-{f.source_key}")
+
+
 @app.get("/targets/{cid}/social/{fid}", response_class=HTMLResponse)
 def social_file(cid: int, fid: int, request: Request, page: int = 1, user: User = Depends(require_manager),
                 s=Depends(get_db)):
@@ -1515,7 +1550,8 @@ def social_file(cid: int, fid: int, request: Request, page: int = 1, user: User 
         _404()
     per = 200
     page = max(1, page)
-    v = view(f, limit=per, offset=(page - 1) * per)
+    from ..campaign_sources import marks_for
+    v = view(f, limit=per, offset=(page - 1) * per, marks=marks_for(s, f.id))
     return render(request, "social_file.html", user, s, camp=camp, f=f, v=v, page=page,
                   pages=max(1, -(-v["total"] // per)), SOCIAL=SOCIAL_SOURCES)
 

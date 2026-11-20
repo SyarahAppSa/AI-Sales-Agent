@@ -24,6 +24,13 @@ SOCIAL_SOURCES = {  # بالترتيب والأسماء المطلوبة
 MAX_ROWS = 20000
 NOTE_WORDS = ("ملاحظ", "note", "تعليق", "comment", "remarks")
 PHONE_WORDS = ("جوال", "هاتف", "تلفون", "phone", "mobile", "tel", "واتس", "whatsapp", "رقم التواصل", "contact")
+PERSON_WORDS = ("اسم الشخص", "اسم العميل", "اسم المسؤول", "المسؤول", "الاسم الكامل", "اسم صاحب", "صاحب", "الشخص",
+                "full name", "contact name", "person", "first name", "customer name", "client name")
+COMPANY_WORDS = ("الشركة", "الشركه", "المنشأة", "المنشأه", "المؤسسة", "المؤسسه", "الاسم التجاري", "اسم المتجر", "المتجر",
+                 "company", "organization", "organisation", "business", "store", "brand")
+CONTACT_CHOICES = {"yes": "نعم", "no": "لا"}
+INTEREST_CHOICES = {"interested": "مهتم", "not_interested": "غير مهتم", "later": "لاحقًا / يحتاج متابعة"}
+COLS_VERSION = 2
 _SPLIT = re.compile(r"\s*(?:[;,/|\n،]+|\s[-–]\s|\s{2,})\s*")
 
 
@@ -111,49 +118,96 @@ def detect_columns(headers: list[str], rows: list[list[str]]) -> dict:
             vals = [r[j] for r in sample if r[j]]
             if vals and sum(1 for v in vals if any(_is_phoneish(p) for p in split_phones(v))) / len(vals) > .6:
                 phones.append(j)
-    cols = {"phone": sorted(set(phones))}
+    cols = {"phone": sorted(set(phones)), "v": COLS_VERSION}
     for k in ("name", "email", "city", "activity"):
         if k in m and m[k] not in cols["phone"]:
             cols[k] = m[k]
+    skip = set(cols["phone"]) | {cols.get("email", -1)}
+    company = next((j for j, h in enumerate(low) if j not in skip and any(w in h for w in COMPANY_WORDS)), None)
+    person = next((j for j, h in enumerate(low) if j not in skip and j != company and any(w in h for w in PERSON_WORDS)), None)
+    if person is None and "name" in cols and cols["name"] != company:
+        person = cols["name"]
+    if person is None and company is not None:  # عمود «الاسم» العام بجانب عمود الشركة = اسم الشخص
+        person = next((j for j, h in enumerate(low) if j not in skip and j != company and h.strip() in ("الاسم", "اسم", "name")), None)
+    if company is not None:
+        cols["company"] = company
+    if person is not None:
+        cols["person"] = person
+    if company is not None or person is not None:
+        cols["name"] = company if company is not None else person
     note = next((j for j, h in enumerate(low) if any(w in h for w in NOTE_WORDS)), None)
     if note is not None:
         cols["note"] = note
     return cols
 
 
-def view(f: CampaignSourceFile, limit: int | None = None, offset: int = 0) -> dict:
-    """جدول المعاينة: الاسم، رقم التواصل (كل رقم في سطر)، البريد، المدينة، النشاط، الملاحظات، ثم بقية الأعمدة."""
+def file_cols(f: CampaignSourceFile) -> dict:
     c = f.cols or {}
+    if c.get("v") != COLS_VERSION:  # ملفات رُفعت قبل التعرف على «اسم الشخص» و«اسم الشركة»
+        c = detect_columns(f.headers or [], f.rows or [])
+    return c
+
+
+def view(f: CampaignSourceFile, limit: int | None = None, offset: int = 0, marks: dict | None = None) -> dict:
+    """جدول المعاينة: اسم الشخص، الجوال، اسم الشركة، ثم «تم التواصل؟» و«مهتم؟»، ثم البريد والمدينة والنشاط
+    والملاحظات وبقية أعمدة الملف. الأرقام كما وردت، وكل رقم في سطر."""
+    c = file_cols(f)
     phones = c.get("phone") or []
+    hdr = lambda j, d: (f.headers[j] if j < len(f.headers) and f.headers[j] and not f.headers[j].startswith("عمود ") else d)  # noqa: E731
     order: list = []
     used = set(phones)
-    if "name" in c:
-        order.append(("col", c["name"], "اسم العميل / الشركة"))
-        used.add(c["name"])
+    person, company = c.get("person"), c.get("company")
+    if person is not None and company is not None:
+        order.append(("col", person, "اسم الشخص"))
+        order.append(("phones", None, "الجوال"))
+        order.append(("col", company, "اسم الشركة"))
+        used |= {person, company}
     else:
-        order.append(("empty", None, "اسم العميل / الشركة"))
-    order.append(("phones", None, "رقم التواصل"))
+        nm = c.get("name")
+        order.append(("col", nm, "اسم العميل / الشركة") if nm is not None else ("empty", None, "اسم العميل / الشركة"))
+        if nm is not None:
+            used.add(nm)
+        order.append(("phones", None, "الجوال"))
+    order.append(("contacted", None, "تم التواصل؟"))
+    order.append(("interest", None, "مهتم؟"))
     for k, lbl in (("email", "البريد الإلكتروني"), ("city", "المدينة"), ("activity", "النشاط"), ("note", "الملاحظات")):
         if k in c and c[k] not in used:
-            order.append(("col", c[k], f.headers[c[k]] if c[k] < len(f.headers) else lbl))
+            order.append(("col", c[k], hdr(c[k], lbl)))
             used.add(c[k])
     for j, h in enumerate(f.headers):
         if j not in used:
             order.append(("col", j, h))
     rows = f.rows or []
+    marks = marks or {}
     part = rows[offset: offset + limit if limit else None]
     out = []
     for i, r in enumerate(part, start=offset):
+        mk = marks.get(i)
         cells = []
         for kind, j, _ in order:
             if kind == "phones":
                 cells.append({"phones": [p for jj in phones if jj < len(r) for p in split_phones(r[jj])]})
+            elif kind in ("contacted", "interest"):
+                cells.append({"mark": kind, "value": (getattr(mk, kind) or "") if mk else ""})
             elif kind == "empty":
                 cells.append({"text": ""})
             else:
                 cells.append({"text": r[j] if j < len(r) else ""})
-        out.append({"n": i + 1, "cells": cells})
+        out.append({"n": i + 1, "idx": i, "cells": cells,
+                    "by": f"{mk.by_name or ''}" if mk and (mk.contacted or mk.interest) else ""})
     return {"headers": [o[2] for o in order], "rows": out, "total": len(rows)}
+
+
+def marks_for(s, fid: int) -> dict:
+    from .models import CampaignSourceMark
+    return {m.row_idx: m for m in s.scalars(select(CampaignSourceMark).where(CampaignSourceMark.file_id == fid))}
+
+
+def mark_counts(s, fid: int) -> dict:
+    ms = marks_for(s, fid).values()
+    return {"contacted": sum(1 for m in ms if m.contacted == "yes"),
+            "interested": sum(1 for m in ms if m.interest == "interested"),
+            "not_interested": sum(1 for m in ms if m.interest == "not_interested")}
 
 
 # ---------------------------------------------------------------- الاستيراد
@@ -176,7 +230,7 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
     """يستورد صفوف الملف إلى الحملة. يعيد {new, duplicate, failed, failures}."""
     from .companies import log_activity
     from .models import Campaign
-    c = f.cols or {}
+    c = file_cols(f)
     camp = s.get(Campaign, f.campaign_id)
     real_cid = None if camp is not None and camp.kind == "social" else f.campaign_id  # الصفحة المستقلة ليست حملة
     label = SOCIAL_SOURCES.get(f.source_key, f.source_key)
@@ -191,7 +245,8 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
                 pairs[e] = x
         phones = list(pairs)
         email = normalize_email(get("email")) if "@" in get("email") else None
-        name = get("name")
+        name = get("company") or get("name") or get("person")
+        person = get("person") if "company" in c else ""
         def fail(reason):
             stats["failed"] += 1
             stats["failures"].append({"row": i + 1, "reason": reason})
@@ -222,7 +277,7 @@ def import_file(s, f: CampaignSourceFile, place: str, user_id: int | None = None
         found = [("phone", v, raw) for v, raw in pairs.items()] + ([("email", email, get("email"))] if email else [])
         for kind, v, raw in found:
             if s.scalar(select(Contact.id).where(Contact.kind == kind, Contact.value == v)) is None:
-                s.add(Contact(company_id=comp.id, kind=kind, value=v, raw_value=raw[:200],
+                s.add(Contact(company_id=comp.id, kind=kind, value=v, raw_value=raw[:200], label=person[:80] or None,
                               source_url=url, source_type=f"social:{f.source_key}", verified=False))
                 s.flush()
         if not s.scalar(select(CompanySource.id).where(CompanySource.company_id == comp.id,

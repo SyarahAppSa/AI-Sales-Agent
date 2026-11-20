@@ -65,7 +65,7 @@ def test_social_sources_preview_import_dedupe_and_filter():
         assert "مؤسسة النقل المشتركة" in sec and "+966501234567" in sec and "@snaponly" in sec
         assert '<div class="ph" translate="no" dir="ltr">0559876543</div><div class="ph" translate="no" dir="ltr">0114448899</div>' in sec
         hdr = sec.split("<th>")
-        assert hdr[2].startswith("اسم العميل / الشركة") and hdr[3].startswith("رقم التواصل")
+        assert hdr[2].startswith("اسم العميل / الشركة") and hdr[3].startswith('الجوال</th><th class="mkh">تم التواصل؟</th><th class="mkh">مهتم؟')
         cl.post(f"/targets/{cid}/social/upload", data={"source": "google"},
                 files={"file": ("google.xlsx", goog, "application/octet-stream")})
         with session_scope() as s:
@@ -139,3 +139,43 @@ def test_social_page_standalone_in_nav_and_not_a_campaign():
             assert comp.campaign_id is None
             assert s.query(CampaignLead).filter_by(company_id=comp.id, source_key="tiktok", place="جدة").count() == 1
         assert "متجر تيك توك المستقل" in cl.get("/social?src=tiktok").text.split('id="leads"')[1]
+
+
+def test_social_person_company_columns_and_contact_marks():
+    init_db()
+    from mandoob.models import CampaignSourceMark
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/social").text
+        assert "إرفاق ملف Excel" in html and 'form="up-any"' in html
+        with session_scope() as s:
+            hid = s.query(Campaign).filter_by(kind="social").one().id
+        data = xlsx([["المدينة", "اسم الشركة", "الاسم", "الجوال", "ملاحظات"],
+                     ["الرياض", "شركة الريان للتجارة", "أحمد سالم", "0541239876", "اتصل مساءً"],
+                     ["جدة", "مؤسسة البحر", "خالد علي", "+966561112233", ""]])
+        r = cl.post(f"/targets/{hid}/social/upload", data={"source": "instagram"},  # المصدر من شريط الإرفاق العام
+                    files={"file": ("insta.xlsx", data, "application/octet-stream")}, follow_redirects=True)
+        sec = r.text.split('id="src-instagram"')[1].split('id="src-x"')[0]
+        hdr = sec.split("<th")
+        assert "اسم الشخص" in hdr[2] and "الجوال" in hdr[3] and "اسم الشركة" in hdr[4]
+        assert "تم التواصل؟" in hdr[5] and "مهتم؟" in hdr[6]
+        assert "أحمد سالم" in sec and "شركة الريان للتجارة" in sec and "+966561112233" in sec and "اتصل مساءً" in sec
+        with session_scope() as s:
+            fid = s.query(CampaignSourceFile).filter_by(file_name="insta.xlsx").one().id
+        r = cl.post(f"/targets/{hid}/social/{fid}/mark", data={"row": "0", "field": "interest", "value": "interested"},
+                    headers={"x-requested-with": "fetch"})
+        assert r.json()["contacted"] == "yes" and r.json()["interest"] == "interested"
+        cl.post(f"/targets/{hid}/social/{fid}/mark", data={"row": "1", "field": "contacted", "value": "no"},
+                headers={"x-requested-with": "fetch"})
+        assert cl.post(f"/targets/{hid}/social/{fid}/mark", data={"row": "1", "field": "contacted", "value": "bad"},
+                       headers={"x-requested-with": "fetch"}).status_code == 400
+        html = cl.get("/social").text  # بعد إعادة الفتح تبقى الاختيارات
+        assert "تم التواصل 1" in html and "مهتم 1" in html
+        assert '<option value="interested" selected>' in html and '<option value="no" selected>' in html
+        assert '<option value="interested" selected>' in cl.get(f"/targets/{hid}/social/{fid}").text
+        cl.post(f"/targets/{hid}/social/import")
+        with session_scope() as s:
+            comp = s.query(Company).filter_by(name="شركة الريان للتجارة").one()
+            ct = s.query(Contact).filter_by(company_id=comp.id, kind="phone").one()
+            assert ct.label == "أحمد سالم" and ct.raw_value == "0541239876"
+            assert s.query(CampaignSourceMark).filter_by(file_id=fid).count() == 2

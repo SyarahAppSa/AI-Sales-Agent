@@ -1,5 +1,12 @@
 {# «المكان المستهدف» + «مواقع التواصل الاجتماعي» داخل نموذج الحملة. نماذج الرفع خارج النموذج الرئيسي وتُربط بسمة form= #}
-{% set picked = (camp.social_sources if camp and camp.social_sources else []) %}
+{% from "_social_table.html" import soc_table %}{% set picked = (camp.social_sources if camp and camp.social_sources else []) %}
+{% if camp and social_can %}<div class="upbar">
+  <b>إرفاق ملف Excel</b>
+  <label for="up-any-src" class="small muted">المصدر</label>
+  <select id="up-any-src" name="source" form="up-any">{% for k, lbl in SOCIAL.items() %}<option value="{{ k }}" {{ 'selected' if picked and k == picked[0] }}>{{ lbl }}</option>{% endfor %}</select>
+  <label class="btn p">اختيار الملف وإرفاقه<input type="file" name="file" form="up-any" accept=".xlsx,.xlsm,.xls,.csv" hidden onchange="socialSubmit(this)"></label>
+  <span class="small muted">تظهر بيانات الملف كاملة تحت المصدر مباشرة.</span>
+</div>{% endif %}
 <div class="row social-head" id="social" style="margin-top:10px;align-items:flex-start">
   <div style="flex:1 1 240px"><label for="target_place">المكان المستهدف</label>
     <input id="target_place" name="target_place" list="place-list" value="{{ camp.target_place if camp and camp.target_place else '' }}" placeholder="مثل: الرياض">
@@ -22,6 +29,7 @@
     <div class="srcmeta">
       <span translate="no">📄 {{ f.file_name }}</span>
       <span class="pill">{{ v.total }} عميل</span>
+      <span class="pill info">تم التواصل {{ x.mc.contacted }}</span><span class="pill ok">مهتم {{ x.mc.interested }}</span>{% if x.mc.not_interested %}<span class="pill err">غير مهتم {{ x.mc.not_interested }}</span>{% endif %}
       {% if f.status == 'staged' %}<span class="pill warn">بانتظار الاعتماد والاستيراد</span>{% else %}<span class="pill ok">تم الاستيراد</span>{% endif %}
       {% if f.place %}<span class="small muted">المكان: {{ f.place }}</span>{% endif %}
       <button type="button" class="btn small-btn" data-toggle-table="tbl-{{ f.id }}" aria-expanded="{{ 'true' if request.query_params.get('open') == k else 'false' }}">عرض العملاء</button>
@@ -32,8 +40,7 @@
     {% if f.stats %}<div class="small" style="margin:4px 0">نتيجة الاستيراد: <b>{{ f.stats.new }}</b> جديد · <b>{{ f.stats.duplicate }}</b> مكرر (دُمج مع عميل موجود وأُضيف إليه المصدر) · <b>{{ f.stats.failed }}</b> فشل
       {% if f.stats.failures %}<details><summary class="small">أسباب الفشل</summary><ul class="small">{% for e in f.stats.failures[:100] %}<li>صف {{ e.row }}: {{ e.reason }}</li>{% endfor %}</ul></details>{% endif %}</div>{% endif %}
     <div class="tablewrap srctable" id="tbl-{{ f.id }}" {% if request.query_params.get('open') != k %}hidden{% endif %}>
-      <table><tr><th>#</th>{% for h in v.headers %}<th>{{ h }}</th>{% endfor %}</tr>
-      {% for r in v.rows %}<tr><td class="muted small">{{ r.n }}</td>{% for c in r.cells %}{% if c.phones is defined %}<td class="phcell">{% for p in c.phones %}<div class="ph" translate="no" dir="ltr">{{ p }}</div>{% endfor %}</td>{% else %}<td translate="no">{{ c.text }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</table>
+      {{ soc_table(camp, f, v) }}
       {% if v.total > v.rows|length %}<p class="small"><a href="/targets/{{ camp.id }}/social/{{ f.id }}">عرض كل العملاء ({{ v.total }})</a></p>{% endif %}
     </div>
   </div>{% endfor %}

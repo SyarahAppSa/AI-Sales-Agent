@@ -1,0 +1,14 @@
+<script>
+function socialSubmit(inp){var f=inp.form;var tp=document.getElementById('target_place');
+  if(tp&&f.elements['target_place'])f.elements['target_place'].value=tp.value;f.submit();}
+document.querySelectorAll('[data-src-toggle]').forEach(function(cb){cb.addEventListener('change',function(){
+  var row=document.getElementById('src-'+cb.dataset.srcToggle);if(row)row.hidden=!cb.checked;});});
+document.querySelectorAll('[data-toggle-table]').forEach(function(b){b.addEventListener('click',function(){
+  var t=document.getElementById(b.dataset.toggleTable);if(!t)return;t.hidden=!t.hidden;b.setAttribute('aria-expanded',String(!t.hidden));});});
+document.querySelectorAll('select.mk').forEach(function(sel){sel.addEventListener('change',function(){
+  var fd=new FormData();fd.append('row',sel.dataset.row);fd.append('field',sel.dataset.field);fd.append('value',sel.value);
+  sel.disabled=true;fetch(sel.dataset.url,{method:'POST',body:fd,headers:{'x-requested-with':'fetch'},credentials:'same-origin'})
+  .then(function(r){if(!r.ok)throw r;return r.json();}).then(function(d){
+    var tr=sel.closest('tr');tr.querySelectorAll('select.mk').forEach(function(x){var v=d[x.dataset.field];x.value=v;x.className='mk mk-'+(v||'none');});
+  }).catch(function(){alert('تعذّر الحفظ — أعد المحاولة');}).finally(function(){sel.disabled=false;});});});
+</script>

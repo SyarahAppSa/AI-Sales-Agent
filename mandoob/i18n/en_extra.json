@@ -416,5 +416,18 @@
  "فتح إعدادات الحملة": "Open campaign settings",
  "العملاء المستوردون من مواقع التواصل الاجتماعي": "Customers imported from social media",
  "حُفظ المكان المستهدف والمصادر المختارة": "Target location and selected sources saved",
- "افتح مواقع التواصل الاجتماعي لهذه الحملة": "Open social media for this campaign"
+ "افتح مواقع التواصل الاجتماعي لهذه الحملة": "Open social media for this campaign",
+ "إرفاق ملف Excel": "Attach Excel file",
+ "اختيار الملف وإرفاقه": "Choose & attach file",
+ "تظهر بيانات الملف كاملة تحت المصدر مباشرة.": "The full file data appears right under its source.",
+ "اسم الشخص": "Person name",
+ "الجوال": "Mobile",
+ "اسم الشركة": "Company name",
+ "مهتم؟": "Interested?",
+ "غير مهتم": "Not interested",
+ "لاحقًا / يحتاج متابعة": "Later / needs follow-up",
+ "تم التواصل {x}": "Contacted {x}",
+ "مهتم {x}": "Interested {x}",
+ "غير مهتم {x}": "Not interested {x}",
+ "تعذّر الحفظ — أعد المحاولة": "Could not save — try again"
 }

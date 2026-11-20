@@ -243,3 +243,11 @@ td.telcol .small{white-space:nowrap}
 .srctable{max-height:460px;overflow:auto;margin-top:6px}
 .srctable[hidden]{display:none}
 .phcell .ph{direction:ltr;unicode-bidi:isolate;white-space:nowrap;text-align:left;font-variant-numeric:tabular-nums}
+.upbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px;border:1px dashed var(--line);border-radius:10px;margin:10px 0;background:var(--soft)}
+.upbar select{width:auto;min-width:200px}
+.mkcell{white-space:nowrap}.mkh{white-space:nowrap}
+select.mk{width:auto;min-width:96px;padding:4px 8px;font-size:13px}
+select.mk-yes,select.mk-interested{background:var(--ok-soft);color:var(--ok)}
+select.mk-no,select.mk-not_interested{background:var(--err-soft);color:var(--err)}
+select.mk-later{background:var(--warn-soft);color:var(--warn)}
+.soctable th{white-space:nowrap}.soctable td{min-width:72px}.soctable td.muted{min-width:0}

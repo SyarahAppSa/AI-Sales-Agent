@@ -843,3 +843,17 @@ class CampaignLead(Base):
     file_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaign_source_files.id"))
     row_idx: Mapped[Optional[int]] = mapped_column(Integer)
     added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CampaignSourceMark(Base):
+    """أمام كل عميل في ملف «مواقع التواصل الاجتماعي»: هل تم التواصل معه؟ وهل هو مهتم؟"""
+    __tablename__ = "campaign_source_marks"
+    __table_args__ = (UniqueConstraint("file_id", "row_idx", name="uq_campaign_source_mark"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("campaign_source_files.id"), index=True)
+    row_idx: Mapped[int] = mapped_column(Integer)
+    contacted: Mapped[Optional[str]] = mapped_column(String(10))   # yes / no
+    interest: Mapped[Optional[str]] = mapped_column(String(20))    # interested / not_interested / later
+    by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    by_name: Mapped[str] = mapped_column(String(120), default="")
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
