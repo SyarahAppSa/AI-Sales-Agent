@@ -52,7 +52,7 @@ def test_four_cards_match_their_lists_and_branding():
         assert "أحدث العملاء" in html and "متابعات الفريق" in html
         heads = re.findall(r'class="ghead"[^>]*>.*?<span class="lbl">([^<]+)</span>', html, re.S)
         assert heads == ["البحث عن العملاء", "العملاء والشركات", "المبيعات والمتابعة", "التقارير", "الإدارة والإعدادات"]
-        assert 'class="top1 on"' in html and "ngrp open" not in html                     # لوحة التحكم محددة والأقسام مطوية
+        assert 'class="top1 on ' in html and "ngrp open" not in html                      # لوحة التحكم محددة والأقسام مطوية
         sub = c.get("/companies?status=complete").text                                   # صفحة فرعية: قسمها مفتوح ومميز
         assert re.search(r'class="ngrp open cur" data-grp="cust"', sub)
         assert re.search(r'class="on"\s+aria-current="page"><span class="lbl">الشركات وإسنادها للموظفين', sub)
