@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% block title %}{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }} — مندوب سيارة آب{% endblock %}{% block public %}
+{% extends "base.html" %}{% block title %}{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }} — المندوب الذكي لسيارة اب{% endblock %}{% block public %}
 {% set base = '/admin/login' if portal == 'admin' else '/portal/login' %}
 <div class="login card">
-  <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div>
-  <span class="tag">{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }} — المندوب الذكي</span></div>
+  <div class="logo"><div class="ar">المندوب الذكي</div><div class="en">لسيارة اب</div>
+  <span class="tag">{{ 'بوابة الإدارة' if portal == 'admin' else 'بوابة الموظفين' }}</span></div>
   {% if not step %}
   <form method="post" action="{{ base }}/request">
     <div class="field"><label>البريد الوظيفي (اسم المستخدم)</label><input name="email" type="email" required autofocus class="ltr" style="text-align:left" autocomplete="email"></div>

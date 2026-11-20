@@ -1,10 +1,11 @@
 {% extends "base.html" %}{% from "_vehicle.html" import vind %}{% from "_contact.html" import inline %}{% block content %}
-<div class="top"><div><h1>الشركات وإسنادها للموظفين</h1><p class="sub">كل منشأة لها سجل واحد مهما تعددت مصادرها. حدّد مجموعة وأسندها لموظف؛ المسندة لموظف آخر لا تُنقل إلا بتأكيد صريح.</p></div><div class="row" style="flex:0 0 auto"><a class="btn p" href="/companies.xlsx?{{ qs|replace('page=', 'p_=') }}">تنزيل Excel</a></div></div>
+<div class="top"><div><h1>العملاء وإسنادهم للموظفين</h1><p class="sub">كل منشأة لها سجل واحد مهما تعددت مصادرها. حدّد مجموعة وأسندها لموظف؛ المسندة لموظف آخر لا تُنقل إلا بتأكيد صريح.</p></div><div class="row" style="flex:0 0 auto"><a class="btn p" href="/companies.xlsx?{{ qs|replace('page=', 'p_=') }}">تنزيل Excel</a></div></div>
 <div class="row" style="margin-bottom:12px">
   <a class="btn {{ 'p' if status=='complete' }}" href="?status=complete" style="flex:0 0 auto">مكتملة البيانات ({{ counts.complete }})</a>
   <a class="btn {{ 'p' if status=='incomplete' }}" href="?status=incomplete" style="flex:0 0 auto">قيد استكمال البيانات ({{ counts.incomplete }})</a>
+  {% if found == 'today' %}<span class="pill info" style="flex:0 0 auto;align-self:center">عملاء جدد اليوم فقط — <a href="?status={{ status }}&kind={{ kind }}">عرض الكل</a></span>{% endif %}
 </div>
-<form class="card row" method="get"><input type="hidden" name="status" value="{{ status }}">
+<form class="card row" method="get"><input type="hidden" name="status" value="{{ status }}">{% if found %}<input type="hidden" name="found" value="{{ found }}">{% endif %}
   <div><label>بحث</label><input name="q" value="{{ q }}"></div>
   <div><label>المدينة</label><select name="city"><option value="">الكل</option>{% for c in CITIES %}<option {{ 'selected' if c==city }}>{{ c }}</option>{% endfor %}</select></div>
   <div><label>القطاع</label><select name="sector"><option value="">الكل</option>{% for k,v in SECTORS.items() %}<option value="{{ k }}" {{ 'selected' if k==sector }}>{{ v.label }}</option>{% endfor %}</select></div>
@@ -39,6 +40,6 @@
 </table></div>
 {% if mgr %}</form><script>function cnt(){document.getElementById('selcnt').textContent=document.querySelectorAll('input[name=company_ids]:checked').length}</script>{% endif %}
 <div class="row"><span class="muted" style="flex:0 0 auto">{{ total }} سجل</span>
-{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&contact={{ contact }}&page={{ page-1 }}">السابق</a>{% endif %}
-{% if page*50 < total %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&contact={{ contact }}&page={{ page+1 }}">التالي</a>{% endif %}</div>
+{% if page > 1 %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&contact={{ contact }}&found={{ found }}&page={{ page-1 }}">السابق</a>{% endif %}
+{% if page*50 < total %}<a class="btn sm" style="flex:0 0 auto" href="?status={{ status }}&q={{ q }}&city={{ city }}&sector={{ sector }}&operator={{ operator }}&source={{ source }}&signals={{ signals }}&kind={{ kind }}&owner={{ owner }}&contact={{ contact }}&found={{ found }}&page={{ page+1 }}">التالي</a>{% endif %}</div>
 {% endblock %}

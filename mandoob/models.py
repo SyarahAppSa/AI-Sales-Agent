@@ -200,6 +200,7 @@ class Company(Base):
     contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     contacted_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    won_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)  # تاريخ تسجيل الصفقة (لأداء المبيعات حسب الفترة)
     offer_sent_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     offer_note: Mapped[Optional[str]] = mapped_column(String(300))
     # حالة التواصل اليدوي — على سجل المنشأة نفسه (تظهر في كل القوائم والحملات وتبقى عند نقل العميل)

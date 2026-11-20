@@ -503,6 +503,7 @@ def run(run_id: int, crawler=None) -> None:
         drun_id, camp_id = drun.id, camp.id
         stats = {k: v for k, v in (r.stats or {}).items() if not k.startswith("_")} or {}
         done_pairs = int((r.stats or {}).get("_pairs", 0))
+        errors: dict = dict((r.stats or {}).get("_errors") or {})  # آخر خطأ لكل مصدر (لشريط «حالة البحث» وسجل التشغيل)
         _log(r, f"بدء/استئناف: المصادر {', '.join(sources)} — حد المرحلة ١ {limit} — هدف المكتملة {target if target < 10**6 else '—'} "
                 f"— الميزانية ${budget:.2f}")
         pairs = plan(r, n=max(60, limit))
@@ -524,7 +525,7 @@ def run(run_id: int, crawler=None) -> None:
             r = s.get(DirectoryRun, run_id)
             r.heartbeat = now_utc()
             r.stats = {**stats, "_pairs": pairs_done if pairs_done is not None else done_pairs,
-                       "_spent": round(_spent(s, r), 3)}
+                       "_spent": round(_spent(s, r), 3), "_errors": errors}
             if msg:
                 _log(r, msg)
 
@@ -570,7 +571,14 @@ def run(run_id: int, crawler=None) -> None:
                 items, rej = harvest(src, phrase, city, 6, known, note=f"dir:{src}:harvest")
             stats[src]["rejected_name"] += rej
         except Exception as e:  # noqa: BLE001 — مصدر تعذّر: ننتقل تلقائيًا للمصدر/العبارة التالية
-            beat(f"تعذر «{SOURCES[src]['label']}» لعبارة «{phrase}»: {type(e).__name__} — انتقال للتالي", k)
+            from .health import classify
+            detail = f"{type(e).__name__}: {str(e)[:200]}"
+            errors[src] = {"n": int((errors.get(src) or {}).get("n", 0)) + 1, "last": detail}
+            c = classify(detail)
+            beat(f"تعذر «{SOURCES[src]['label']}» لعبارة «{phrase}»: {detail} — انتقال للتالي", k)
+            if c["fatal"]:  # رصيد/مفتاح: كل المصادر تعتمد الخدمة نفسها ← توقف بدل الدوران على الأعطال
+                halted = c["cause"]
+                break
             continue
         new_ids = []
         with session_scope() as s:
@@ -604,7 +612,7 @@ def run(run_id: int, crawler=None) -> None:
         r.status = "stopped" if halted else "done"
         spent = _spent(s, r)
         _log(r, (f"توقف: {halted}" if halted else "اكتملت الدفعة") + f" — مكتملة جديدة {completes()} — التكلفة ${spent:.2f}")
-        r.stats = {**stats, "_spent": round(spent, 3), "_pairs": k,
+        r.stats = {**stats, "_spent": round(spent, 3), "_pairs": k, "_errors": errors,
                    "_minutes": round((r.finished_at - r.started_at).total_seconds() / 60, 1)}
 
 

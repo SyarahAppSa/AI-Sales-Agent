@@ -1,0 +1,6 @@
+{% macro health_bar(h, user) %}<div class="health {{ h.level }}" role="status" aria-live="polite">
+  <span class="dotc"></span>
+  <div class="t"><b>حالة البحث: {{ h.title }}</b>{% if h.cause %} — <span class="why">{{ h.cause }}</span>{% endif %}
+    {% if h.action %}<div class="act">{{ h.action }}</div>{% endif %}</div>
+  {% if user.role in ('admin','manager') %}<a class="btn sm" href="{{ h.details }}">عرض التفاصيل</a>{% endif %}
+</div>{% endmacro %}

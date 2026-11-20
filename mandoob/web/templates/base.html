@@ -2,52 +2,45 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}مندوب سيارة آب الذكي{% endblock %}</title>
+<title>{% block title %}المندوب الذكي لسيارة اب{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#6941A5">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <script>try{if(localStorage.getItem('mini')==='1')document.body.classList.add('mini')}catch(e){}</script>
 {% if user %}
-{% set nav = [
-  ('/', 'grid', 'لوحة التحكم', False, 'all'),
-  ('/prospecting', 'search', 'البحث عن العملاء', False, 'mgr'),
-  ('/discover', 'building', 'اكتشاف عملاء جدد', False, 'mgr'),
-  ('/today', 'list', 'عملاء اليوم', False, 'all'),
-  ('/companies', 'building', 'الشركات وإسنادها للموظفين', False, 'all'),
-  ('/followups', 'clock', 'تحتاج متابعة اليوم', False, 'all'),
-  ('/offers-report', 'send', 'الشركات التي أُرسلت إليها عروض', False, 'all'),
-  ('/notifications', 'bell', 'التنبيهات', True, 'all'),
-  ('sep', '', '', False, 'mgr'),
-  ('/targets', 'target', 'الفئات المستهدفة', False, 'mgr'),
-  ('/daily-report', 'chart', 'التقرير اليومي', False, 'mgr'),
-  ('/weekly-report', 'calendar', 'التقرير الأسبوعي للشرائح', False, 'mgr'),
-  ('/leads', 'inbox', 'طلبات العروض الواردة', False, 'mgr'),
-  ('/runs', 'list', 'سجل التشغيل', False, 'mgr'),
-  ('/staff', 'users', 'الموظفون والصلاحيات', False, 'mgr'),
-  ('/team', 'target', 'قواعد التوزيع', False, 'mgr'),
-  ('/mail', 'mail', 'ربط بريد الشركة', False, 'mgr'),
-  ('/settings', 'settings', 'الإعدادات', False, 'mgr'),
-] + ([('/offers', 'file', 'العروض والمرفقات', False, 'mgr'), ('/sandbox', 'inbox', 'صندوق التجربة', False, 'mgr')] if outreach_on else []) %}
-{% if user.role not in ('admin','manager') %}{% set nav = [
-  ('/portal', 'list', 'عملائي ومتابعاتي', False, 'all'),
-  ('/portal/officials', 'users', 'تقرير مسؤولي الشركات', False, 'all'),
-] + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False, 'all')] if (user.perms or {}).get('see_reports') else []) %}{% endif %}
+{% if user.role in ('admin','manager') %}{% set groups = [
+  ('', [('/', 'grid', 'لوحة التحكم', False)]),
+  ('العملاء', [('/prospecting', 'search', 'البحث عن عملاء', False), ('/discover', 'building', 'اكتشاف عملاء جدد', False),
+               ('/today', 'list', 'عملاء اليوم', False), ('/companies', 'users', 'العملاء وإسنادهم للموظفين', False)]),
+  ('المتابعة والمبيعات', [('/followups', 'clock', 'متابعات اليوم', False), ('/offers-report', 'send', 'العروض المرسلة', False),
+               ('/leads', 'inbox', 'طلبات العروض الواردة', False), ('/notifications', 'bell', 'التنبيهات', True)]),
+  ('التقارير', [('/daily-report', 'chart', 'التقرير اليومي', False), ('/weekly-report', 'calendar', 'التقرير الأسبوعي', False),
+               ('/runs', 'list', 'سجل التشغيل', False)]),
+  ('الإدارة والإعدادات', [('/targets', 'target', 'الفئات المستهدفة', False), ('/staff', 'users', 'الموظفون والصلاحيات', False),
+               ('/team', 'target', 'قواعد التوزيع', False), ('/mail', 'mail', 'ربط بريد الشركة', False),
+               ('/settings', 'settings', 'الإعدادات', False)]
+               + ([('/offers', 'file', 'العروض والمرفقات', False), ('/sandbox', 'inbox', 'صندوق التجربة', False)] if outreach_on else [])),
+] %}{% else %}{% set groups = [
+  ('العملاء', [('/portal', 'list', 'عملائي ومتابعاتي', False)]),
+  ('التقارير', [('/portal/officials', 'users', 'تقرير مسؤولي الشركات', False)]
+               + ([('/portal/reports', 'chart', 'تقرير مبيعاتي', False)] if (user.perms or {}).get('see_reports') else [])),
+] %}{% endif %}
 <div class="layout">
 <aside class="side">
   <div class="brand">
-    <div class="logo"><div class="ar">سيـــارة آب</div><div class="en">syarah app</div><span class="tag">{{ 'بوابة الإدارة' if user.role in ('admin','manager') else 'بوابة الموظفين' }}</span></div>
-    <button class="collapse" type="button" title="طي القائمة" onclick="document.body.classList.toggle('mini');try{localStorage.setItem('mini',document.body.classList.contains('mini')?'1':'0')}catch(e){}">{{ icon('panel') }}</button>
+    <a class="logo" href="{{ '/' if user.role in ('admin','manager') else '/portal' }}"><div class="ar">المندوب الذكي</div><div class="en">لسيارة اب</div><span class="tag">{{ 'بوابة الإدارة' if user.role in ('admin','manager') else 'بوابة الموظفين' }}</span></a>
+    <button class="collapse" type="button" title="القائمة" aria-label="القائمة" onclick="if(window.matchMedia('(max-width:900px)').matches){document.body.classList.toggle('navopen')}else{document.body.classList.toggle('mini');try{localStorage.setItem('mini',document.body.classList.contains('mini')?'1':'0')}catch(e){}}">{{ icon('panel') }}</button>
   </div>
   <nav class="nav">
-  {% for href, ic, label, cnt, who in nav %}
-    {% if who == 'all' or user.role in ('admin','manager') %}
-      {% if href == 'sep' %}<div class="sep"></div>{% else %}
-      {% set on = (path == '/' if href == '/' else (path.startswith(href) and not (href == '/offers' and path.startswith('/offers-report')))) %}
-      <a href="{{ href }}" class="{{ 'on' if on }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if cnt and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>
-      {% endif %}
-    {% endif %}
+  {% for gname, items in groups %}
+    {% if gname %}<div class="grp">{{ gname }}</div>{% endif %}
+    {% for href, ic, label, cnt in items %}
+      {% set on = (path == '/' if href == '/' else ((path == href or path.startswith(href + '/')) and not (href == '/offers' and path.startswith('/offers-report')))) %}
+      <a href="{{ href }}" class="{{ 'on' if on }}" title="{{ label }}" {{ 'aria-current="page"' if on }}>{{ icon(ic) }}<span class="lbl">{{ label }}</span>{% if cnt and unread %}<span class="count">{{ unread }}</span>{% endif %}</a>
+    {% endfor %}
   {% endfor %}
     <div class="sep"></div>
     <a href="/logout" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>

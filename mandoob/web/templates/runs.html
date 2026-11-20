@@ -1,5 +1,17 @@
-{% extends "base.html" %}{% block content %}
-<div class="top"><div><h1>سجل التشغيل</h1><p class="sub">كل تشغيل يومي مع نقطة التوقف لكل مصدر، والأعطال، والعجز وسببه.</p></div></div>
+{% extends "base.html" %}{% from "_health.html" import health_bar %}{% block title %}سجل التشغيل — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+<div class="top"><div><h1>سجل التشغيل</h1><p class="sub">كل تشغيل يومي مع نقطة التوقف لكل مصدر، والأعطال، والعجز وسببه. النص التقني الأصلي للأعطال يظهر هنا للإدارة فقط.</p></div></div>
+{{ health_bar(health, user) }}
+{% if drows %}<h2>دفعات «اكتشاف عملاء جدد»</h2>
+{% for r in drows %}<div class="card">
+<div class="head2"><h2 style="font-size:17px">دفعة #{{ r.id }} — {{ fmt(r.started_at or r.created_at) }}</h2>
+<span class="pill {{ {'done':'ok','stopped':'warn','running':'info','pending':'','failed':'err'}.get(r.status,'') }}">{{ {'pending':'في الانتظار','running':'قيد التشغيل','done':'اكتملت','stopped':'توقفت','failed':'فشلت'}.get(r.status, r.status) }}</span></div>
+{% set st = r.stats or {} %}
+<div class="grid g4 small"><div>التكلفة: <b>${{ st._spent or 0 }}</b> / ${{ r.budget_usd }}</div><div>المدة: {{ st._minutes or '—' }} دقيقة</div>
+<div>المكتملة الجديدة: <b>{{ st.values()|select('mapping')|map(attribute='complete')|map('default', 0)|sum }}</b></div><div>عبارات منفذة: {{ st._pairs or 0 }}</div></div>
+{% if st._errors %}<table class="small" style="margin-top:8px"><tr><th>المصدر</th><th>السبب</th><th>المرات</th><th>النص التقني (للإدارة)</th></tr>
+{% for k, e in st._errors.items() %}{% set c = classify(e.last) %}<tr><td>{{ DSRC[k].label if k in DSRC else k }}</td><td>{{ c.cause }}<div class="muted">{{ c.action }}</div></td><td>{{ e.n }}</td><td class="mono" style="font-size:11.5px">{{ e.last }}</td></tr>{% endfor %}</table>{% endif %}
+<details><summary>السجل التفصيلي</summary><pre class="small" style="white-space:pre-wrap">{{ (r.log or [])|join('\n') }}</pre></details>
+</div>{% endfor %}<h2>تشغيل «البحث عن العملاء»</h2>{% endif %}
 {% for r in rows %}<div class="card">
 <div class="top" style="margin:0"><h2>{{ fmt_date(r.run_date) }} — حملة #{{ r.campaign_id }}</h2>
 <span class="pill {{ {'done':'ok','partial':'warn','running':'info','failed':'err'}[r.status] }}" style="flex:0 0 auto">{{ {'running':'قيد التشغيل','done':'اكتمل الهدف','partial':'جزئي','failed':'فشل'}[r.status] }}</span></div>

@@ -186,6 +186,7 @@ def export_offers_xlsx(rep: OffersReport) -> bytes:
     from openpyxl.styles import Alignment, Font, PatternFill
 
     wb = Workbook()
+    wb.properties.title, wb.properties.creator = "المندوب الذكي لسيارة اب", "المندوب الذكي لسيارة اب"
     ws = wb.active
     ws.title = "العروض المرسلة"
     ws.sheet_view.rightToLeft = True
@@ -198,7 +199,7 @@ def export_offers_xlsx(rep: OffersReport) -> bytes:
     ws.append(headers)
     for cell in ws[3]:
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="0F766E")
+        cell.fill = PatternFill("solid", fgColor="6941A5")
     for r in rep.rows:
         m, c = r.msg, r.company
         ws.append([c.name, c.activity, c.city, r.phone, m.from_address, m.to_address, m.intended_to, fmt(m.sent_at),
@@ -460,6 +461,7 @@ def export_today_xlsx(t: dict, s: Session | None = None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     wb = Workbook()
+    wb.properties.title, wb.properties.creator = "المندوب الذكي لسيارة اب", "المندوب الذكي لسيارة اب"
     ws = wb.active
     ws.title = "عملاء اليوم"
     ws.sheet_view.rightToLeft = True
@@ -473,7 +475,7 @@ def export_today_xlsx(t: dict, s: Session | None = None) -> bytes:
                "مؤشر استخدام المركبات", "نوع الجهة", "القطاع"] + (CONTACT_HEADERS if s is not None else []))
     for cell in ws[3]:
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="6941C6")
+        cell.fill = PatternFill("solid", fgColor="6941A5")
     from .activities import ENTITY_TYPES
     from .companies import OPERATOR_LABELS
     from .xlsx import CONTACT_HEADERS, contact_cells
@@ -496,3 +498,66 @@ def export_today_xlsx(t: dict, s: Session | None = None) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------- لوحة التحكم (البطاقات الأربع + أداء المبيعات)
+
+PERIODS = {"today": "اليوم", "7d": "آخر ٧ أيام", "30d": "آخر ٣٠ يومًا", "month": "هذا الشهر", "all": "منذ البداية"}
+ANSWERED = ("contacted", "call_later", "offer_sent", "not_interested")  # تحديثات تعني أن العميل ردّ على الموظف
+
+
+def card_links() -> dict:
+    """روابط البطاقات — القائمة خلف كل رقم تستخدم الاستعلام نفسه الذي حسب الرقم."""
+    return {"new": "/companies?status=complete&found=today&kind=real",
+            "incomplete": "/companies?status=incomplete&kind=real",
+            "ready": "/companies?status=complete&owner=none&kind=real",
+            "followups": "/followups"}
+
+
+def period_bounds(period: str, today: date | None = None):
+    today = today or riyadh_today()
+    if period == "7d":
+        a = today - timedelta(days=6)
+    elif period == "30d":
+        a = today - timedelta(days=29)
+    elif period == "month":
+        a = today.replace(day=1)
+    elif period == "all":
+        return None, riyadh_day_bounds_utc(today)[1]
+    else:
+        a = today
+    return riyadh_day_bounds_utc(a)[0], riyadh_day_bounds_utc(today)[1]
+
+
+def sales_performance(s: Session, user: User, start, end) -> dict:
+    """العروض والردود والاجتماعات والصفقات بين وقتين (UTC)؛ start=None تعني منذ البداية."""
+    from .models import ContactLog
+    ids = scope_companies(select(Company.id), user).where(visible(s))
+
+    def rng(col):
+        return [col < end] + ([col >= start] if start is not None else [])
+    offers = set(s.scalars(select(Company.id).where(Company.id.in_(ids), *rng(Company.offer_sent_at))))
+    offers |= set(s.scalars(select(OutboundMessage.company_id).where(
+        OutboundMessage.kind == "offer", OutboundMessage.company_id.in_(ids), *rng(OutboundMessage.sent_at))))
+    replies = set(s.scalars(select(ContactLog.company_id).where(
+        ContactLog.status.in_(ANSWERED), ContactLog.company_id.in_(ids), *rng(ContactLog.at))))
+    replies |= set(s.scalars(select(InboundMessage.company_id).where(
+        InboundMessage.message_type == "reply", InboundMessage.company_id.in_(ids), *rng(InboundMessage.received_at))))
+    meetings = s.scalar(select(func.count(Meeting.id)).where(Meeting.company_id.in_(ids), *rng(Meeting.created_at))) or 0
+    won = s.scalar(select(func.count(Company.id)).where(Company.id.in_(ids), *rng(Company.won_at))) or 0
+    return {"offers": len(offers), "replies": len(replies), "meetings": meetings, "won": won}
+
+
+def recent_customers(s: Session, user: User, n: int = 8) -> list[Company]:
+    return list(s.scalars(scope_companies(select(Company), user)
+                          .where(Company.is_test.is_(False), Company.data_status.in_(["complete", "incomplete"]))
+                          .order_by(Company.first_found_at.desc(), Company.id.desc()).limit(n)))
+
+
+def daily_target(s: Session) -> int:
+    """هدف العملاء الجدد المكتملين يوميًا (من إعداد البحث الآلي اليومي، افتراضيًا ٤٠٠)."""
+    try:
+        from .directory import get_auto
+        return int(get_auto(s).get("target_complete") or 400)
+    except Exception:  # noqa: BLE001
+        return 400

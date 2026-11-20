@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}البحث عن العملاء{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "_health.html" import health_bar %}{% from "_icons.html" import icon %}{% block title %}البحث عن العملاء{% endblock %}{% block content %}
 {% set cfg = st.cfg %}{% set run = st.run %}{% set req = st.request %}
 {% if req.state in ('pending','running') or (run and run.status == 'running') %}<meta http-equiv="refresh" content="30">{% endif %}
 <div class="top"><div><h1>البحث عن العملاء</h1>
@@ -15,7 +15,7 @@
     {% if req.state == 'pending' %}بانتظار الخادم…{% elif req.state == 'running' or (run and run.status == 'running') %}يبحث الآن…{% elif cfg.scheduled %}مجدول يوميًا {{ cfg.time }}{% else %}متوقف{% endif %}</div>
     <div class="s">{% if run %}آخر تشغيل: {{ fmt(run.started_at) }}{% if run.finished_at %} ← {{ fmt(run.finished_at) }}{% endif %}{% else %}لم يبدأ اليوم{% endif %}</div></div><div class="badge">{{ icon('search', 34) }}</div></div>
 </div>
-{% if run and run.shortfall_reason %}<div class="card" style="border-color:var(--warn)"><b>جُمع {{ st.done_today }} من {{ cfg.daily_target }} — سبب النقص:</b><div class="small" style="white-space:pre-line;margin-top:6px">{{ run.shortfall_reason }}</div></div>{% endif %}
+{{ health_bar(health, user) }}
 
 <form class="card" method="post" action="/prospecting">
 <h2>ماذا نبحث عنه؟</h2>

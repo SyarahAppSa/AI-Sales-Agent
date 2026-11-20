@@ -47,7 +47,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="مندوب سيارة آب الذكي", docs_url=None, redoc_url=None, lifespan=_lifespan)
+app = FastAPI(title="المندوب الذكي لسيارة اب", docs_url=None, redoc_url=None, lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 12, same_site="lax",
                    https_only=settings.public_base_url.startswith("https"))
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -310,26 +310,31 @@ def healthz():
 # ---------------------------------------------------------------- الرئيسية
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
-    d = dashboard(s, user)
-    follow = needs_followup_today(s, user)[:8]
-    camps = list(s.scalars(select(Campaign).order_by(Campaign.id.desc())))
-    today = riyadh_today()
-    cats = []
-    for camp in camps:
-        if camp.status != "active":
-            continue
-        for cat in camp.categories:
-            if cat.active and cat.quota:
-                done = s.scalar(select(func.count(Company.id)).where(
-                    Company.category_id == cat.id, Company.counted_on == today,
-                    Company.data_status == "complete")) or 0
-                cats.append({"label": cat.label + (f" — {cat.cities[0]}" if len(cat.cities) == 1 else ""),
-                             "done": done, "quota": cat.quota})
-    test_total = s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0
-    test_unassigned = s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True), Company.owner_id.is_(None))) or 0
-    return render(request, "dashboard.html", user, s, d=d, follow=follow, camps=camps, cats=cats[:8],
-                  test_total=test_total, test_unassigned=test_unassigned)
+def home(request: Request, period: str = "7d", user: User = Depends(current_user), s=Depends(get_db)):
+    from urllib.parse import parse_qsl
+    from ..health import search_status
+    from ..reports import (PERIODS, card_links, daily_target, period_bounds, recent_customers,
+                           sales_performance)
+    if user.role not in ("admin", "manager"):
+        return back("/portal")
+    links = card_links()
+
+    def count(link):  # الرقم = عدد القائمة نفسها التي تفتحها البطاقة
+        if link == "/followups":
+            return len(needs_followup_today(s, user))
+        p = dict(parse_qsl(link.split("?", 1)[1]))
+        qq = _companies_query(user, p.get("status", "complete"), "", "", "", "", "", "", p.get("kind", ""),
+                              p.get("owner", ""), "", p.get("found", ""))
+        return s.scalar(select(func.count()).select_from(qq.subquery())) or 0
+    cards = {k: count(v) for k, v in links.items()}
+    period = period if period in PERIODS else "7d"
+    t0, t1 = period_bounds("today")
+    p0, p1 = period_bounds(period)
+    perf_today = sales_performance(s, user, t0, t1)
+    perf = sales_performance(s, user, p0, p1)
+    return render(request, "dashboard.html", user, s, cards=cards, links=links, target=daily_target(s),
+                  today=riyadh_today(), recent=recent_customers(s, user), follow=needs_followup_today(s, user)[:8],
+                  health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
 
 
 # ---------------------------------------------------------------- الفئات المستهدفة
@@ -492,7 +497,9 @@ def prospecting_page(request: Request, user: User = Depends(require_manager), s=
     from .. import prospecting as P
     st = P.status(s)
     from .. import geo
+    from ..health import search_status
     return render(request, "prospecting.html", user, s, st=st, ACTIVITIES=P.ACTIVITIES, DIR_SECTORS=P.SECTORS,
+                  health=search_status(s),
                   GEO=geo, GEO_REGIONS=geo.REGIONS, GEO_PLACES=geo.PLACES,
                   MAIN_CITIES=P.MAIN_CITIES,
                   REGIONS=list(P.REGIONS.keys()), ai_ready=settings.ai_enabled,
@@ -575,10 +582,12 @@ def prospecting_run(request: Request, batch: int = Form(0), user: User = Depends
 
 # ---------------------------------------------------------------- الشركات
 
-def _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact=""):
-    """استعلام قائمة الشركات بالفلاتر — نفسه للصفحة ولملف Excel (الملف يشمل كل الصفحات)."""
+def _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact="", found=""):
+    """استعلام قائمة الشركات بالفلاتر — نفسه للصفحة ولملف Excel ولأرقام بطاقات لوحة التحكم."""
     from ..models import CompanySignal
     qq = scope_companies(select(Company), user).where(Company.data_status == status)
+    if found == "today":  # عملاء جدد اليوم: المكتملون المحتسبون في هدف اليوم
+        qq = qq.where(Company.counted_on == riyadh_today())
     if contact:
         qq = qq.where(Company.contact_status == contact)
     if kind == "test":
@@ -609,9 +618,9 @@ def _companies_query(user, status, q, city, sector, source, operator, signals, k
 @app.get("/companies", response_class=HTMLResponse)
 def companies(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
               page: int = 1, source: str = "", operator: str = "", signals: str = "", kind: str = "",
-              owner: str = "", contact: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+              owner: str = "", contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db)):
     from ..models import CompanySignal
-    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact)
+    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact, found)
     total = s.scalar(select(func.count()).select_from(qq.subquery())) or 0
     rows = list(s.scalars(qq.order_by(Company.first_found_at.desc()).offset((page - 1) * 50).limit(50)))
     counts = {st: s.scalar(scope_companies(select(func.count(Company.id)), user).where(Company.data_status == st)) or 0
@@ -624,7 +633,7 @@ def companies(request: Request, status: str = "complete", q: str = "", city: str
     return render(request, "companies.html", user, s, rows=rows, status=status, q=q, city=city, sector=sector,
                   total=total, page=page, counts=counts, missing_fields=missing_fields, source=source,
                   operator=operator, signals=signals, sig=sig, source_label=source_label, kind=kind, owner=owner,
-                  contact=contact, qs=str(request.query_params), csum=_csum(s, rows),
+                  contact=contact, found=found, qs=str(request.query_params), csum=_csum(s, rows),
                   staff=list(s.scalars(select(User).where(User.role == "rep").order_by(User.name))),
                   test_total=s.scalar(select(func.count(Company.id)).where(Company.is_test.is_(True))) or 0)
 
@@ -876,10 +885,10 @@ def company_reasons_add(cid: int, request: Request, kind: str = Form("other"), t
 @app.get("/companies.xlsx")
 def companies_xlsx(request: Request, status: str = "complete", q: str = "", city: str = "", sector: str = "",
                    source: str = "", operator: str = "", signals: str = "", kind: str = "", owner: str = "",
-                   contact: str = "", user: User = Depends(current_user), s=Depends(get_db)):
+                   contact: str = "", found: str = "", user: User = Depends(current_user), s=Depends(get_db)):
     from ..auth import audit
     from ..xlsx import CONTACT_HEADERS, response, workbook
-    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact)
+    qq = _companies_query(user, status, q, city, sector, source, operator, signals, kind, owner, contact, found)
     rows = [_customer_row(s, c) for c in s.scalars(qq.order_by(Company.first_found_at.desc()))]
     audit(s, user, "export_download", user, kind="companies", rows=len(rows))
     return response(workbook([("الشركات", CUSTOMER_HEADERS + CONTACT_HEADERS, rows)],
@@ -1289,10 +1298,10 @@ def mail_test(request: Request, to: str = Form(""), message: str = Form(""), use
         flash(request, f"مفاتيح المزود غير مضبوطة على الخادم بعد ({need}). أضفها في مجموعة mandoob-secrets "
                        "ثم أعد المحاولة.", "err")
         return back("/mail")
-    body = message.strip() or "هذه رسالة تجربة من منصة «مندوب سيارة آب الذكي» للتأكد من ربط البريد والتوقيع."
+    body = message.strip() or "هذه رسالة تجربة من منصة «المندوب الذكي لسيارة اب» للتأكد من ربط البريد والتوقيع."
     try:
         res = get_provider(acct).send(OutgoingEmail(acct.sender_address, acct.sender_name, to,
-                                                    "رسالة تجربة — مندوب سيارة آب الذكي",
+                                                    "رسالة تجربة — المندوب الذكي لسيارة اب",
                                                     render_text(body, acct.signature_html),
                                                     render_html(body, acct.signature_html),
                                                     reply_to=acct.reply_mailbox or None))
@@ -1536,8 +1545,13 @@ def add_suppression(request: Request, value: str = Form(...), user: User = Depen
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db)):
+    from ..directory import SOURCES as DSRC
+    from ..health import classify, search_status
+    from ..models import DirectoryRun
     rows = list(s.scalars(select(DiscoveryRun).order_by(DiscoveryRun.id.desc()).limit(30)))
-    return render(request, "runs.html", user, s, rows=rows)
+    drows = list(s.scalars(select(DirectoryRun).order_by(DirectoryRun.id.desc()).limit(15)))
+    return render(request, "runs.html", user, s, rows=rows, drows=drows, DSRC=DSRC, classify=classify,
+                  health=search_status(s))
 
 
 @app.get("/daily-report", response_class=HTMLResponse)
@@ -1936,6 +1950,7 @@ def portal_export(request: Request, q: str = "", user: User = Depends(staff_user
     if not can(user, "export"):
         raise HTTPException(403, "لا تملك صلاحية التصدير")
     wb = Workbook()
+    wb.properties.title, wb.properties.creator = "المندوب الذكي لسيارة اب", "المندوب الذكي لسيارة اب"
     ws = wb.active
     ws.title = "عملائي"
     ws.sheet_view.rightToLeft = True
@@ -2031,6 +2046,8 @@ def portal_status(cid: int, request: Request, stage: str = Form(""), next_title:
             and stage != c.stage:
         changes.append(f"الحالة: {STAGE_LABELS.get(c.stage)} ← {STAGE_LABELS.get(stage)}")
         c.stage = stage
+        if stage == "won":
+            c.won_at = now_utc()
     if stage in ("contacted", "offer_sent", "needs_followup") and not c.contacted_at:
         c.contacted_at, c.contacted_by_id = now_utc(), user.id
     if stage == "offer_sent":

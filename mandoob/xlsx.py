@@ -32,6 +32,7 @@ def workbook(sheets: list[tuple[str, list[str], list[list]]], title_rows: dict |
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     wb = Workbook()
+    wb.properties.title, wb.properties.creator = "المندوب الذكي لسيارة اب", "المندوب الذكي لسيارة اب"
     wb.remove(wb.active)
     for name, headers, rows in sheets:
         ws = wb.create_sheet(name[:31])
@@ -46,7 +47,7 @@ def workbook(sheets: list[tuple[str, list[str], list[list]]], title_rows: dict |
         ws.append(headers)
         for cell in ws[start]:
             cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="6941C6")
+            cell.fill = PatternFill("solid", fgColor="6941A5")
         for r in rows:
             ws.append([_safe(x) for x in r])
         for col in ws.columns:

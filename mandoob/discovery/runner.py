@@ -257,8 +257,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         run.per_category = per_cat
         run.complete_count = total
         run.shortfall = max(total_target - total, 0)
-        for name, err in disabled.items():
-            reasons.append(f"المصدر «{SOURCE_LABELS.get(name, name)}» غير متاح: {err}")
+        from ..health import classify
+        for name, err in disabled.items():  # السبب بالعربية؛ نص الخطأ التقني في السجل التفصيلي فقط
+            reasons.append(f"المصدر «{SOURCE_LABELS.get(name, name)}» تعذّر: {classify(str(err))['cause']}")
         if incomplete_today:
             reasons.append(f"{incomplete_today} شركة مطابقة ينقصها هاتف أو بريد موثّق (قيد الاستكمال)")
         run.shortfall_reason = "\n".join(reasons) if run.shortfall else ""

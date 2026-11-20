@@ -171,7 +171,7 @@ def verify_code(s, email: str, code: str, portal: str) -> User:
     return user
 
 
-LOGIN_SUBJECT = "رمز دخولك إلى منصة مندوب سيارة آب الذكي"
+LOGIN_SUBJECT = "رمز دخولك إلى منصة المندوب الذكي لسيارة اب"
 RESEND_AFTER_SECONDS = 60
 
 
@@ -180,12 +180,12 @@ def login_email(user: User, code: str, portal: str) -> tuple[str, str, str]:
     from html import escape
     link = settings.public_base_url.rstrip("/") + ("/admin/login" if portal == "admin" else "/portal/login")
     where = "بوابة الإدارة" if portal == "admin" else "بوابة الموظفين"
-    text = (f"مرحبًا {user.name}،\n\nرمز دخولك إلى {where} في منصة مندوب سيارة آب الذكي:\n\n    {code}\n\n"
+    text = (f"مرحبًا {user.name}،\n\nرمز دخولك إلى {where} في منصة المندوب الذكي لسيارة اب:\n\n    {code}\n\n"
             f"صالح لمدة ٥ دقائق ولمرة واحدة فقط. أي رمز سابق لم يعد صالحًا.\n"
             f"إن لم تطلب هذا الرمز فتجاهل الرسالة ولا تشاركه مع أحد.\n\n{link}")
     html = (f"<div dir='rtl' style='font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;color:#1f2937'>"
             f"<p style='font-size:16px'>مرحبًا {escape(user.name)}،</p>"
-            f"<p style='font-size:15px'>رمز دخولك إلى {where} في منصة <b>مندوب سيارة آب الذكي</b>:</p>"
+            f"<p style='font-size:15px'>رمز دخولك إلى {where} في منصة <b>المندوب الذكي لسيارة اب</b>:</p>"
             f"<div style='font-size:40px;font-weight:bold;letter-spacing:12px;text-align:center;direction:ltr;"
             f"background:#f3f0ff;border-radius:12px;padding:18px 8px;margin:16px 0;color:#4c1d95'>{code}</div>"
             f"<p style='font-size:15px;text-align:center'><b>صالح لمدة ٥ دقائق ولمرة واحدة فقط</b></p>"
@@ -204,7 +204,7 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
     if acct is None:
         return False
     subject, text, html = login_email(user, code, portal)
-    res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "مندوب سيارة آب الذكي", user.email,
+    res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "المندوب الذكي لسيارة اب", user.email,
                                                 subject, text, html))
     return bool(res and res.accepted)
 
@@ -217,11 +217,11 @@ def send_invite_email(s, user: User) -> bool:
     if acct is None:
         return False
     link = settings.public_base_url.rstrip("/") + "/portal/login"
-    text = (f"مرحبًا {user.name}،\n\nأُضيف حسابك إلى بوابة الموظفين في «مندوب سيارة آب الذكي».\n"
+    text = (f"مرحبًا {user.name}،\n\nأُضيف حسابك إلى بوابة الموظفين في «المندوب الذكي لسيارة اب».\n"
             f"ادخل من الرابط التالي ببريدك الوظيفي، وسيصلك كود دخول على هذا البريد — بلا كلمة مرور:\n{link}")
     html = (f"<div dir='rtl' style='font-family:Tahoma'><p>مرحبًا {user.name}،</p><p>أُضيف حسابك إلى بوابة الموظفين في "
-            f"«مندوب سيارة آب الذكي».</p><p><a href='{link}'>الدخول إلى البوابة</a></p>"
+            f"«المندوب الذكي لسيارة اب».</p><p><a href='{link}'>الدخول إلى البوابة</a></p>"
             "<p>ادخل ببريدك الوظيفي، وسيصلك رمز دخول على هذا البريد.</p></div>")
-    res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "مندوب سيارة آب الذكي", user.email,
-                                                "دعوة إلى بوابة الموظفين — مندوب سيارة آب", text, html))
+    res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "المندوب الذكي لسيارة اب", user.email,
+                                                "دعوة إلى بوابة الموظفين — المندوب الذكي لسيارة اب", text, html))
     return bool(res and res.accepted)
