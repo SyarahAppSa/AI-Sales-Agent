@@ -692,6 +692,8 @@ def _phone_full(v: str) -> str:
 
 templates.env.globals.update(phone_full=_phone_full)
 templates.env.filters["textdir"] = lambda v: "rtl" if re.search(r"[\u0600-\u06FF]", str(v or "")) else "ltr"
+# رقم إصدار ملف التنسيق: يتغير مع كل نشر يعدّله، فلا يبقى المتصفح على نسخة قديمة محفوظة
+templates.env.globals["css_v"] = hashlib.sha256((HERE / "static" / "app.css").read_bytes()).hexdigest()[:10]
 
 
 def _scope_label(sc) -> str:

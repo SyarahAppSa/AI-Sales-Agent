@@ -5,6 +5,7 @@
 
 {% macro tiles(items) %}<div class="mon-grid">{% for a in items %}<div class="mon-tile{{ ' bad' if a.bad }}"><div class="mt">{{ a.title }}</div>
 <div class="mv{{ ' long' if a.long }}" dir="auto">{{ a.value }}</div>{% if a.hint %}<div class="mh">{{ a.hint }}</div>{% endif %}</div>{% endfor %}</div>{% endmacro %}
+<section class="mon-dark">
 <div class="card mon-need{{ ' on' if mon.needs }}"><div class="head2"><h2>يحتاج تدخلك{% if mon.needs %} <span class="pill err">{{ mon.needs }}</span>{% else %} <span class="pill ok">لا شيء الآن</span>{% endif %}</h2></div>{{ tiles(mon.attention) }}</div>
 <div class="card"><div class="head2"><h2>الحالة الحين</h2></div>{{ tiles(mon.live) }}
 <p class="small muted" style="margin:8px 0 0">أرقام الموقع من الحاوية التي فتحت الصفحة، وأرقام العامل من آخر قراءة أرسلها — تتحدث الصفحة كل دقيقة.</p></div>
@@ -13,6 +14,7 @@
 <div class="card"><h2>البحث والجمع</h2>{{ tiles(mon.search) }}</div>
 <div class="card"><h2>الإيميلات</h2>{{ tiles(mon.emails) }}</div>
 </div>
+</section>
 
 {% set fresh = attempts|selectattr('id', 'in', unread_ids)|list %}
 <div class="em-alert" {% if not fresh %}style="border-color:var(--line);background:var(--panel)"{% endif %}>

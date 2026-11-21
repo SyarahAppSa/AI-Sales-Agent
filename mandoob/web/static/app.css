@@ -319,3 +319,13 @@ html[dir="rtl"] .sigtable .nm[dir="ltr"]{text-align:right}
 .mon-3 .card{margin:0}.mon-3 .mon-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (max-width:1100px){.mon-3{grid-template-columns:1fr}}
 @media (max-width:520px){.mon-grid,.mon-3 .mon-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mon-tile .mv{font-size:18px}}
+
+/* قسم المراقبة داكن دائمًا (مثل لوحات المراقبة) في الوضعين الفاتح والداكن */
+.mon-dark{--panel:#1d1925;--soft:#241f2e;--ink:#eeeaf4;--muted:#a69fb3;--line:#2f2939;--ok:#4ade80;--ok-soft:#12301d;
+  --warn:#fbbf24;--warn-soft:#33270f;--err:#f87171;--err-soft:#3a1716;color:var(--ink);background:#15121b;border-radius:22px;padding:16px;margin-bottom:16px}
+.mon-dark .card{background:var(--panel);border-color:var(--line);color:var(--ink);box-shadow:none}
+.mon-dark h2{color:var(--ink)}
+.mon-dark .small.muted{color:var(--muted)}
+.mon-dark .pill.err{background:var(--err-soft);color:var(--err)}.mon-dark .pill.ok{background:var(--ok-soft);color:var(--ok)}
+@media (max-width:520px){.mon-dark{padding:10px;border-radius:16px}}
+.mon-dark .card.mon-need.on{border:1.5px solid #e9b949;background:#1f1a14}
