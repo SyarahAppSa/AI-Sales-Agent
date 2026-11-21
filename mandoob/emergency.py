@@ -46,6 +46,7 @@ REPORTS = [
     (r"^/portal/export/phones\.csv$", "نسخ كل أرقام العملاء (بوابة الموظفين)", "112"),
     (r"^/portal/export/emails\.csv$", "نسخ كل بريد العملاء (بوابة الموظفين)", "113"),
     (r"^/messages/(\d+)/attachment$", "مرفق رسالة عرض", None),
+    (r"^/customer-mail/attachment/(\d+)$", "مرفق في «بريد العملاء»", None),
 ]
 
 

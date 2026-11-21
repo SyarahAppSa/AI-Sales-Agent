@@ -22,7 +22,7 @@
       ('/discover', 'اكتشاف عملاء جدد'), ('/targets', 'الفئات المستهدفة')]),
   ('cust', 'building', 'العملاء والشركات', None, [('/today', 'عملاء اليوم'), ('/companies', 'الشركات وإسنادها للموظفين'),
       ('/officials', 'موظفو الشركات'), ('/admin-lists', 'قائمة عملاء إدارية'), ('/random-leads', 'عملاء عشوائيون')]),
-  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/kit', 'ملفات طلبات العملاء'), ('/followups', 'متابعات اليوم'), ('/offers-report', 'الشركات التي أُرسلت إليها عروض'),
+  ('sales', 'chart', 'المبيعات والمتابعة', None, [('/customer-mail', 'بريد العملاء'), ('/kit', 'ملفات طلبات العملاء'), ('/followups', 'متابعات اليوم'), ('/offers-report', 'الشركات التي أُرسلت إليها عروض'),
       ('/leads', 'طلبات العروض الواردة')] + ([('/offers', 'العروض والمرفقات'), ('/sandbox', 'صندوق التجربة')] if outreach_on else [])),
   ('rep', 'file', 'التقارير', None, [('/daily-report', 'التقرير اليومي'), ('/weekly-report', 'التقرير الأسبوعي للشرائح')]),
   ('admin', 'settings', 'الإدارة والإعدادات', None, [('/staff', 'الموظفون والصلاحيات'), ('/team', 'قواعد التوزيع'),
@@ -52,7 +52,7 @@
         <button type="button" class="ghead" aria-expanded="{{ 'true' if ns.open else 'false' }}" title="{{ label }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>
           <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
         <div class="gitems">
-        {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}{% if h == '/emergency' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}</a>{% endfor %}
+        {% for h, l in items %}{% set on = is_on(h) == '1' %}<a href="{{ h }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}><span class="lbl">{{ l }}</span>{% if h == '/notifications' and unread %}<span class="count">{{ unread }}</span>{% endif %}{% if h == '/emergency' and emerg_unread %}<span class="count">{{ emerg_unread }}</span>{% endif %}{% if h == '/customer-mail' and cm_unread %}<span class="count">{{ cm_unread }}</span>{% endif %}</a>{% endfor %}
         </div>
       </div>
     {% endif %}

@@ -214,8 +214,12 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
         from ..models import DownloadAttempt
         if can_access(user):
             emerg = s.scalar(select(func.count(DownloadAttempt.id)).where(DownloadAttempt.read.is_(False))) or 0
+    cm_unread = 0
+    if user is not None and s is not None and user.role in ("admin", "manager"):
+        from ..customer_mail import unread_count
+        cm_unread = unread_count(s)
     return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
-                                                      "emerg_unread": emerg, "can_emergency": _can_emerg(user),
+                                                      "emerg_unread": emerg, "cm_unread": cm_unread, "can_emergency": _can_emerg(user),
                                                       # العلامة المائية لكل الحسابات عدا مدير المنصة (المالك)
                                                       "wm": _watermark(user) if user is not None and user.role != "admin" else "",
                                                       "voice_on": settings.voice_calls_enabled,
@@ -693,6 +697,7 @@ def _phone_full(v: str) -> str:
 templates.env.globals.update(phone_full=_phone_full)
 templates.env.filters["textdir"] = lambda v: "rtl" if re.search(r"[\u0600-\u06FF]", str(v or "")) else "ltr"
 # رقم إصدار ملف التنسيق: يتغير مع كل نشر يعدّله، فلا يبقى المتصفح على نسخة قديمة محفوظة
+templates.env.filters["isodt"] = lambda v: datetime.fromisoformat(v) if v else None
 templates.env.globals["css_v"] = hashlib.sha256((HERE / "static" / "app.css").read_bytes()).hexdigest()[:10]
 
 
@@ -2090,6 +2095,111 @@ def _aic_args(period: str, d_from: str, d_to: str):
         except ValueError:
             return None
     return (period or "today"), _d(d_from), _d(d_to)
+
+
+# ---------------------------------------------------------------- بريد العملاء
+
+@app.get("/customer-mail", response_class=HTMLResponse)
+def customer_mail_page(request: Request, m: int = 0, q: str = "", company: int = 0, to: str = "", new: int = 0,
+                       user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import customer_mail as CM
+    from ..models import Contact, CustomerMail, CustomerMailFile
+    cfg = CM.get_cfg(s)
+    thread, files = [], {}
+    if m:
+        root = s.get(CustomerMail, m) or _404()
+        thread = list(s.scalars(select(CustomerMail).where(CustomerMail.thread_key == root.thread_key).order_by(CustomerMail.at)))
+        for f in s.scalars(select(CustomerMailFile).where(CustomerMailFile.mail_id.in_([x.id for x in thread]))):
+            files.setdefault(f.mail_id, []).append(f)
+        for x in thread:
+            if x.direction == "in" and not x.read:
+                x.read = True
+    co = s.get(Company, company) if company else None
+    pre_to = to
+    if co and not pre_to:
+        em = s.scalar(select(Contact.value).where(Contact.company_id == co.id, Contact.kind == "email").order_by(Contact.preferred.desc()))
+        pre_to = em or ""
+    senders = {u.id: u.name for u in s.scalars(select(User))}
+    return render(request, "customer_mail.html", user, s, cfg=cfg, configured=CM.configured(cfg), threads=CM.threads(s, q),
+                  thread=thread, files=files, q=q, co=co, pre_to=pre_to, senders=senders, compose=bool(new or co or to or not m),
+                  max_mb=CM.MAX_TOTAL // 1048576)
+
+
+@app.post("/customer-mail/connect")
+def customer_mail_connect(request: Request, address: str = Form(...), name: str = Form(""), password: str = Form(...),
+                          user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import customer_mail as CM
+    from ..auth import audit
+    addr = (normalize_email(address) or "").lower()
+    if not addr:
+        flash(request, "اكتب عنوان بريد صحيح", "err")
+        return back("/customer-mail")
+    ok, why = CM.save_connection(s, addr, name.strip(), password, user)
+    if not ok:
+        flash(request, f"لم يُحفظ شيء: {why}.", "err")
+        return back("/customer-mail")
+    audit(s, user, "mail_secret", user, provider="customer_mail")
+    flash(request, f"رُبط {addr} وحُفظت كلمة السر مشفّرة." + (f" تنبيه: {why}." if why else " الإرسال وقراءة الردود يعملان."),
+          "err" if why else "ok")
+    return back("/customer-mail")
+
+
+@app.post("/customer-mail/settings")
+def customer_mail_settings(request: Request, name: str = Form(""), signature: str = Form(""),
+                           user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import customer_mail as CM
+    cfg = CM.get_cfg(s)
+    cfg.update(name=name.strip()[:120] or cfg.get("name") or "سيارة آب", signature=signature.strip()[:4000])
+    CM.put_cfg(s, cfg)
+    flash(request, "حُفظ اسم المرسل والتوقيع")
+    return back("/customer-mail")
+
+
+@app.post("/customer-mail/send")
+async def customer_mail_send(request: Request, to: str = Form(""), cc: str = Form(""), subject: str = Form(""),
+                             body: str = Form(""), company_id: int = Form(0), reply_to_id: int = Form(0),
+                             files: list[UploadFile] = File(default=[]),
+                             user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import customer_mail as CM
+    blobs = []
+    for f in files or []:
+        if f and f.filename:
+            data = await f.read()
+            if data:
+                blobs.append((f.filename, data, f.content_type or ""))
+    try:
+        row = CM.send(s, user, to, cc, subject, body, blobs, company_id or None, reply_to_id or None)
+    except ValueError as e:
+        flash(request, str(e), "err")
+        return back(f"/customer-mail?m={reply_to_id}" if reply_to_id else "/customer-mail?new=1")
+    if row.status == "sent":
+        flash(request, f"أُرسل البريد إلى {row.to_addr}" + (f" مع {len(blobs)} مرفق" if blobs else ""))
+    else:
+        flash(request, row.detail or "تعذّر الإرسال", "err")
+    return back(f"/customer-mail?m={row.id}")
+
+
+@app.post("/customer-mail/sync")
+def customer_mail_sync(request: Request, user: User = Depends(require_manager)):
+    from .. import customer_mail as CM
+    r = CM.sync()
+    if r.get("skipped"):
+        flash(request, "قراءة الردود غير مفعّلة: اربط البريد أولًا (ويلزم تفعيل IMAP في Zoho)", "err")
+    elif "error" in r:
+        flash(request, f"تعذّرت قراءة الردود ({r['error']})", "err")
+    else:
+        flash(request, f"تمت المزامنة: {r.get('new', 0)} رسالة جديدة")
+    return back(request.headers.get("referer") or "/customer-mail")
+
+
+@app.get("/customer-mail/attachment/{fid}")
+def customer_mail_attachment(fid: int, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from fastapi import Response
+    from urllib.parse import quote
+    from ..models import CustomerMailFile
+    f = s.get(CustomerMailFile, fid) or _404()
+    return Response(f.data or b"", media_type=f.mime or "application/octet-stream",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f.name)}", "Cache-Control": "no-store"})
 
 
 @app.get("/ai-costs", response_class=HTMLResponse)

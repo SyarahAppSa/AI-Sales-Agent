@@ -35,6 +35,8 @@ def configure(scheduler) -> None:
     scheduler.add_job(jobs.weekly_report_tick, "interval", minutes=15, id="weekly_report", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.outreach_tick, "interval", minutes=10, id="outreach", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.inbox_tick, "interval", minutes=3, id="inbox", max_instances=1, coalesce=True)
+    from . import customer_mail
+    scheduler.add_job(customer_mail.tick, "interval", minutes=2, id="customer_mail", max_instances=1, coalesce=True)
     scheduler.add_job(jobs.reminders_tick, "interval", minutes=5, id="reminders", max_instances=1, coalesce=True)
 
 

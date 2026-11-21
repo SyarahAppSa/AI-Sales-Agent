@@ -361,3 +361,29 @@ html[dir="rtl"] .aic-tabs{margin:4px auto 14px 0}
 .aic-share i{display:block;height:100%;background:#7c5cf0}
 @media (max-width:900px){.aic-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.aic-k .mv{font-size:22px}}
 @media (max-width:520px){.aic{padding:12px}.aic-tabs{border-radius:14px}.aic-tabs a{padding:6px 10px;font-size:13px}.aic-range .aic-xl{margin:0}}
+/* بريد العملاء */
+.cm-grid{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:14px;align-items:start}
+.cm-list{padding:10px;max-height:calc(100vh - 160px);overflow:auto;position:sticky;top:14px}
+.cm-search input{width:100%;margin-bottom:8px}
+.cm-item{display:block;padding:10px;border-radius:12px;color:var(--ink);text-decoration:none;border:1px solid transparent}
+.cm-item+.cm-item{margin-top:4px}.cm-item:hover{background:var(--soft)}
+.cm-item.on{background:var(--brand-soft,var(--info-soft));border-color:var(--line)}
+.cm-item.unread b{color:var(--brand,#6941A5)}
+.cm-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.cm-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cm-top .small{white-space:nowrap;flex:0 0 auto}
+.cm-sub{font-size:13.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:2px 0 6px}
+.cm-meta{display:flex;gap:8px;align-items:center}
+.cm-main .card{margin-bottom:14px}
+.cm-msg{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
+.cm-msg.in{background:var(--soft)}
+.cm-msg header{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.cm-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75}
+.cm-files{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cm-file{border:1px solid var(--line);border-radius:10px;padding:6px 10px;text-decoration:none;color:var(--ink);background:var(--panel)}
+.cm-compose,.cm-form{display:flex;flex-direction:column;gap:10px}
+.cm-compose label,.cm-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.cm-compose input,.cm-compose textarea,.cm-form input,.cm-form textarea{font-size:15px;color:var(--ink)}
+.cm-compose .btn,.cm-form .btn{align-self:flex-start}
+.cm-connect{max-width:640px}
+@media (max-width:900px){.cm-grid{grid-template-columns:1fr}.cm-list{position:static;max-height:none}}

@@ -935,3 +935,39 @@ class KitLog(Base):
     company_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
     user_id: Mapped[Optional[int]] = mapped_column(Integer)
     user_name: Mapped[str] = mapped_column(String(120), default="")
+
+
+class CustomerMail(Base):
+    """رسالة في «بريد العملاء» (صندوق مستقل عن بريد أكواد الدخول): مرسلة من المنصة أو رد وارد من IMAP."""
+    __tablename__ = "customer_mails"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    direction: Mapped[str] = mapped_column(String(4))  # out / in
+    thread_key: Mapped[str] = mapped_column(String(300), index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"), index=True)
+    from_addr: Mapped[str] = mapped_column(String(200), default="")
+    from_name: Mapped[str] = mapped_column(String(200), default="")
+    to_addr: Mapped[str] = mapped_column(String(500), default="")
+    cc: Mapped[str] = mapped_column(String(500), default="")
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    body_text: Mapped[str] = mapped_column(Text, default="")
+    message_id: Mapped[Optional[str]] = mapped_column(String(300), index=True)
+    in_reply_to: Mapped[Optional[str]] = mapped_column(String(300))
+    references: Mapped[str] = mapped_column(Text, default="")
+    imap_uid: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="sent")  # sent / failed / received / bounced
+    detail: Mapped[str] = mapped_column(String(500), default="")
+    sent_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    company: Mapped[Optional[Company]] = relationship()
+
+
+class CustomerMailFile(Base):
+    """مرفق رسالة في «بريد العملاء» (المرسل كما أُرسل، والوارد كما وصل)."""
+    __tablename__ = "customer_mail_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mail_id: Mapped[int] = mapped_column(ForeignKey("customer_mails.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    data: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
