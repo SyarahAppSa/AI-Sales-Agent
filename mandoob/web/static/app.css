@@ -304,3 +304,18 @@ html[dir="rtl"] .sigtable .nm[dir="ltr"]{text-align:right}
   .sigtable td.c-det .btn{width:auto}
 }
 .sig-src{overflow-x:auto}.sig-src table{min-width:760px}.sig-src td:first-child{min-width:180px}.sig-src th{white-space:nowrap}
+
+/* لوحة طوارئ — المراقبة والمتابعة */
+.mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.mon-tile{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel);min-width:0}
+.mon-tile .mt{font-size:12.5px;color:var(--muted);line-height:1.4}
+.mon-tile .mv{font-size:22px;font-weight:800;color:var(--ok);margin:4px 0 2px;line-height:1.25;overflow-wrap:anywhere}
+.mon-tile .mv.long{font-size:15px;line-height:1.5}
+.mon-tile .mh{font-size:11.5px;color:var(--muted);line-height:1.45}
+.mon-tile.bad{border-color:var(--err);background:var(--err-soft)}
+.mon-tile.bad .mv{color:var(--err)}
+.mon-need.on{border:1.5px solid var(--warn);background:var(--warn-soft)}
+.mon-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.mon-3 .card{margin:0}.mon-3 .mon-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1100px){.mon-3{grid-template-columns:1fr}}
+@media (max-width:520px){.mon-grid,.mon-3 .mon-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mon-tile .mv{font-size:18px}}

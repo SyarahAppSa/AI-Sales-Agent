@@ -223,7 +223,11 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
                                                 subject, text, html,
                                                 headers={"Auto-Submitted": "auto-generated", "X-Priority": "1",
                                                          "Importance": "high", "X-Auto-Response-Suppress": "All"}))
-    return bool(res and res.accepted)
+    ok = bool(res and res.accepted)
+    if not ok:
+        from .emergency import note_incident
+        note_incident("email", "login_code", "تعذّر إرسال كود دخول من بريد المنصة")
+    return ok
 
 
 def send_invite_email(s, user: User) -> bool:

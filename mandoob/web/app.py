@@ -438,8 +438,9 @@ def emergency_page(request: Request, who: str = "", day_from: str = "", day_to: 
             return date.fromisoformat(v) if v else None
         except ValueError:
             return None
+    svcs = E.services(s)
     page = render(request, "emergency.html", user, s, attempts=attempts, repeats=repeats, unread_ids=set(unread_ids),
-                  svcs=E.services(s), tl=E.timeline(s, who, _d(day_from), _d(day_to), etype), EVENT_TYPES=E.EVENT_TYPES,
+                  svcs=svcs, mon=E.monitor(s, svcs), tl=E.timeline(s, who, _d(day_from), _d(day_to), etype), EVENT_TYPES=E.EVENT_TYPES,
                   who=who, day_from=day_from, day_to=day_to, etype=etype, blocked=_st.downloads_blocked,
                   render_key=bool(_st.render_api_key), now=now_utc(), dt=E._dt)
     # فتح اللوحة = قراءة التنبيهات (تبقى غير مقروءة حتى تُفتح)

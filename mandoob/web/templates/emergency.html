@@ -1,7 +1,18 @@
 {% extends "base.html" %}{% block title %}لوحة طوارئ — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
 <span data-autorefresh="60" hidden></span>
-<div class="dash-head"><div><h1>لوحة طوارئ</h1><div class="date">محاولات التنزيل، وحالة الخوادم، وسجل النشاط — تتحدث كل دقيقة. آخر تحديث: {{ fmt(now) }}</div></div>
+<div class="dash-head"><div><h1>لوحة طوارئ</h1><div class="date">المراقبة والمتابعة، ومحاولات التنزيل، وحالة الخوادم، وسجل النشاط — تتحدث كل دقيقة. آخر تحديث: {{ fmt(now) }}</div></div>
 <span class="pill {{ 'err' if blocked else 'warn' }}" style="align-self:center">{{ 'التنزيل محظور على كل الحسابات عدا مدير المنصة' if blocked else 'منع التنزيل غير مفعّل' }}</span></div>
+
+{% macro tiles(items) %}<div class="mon-grid">{% for a in items %}<div class="mon-tile{{ ' bad' if a.bad }}"><div class="mt">{{ a.title }}</div>
+<div class="mv{{ ' long' if a.long }}" dir="auto">{{ a.value }}</div>{% if a.hint %}<div class="mh">{{ a.hint }}</div>{% endif %}</div>{% endfor %}</div>{% endmacro %}
+<div class="card mon-need{{ ' on' if mon.needs }}"><div class="head2"><h2>يحتاج تدخلك{% if mon.needs %} <span class="pill err">{{ mon.needs }}</span>{% else %} <span class="pill ok">لا شيء الآن</span>{% endif %}</h2></div>{{ tiles(mon.attention) }}</div>
+<div class="card"><div class="head2"><h2>الحالة الحين</h2></div>{{ tiles(mon.live) }}
+<p class="small muted" style="margin:8px 0 0">أرقام الموقع من الحاوية التي فتحت الصفحة، وأرقام العامل من آخر قراءة أرسلها — تتحدث الصفحة كل دقيقة.</p></div>
+<div class="mon-3">
+<div class="card"><h2>Claude (الذكاء الاصطناعي)</h2>{{ tiles(mon.claude) }}</div>
+<div class="card"><h2>البحث والجمع</h2>{{ tiles(mon.search) }}</div>
+<div class="card"><h2>الإيميلات</h2>{{ tiles(mon.emails) }}</div>
+</div>
 
 {% set fresh = attempts|selectattr('id', 'in', unread_ids)|list %}
 <div class="em-alert" {% if not fresh %}style="border-color:var(--line);background:var(--panel)"{% endif %}>

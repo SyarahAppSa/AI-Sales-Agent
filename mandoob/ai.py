@@ -27,6 +27,16 @@ class AIUnavailable(RuntimeError):
     pass
 
 
+def _api_err(msg: str) -> AIUnavailable:
+    """خطأ من خدمة Claude نفسها: يُسجّل في «لوحة طوارئ» (بلا محتوى الطلب) ثم يُرفع."""
+    try:
+        from .emergency import note_incident
+        note_incident("claude", "error", msg[:300])
+    except Exception:  # pragma: no cover
+        log.exception("incident record failed")
+    return AIUnavailable(msg)
+
+
 _client = None
 
 
@@ -86,11 +96,11 @@ def ai_json(system: str, prompt: str, schema: dict, *, web_search: bool = False,
         try:
             resp = c.beta.messages.create(**kwargs)
         except anthropic.RateLimitError as e:
-            raise AIUnavailable(f"تجاوز حد الطلبات: {e}") from e
+            raise _api_err(f"تجاوز حد الطلبات: {e}") from e
         except anthropic.APIStatusError as e:
-            raise AIUnavailable(f"خطأ من خدمة الذكاء الاصطناعي ({e.status_code})") from e
+            raise _api_err(f"خطأ من خدمة الذكاء الاصطناعي ({e.status_code})") from e
         except anthropic.APIConnectionError as e:
-            raise AIUnavailable("تعذر الاتصال بخدمة الذكاء الاصطناعي") from e
+            raise _api_err("تعذر الاتصال بخدمة الذكاء الاصطناعي") from e
         st = getattr(resp.usage, "server_tool_use", None)
         searches += (getattr(st, "web_search_requests", 0) or 0) if st else 0
         if resp.stop_reason == "pause_turn":
@@ -147,11 +157,11 @@ def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, m
                         raise AIUnavailable("تجاوز النداء مهلته — يُنتقل للمصدر/العبارة التالية")
                 resp = stream.get_final_message()
         except anthropic.RateLimitError as e:
-            raise AIUnavailable(f"تجاوز حد الطلبات: {e}") from e
+            raise _api_err(f"تجاوز حد الطلبات: {e}") from e
         except anthropic.APIStatusError as e:
-            raise AIUnavailable(f"خطأ من خدمة الذكاء الاصطناعي ({e.status_code}): {str(e)[:200]}") from e
+            raise _api_err(f"خطأ من خدمة الذكاء الاصطناعي ({e.status_code}): {str(e)[:200]}") from e
         except anthropic.APIConnectionError as e:
-            raise AIUnavailable("تعذر الاتصال بخدمة الذكاء الاصطناعي") from e
+            raise _api_err("تعذر الاتصال بخدمة الذكاء الاصطناعي") from e
         all_blocks.extend(resp.content)
         st = getattr(resp.usage, "server_tool_use", None)
         searches += (getattr(st, "web_search_requests", 0) or 0) if st else 0

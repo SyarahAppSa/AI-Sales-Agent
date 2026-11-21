@@ -402,3 +402,118 @@ def timeline(s, user_q: str = "", d_from=None, d_to=None, etype: str = "", limit
 def summary_attempts(s) -> dict:
     unread = s.scalar(select(func.count(DownloadAttempt.id)).where(DownloadAttempt.read.is_(False))) or 0
     return {"unread": unread}
+
+
+# ---------------------------------------------------------------- المراقبة والمتابعة
+
+def _mem(title: str, v: dict) -> dict:
+    used, lim, cpu = v.get("mem_used_mb"), v.get("mem_limit_mb"), v.get("cpu_pct")
+    hint = [f"من {lim:g} MB" if lim else "بلا حد معروف", f"المعالج {cpu}%" if cpu is not None else ""]
+    return {"title": title, "value": f"{used:g} MB" if used is not None else "لا قراءة بعد",
+            "bad": bool(lim and used and used > 0.9 * lim), "long": used is None, "hint": " — ".join(x for x in hint if x)}
+
+
+def monitor(s, svcs: list[dict] | None = None) -> dict:
+    """أرقام «يحتاج تدخلك» و«الحالة الحين» وClaude والبحث والإيميلات — قراءات فقط، بلا بيانات عملاء."""
+    from . import goal
+    from .models import Company, CostEntry, DirectoryRun, DiscoveryRun, LeadStub, LoginCode, ProspectRun, Task
+    from .outreach import active_account
+    from .timeutil import now_riyadh, riyadh_today
+    now = now_utc()
+    today = riyadh_today()
+    svcs = svcs if svcs is not None else services(s)
+    by = {v["key"]: v for v in svcs}
+    cnt = lambda q: s.scalar(q) or 0  # noqa: E731
+    inc = lambda svc, since: cnt(select(func.count(Incident.id)).where(Incident.service == svc, Incident.at >= since))  # noqa: E731
+
+    # دفعات البحث: الفاشلة/الموقوفة خلال 7 أيام، والعالقة الآن، والتي تعمل الآن
+    week = now - timedelta(days=7)
+    failed = running = stuck = 0
+    for model in (DirectoryRun, ProspectRun):
+        failed += cnt(select(func.count(model.id)).where(model.status.in_(("failed", "stopped")), model.created_at >= week))
+        for r in s.scalars(select(model).where(model.status == "running")):
+            running += 1
+            beat = r.heartbeat or r.started_at or r.created_at
+            if beat and now - beat > timedelta(minutes=15):
+                stuck += 1
+    failed += cnt(select(func.count(DiscoveryRun.id)).where(DiscoveryRun.status.in_(("failed", "partial")),
+                                                             DiscoveryRun.started_at >= week))
+    for r in s.scalars(select(DiscoveryRun).where(DiscoveryRun.status == "running")):
+        running += 1
+        if r.started_at and now - r.started_at > timedelta(hours=3):
+            stuck += 1
+
+    tgt, got = goal.target(s), goal.achieved(s)
+    late_goal = got < tgt and now_riyadh().hour >= 18
+    unassigned = cnt(select(func.count(Company.id)).where(Company.data_status == "complete", Company.owner_id.is_(None),
+                                                          Company.is_test.is_(False), Company.is_existing_customer.is_(False)))
+    overdue = cnt(select(func.count(Task.id)).where(Task.status == "open", Task.due_at < now))
+    day_ago = now - timedelta(hours=24)
+    incidents = cnt(select(func.count(Incident.id)).where(Incident.at >= day_ago))
+    mail_fail = inc("email", day_ago)
+    worker = by.get("scheduler") or {}
+
+    attention = [
+        {"title": "العامل (البحث المجدول)", "value": "متوقف" if not worker.get("ok") else "يعمل", "bad": not worker.get("ok"),
+         "hint": worker.get("state", "")},
+        {"title": "دفعات فشلت أو توقفت (7 أيام)", "value": failed, "bad": failed > 0, "hint": "السبب في «حالة الخوادم» أدناه"},
+        {"title": "دفعات عالقة الآن", "value": stuck, "bad": stuck > 0, "hint": "تعمل بلا تقدّم منذ أكثر من 15 دقيقة"},
+        {"title": "هدف اليوم", "value": f"{got} من {tgt}", "bad": late_goal,
+         "hint": (goal.shortfall_reason(s) or "متأخر عن الهدف") if late_goal else ("بلغ الهدف" if got >= tgt else "الجمع مستمر")},
+        {"title": "شركات مكتملة بلا مسؤول", "value": unassigned, "bad": unassigned > 0, "hint": "تحتاج إسنادًا لموظف"},
+        {"title": "مهام متابعة متأخرة", "value": overdue, "bad": overdue > 0, "hint": "تجاوزت موعدها ولم تُغلق"},
+        {"title": "أعطال (24 ساعة)", "value": incidents, "bad": incidents > 0, "hint": "التفاصيل في «السجل الزمني» ← الأعطال"},
+        {"title": "فشل إرسال أكواد الدخول (24 ساعة)", "value": mail_fail, "bad": mail_fail > 0, "hint": "الموظف لن يستطيع الدخول"},
+    ]
+
+    web = (by.get("web") or {}).get("metrics") or {}
+    wv = web.get("values") or {}
+    wk = (worker.get("metrics") or {}).get("values") or {}
+    db = by.get("db") or {}
+    hb = worker.get("checked")
+    live = [
+        {"title": "قاعدة البيانات", "value": db.get("state", "—").replace("تعمل — زمن الاستجابة ", "") if db.get("ok") else "لا تستجيب",
+         "bad": not db.get("ok"), "hint": "زمن استعلام بسيط"},
+        {"title": "زمن استجابة الموقع", "value": f"{wv['latency_ms_p50']} ms" if wv.get("latency_ms_p50") is not None else "—", "bad": (wv.get("latency_ms_p95") or 0) > 3000,
+         "hint": f"95% من الطلبات أسرع من {wv['latency_ms_p95']} ms" if wv.get("latency_ms_p95") is not None else "لا قراءة بعد"},
+        _mem("ذاكرة الموقع", wv),
+        _mem("ذاكرة العامل", wk),
+        {"title": "آخر نبضة من العامل", "value": (f"{int((now - hb).total_seconds())} ث") if hb else "—",
+         "bad": not worker.get("ok"), "hint": "ينبض كل دقيقة"},
+        {"title": "دفعات بحث تعمل الآن", "value": running, "bad": False, "hint": f"منها عالقة: {stuck}"},
+    ]
+
+    ten = now - timedelta(minutes=10)
+    month0 = today.replace(day=1)
+    claude_q = lambda *w: select(func.count(CostEntry.id)).where(CostEntry.service == "claude", *w)  # noqa: E731
+    spend = lambda *w: round(float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(*w)) or 0), 2)  # noqa: E731
+    cap = float(goal.get(s).get("cost_cap_usd") or 0)
+    today_all = spend(CostEntry.day == today)
+    claude = [
+        {"title": "طلبات آخر 10 د", "value": cnt(claude_q(CostEntry.at >= ten)), "bad": False, "hint": f"اليوم: {cnt(claude_q(CostEntry.day == today))}"},
+        {"title": "أخطاء آخر 10 د", "value": inc("claude", ten), "bad": inc("claude", ten) > 0, "hint": f"آخر 24 ساعة: {inc('claude', day_ago)}"},
+        {"title": "صرف Claude اليوم", "value": f"${spend(CostEntry.day == today, CostEntry.service == 'claude')}", "bad": False,
+         "hint": f"الشهر: ${spend(CostEntry.day >= month0, CostEntry.service == 'claude')}"},
+        {"title": "كل التكاليف اليوم", "value": f"${today_all}", "bad": bool(cap and today_all >= cap),
+         "hint": f"الحد اليومي ${cap:g}" if cap else "بلا حد يومي"},
+    ]
+
+    stubs_today = cnt(select(func.count(LeadStub.id)).where(LeadStub.created_at >= now - timedelta(hours=24)))
+    good = worker.get("last_ok_run")
+    search = [
+        {"title": "مكتملة اليوم", "value": f"{got} من {tgt}", "bad": late_goal, "hint": "جوال سعودي وبريد بإثبات"},
+        {"title": "منشآت مكتشفة (24 ساعة)", "value": stubs_today, "bad": False, "hint": "قبل التحقق والتصفية"},
+        {"title": "آخر دفعة نجحت", "value": fmt(good[2]) if good and good[2] else "—", "bad": False, "long": True,
+         "hint": f"{good[0]} #{good[1].id}" if good else ""},
+    ]
+
+    acct = active_account(s)
+    codes = cnt(select(func.count(LoginCode.id)).where(LoginCode.created_at >= day_ago))
+    emails = [
+        {"title": "بريد المنصة", "value": "مربوط" if acct else "غير مربوط", "bad": acct is None,
+         "hint": "منه تُرسل أكواد الدخول"},
+        {"title": "أكواد دخول طُلبت (24 ساعة)", "value": codes, "bad": False, "hint": f"آخر ساعة: {cnt(select(func.count(LoginCode.id)).where(LoginCode.created_at >= now - timedelta(hours=1)))}"},
+        {"title": "فشل الإرسال (24 ساعة)", "value": mail_fail, "bad": mail_fail > 0, "hint": "أكواد دخول لم تُرسل"},
+    ]
+    return {"attention": attention, "needs": sum(1 for a in attention if a["bad"]), "live": live, "claude": claude,
+            "search": search, "emails": emails}
