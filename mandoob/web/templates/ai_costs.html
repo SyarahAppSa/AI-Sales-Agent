@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% block title %}تكلفة الذكاء الاصطناعي — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
+{% set plabel = (PERIODS|selectattr(0, 'equalto', r.key)|map(attribute=1)|first) or 'فترة مخصصة' %}
+{% macro money(v, d=2) %}${{ '%.*f'|format(d, v) }}{% endmacro %}
+{% macro delta(p, up_bad=True) %}{% if p is not none %}<span class="aic-delta {{ ('bad' if p > 0 else 'good') if up_bad else ('good' if p >= 0 else 'bad') }}">{{ '▲' if p > 0 else ('▼' if p < 0 else '•') }} {{ p|abs }}%</span>{% endif %}{% endmacro %}
+<div class="dash-head"><div><h1>تكلفة الذكاء الاصطناعي</h1><div class="date">محسوبة من الاستهلاك الفعلي اللي ترجعه Anthropic لكل استدعاء لـ Claude • {{ plabel }}</div></div></div>
+<section class="mon-dark aic">
+
+<div class="card aic-cap"><div class="aic-cap-top"><b>صرف اليوم مقابل السقف اليومي</b>
+<span class="small"><b dir="ltr">{{ money(r.today_cost) }}</b> {% if r.cap %}من <span dir="ltr">{{ money(r.cap) }}</span>{% else %}— بلا سقف{% endif %} • {{ r.today_calls }} استدعاء</span></div>
+<div class="aic-bar" role="progressbar" aria-valuenow="{{ r.cap_pct|round|int }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ [r.cap_pct, 1.5]|max }}%" class="{{ 'warn' if r.cap_pct >= 80 }}"></i></div>
+<p class="small muted" style="margin:8px 0 0">السقف اليومي يشمل كل تكاليف المنصة، وإذا وصلته تتوقف دفعات البحث لباقي اليوم. المتوقع لهذا الشهر: <b dir="ltr">{{ money(r.forecast) }}</b> ({{ '%.2f'|format(r.forecast * r.SAR) }} ر.س). تغيّر السقف من «اكتشاف عملاء جدد».</p></div>
+
+<nav class="aic-tabs" aria-label="الفترة">{% for k, lab in PERIODS %}<a href="/ai-costs?period={{ k }}" class="{{ 'on' if r.key == k }}">{{ lab }}</a>{% endfor %}</nav>
+
+<form method="get" class="aic-range"><input type="hidden" name="period" value="custom">
+<label>من<input type="date" name="d_from" value="{{ r.from }}"></label>
+<label>إلى<input type="date" name="d_to" value="{{ r.to }}"></label>
+<button class="btn">عرض</button>
+{% if user.role == 'admin' %}<a class="btn ghost aic-xl" href="/ai-costs.xlsx?period={{ r.key }}&d_from={{ r.from if r.key == 'custom' else '' }}&d_to={{ r.to if r.key == 'custom' else '' }}">تصدير Excel ⬇</a>{% endif %}
+</form>
+<p class="aic-period"><span class="dotp"></span> <b>الفترة المعروضة:</b> {{ plabel }} — من {{ r.from }} إلى {{ r.to }}</p>
+
+<div class="aic-kpis">
+<div class="aic-k"><div class="mt">التكلفة</div><div class="mv" dir="ltr">{{ money(r.cost) }}</div><div class="mh">{{ '%.2f'|format(r.cost * r.SAR) }} ر.س {{ delta(r.cost_pct) }}</div></div>
+<div class="aic-k"><div class="mt">الاستدعاءات</div><div class="mv">{{ '{:,}'.format(r.calls) }}</div><div class="mh">مقارنة بالفترة السابقة {{ delta(r.calls_pct, False) }}</div></div>
+<div class="aic-k"><div class="mt">متوسط الاستدعاء</div><div class="mv" dir="ltr">{{ money(r.avg, 4) }}</div><div class="mh">تكلفة النداء الواحد</div></div>
+<div class="aic-k"><div class="mt">تكلفة المنشأة المكتملة</div><div class="mv" dir="ltr">{{ money(r.per_complete, 2) if r.per_complete is not none else '—' }}</div><div class="mh">{{ r.complete }} منشأة مكتملة في الفترة</div></div>
+<div class="aic-k"><div class="mt">هذا الشهر</div><div class="mv" dir="ltr">{{ money(r.month_cost) }}</div><div class="mh">{{ '%.2f'|format(r.month_cost * r.SAR) }} ر.س</div></div>
+<div class="aic-k"><div class="mt">المتوقع للشهر</div><div class="mv" dir="ltr">{{ money(r.forecast) }}</div><div class="mh">بمعدل الصرف الحالي</div></div>
+<div class="aic-k"><div class="mt">كل تكاليف المنصة</div><div class="mv" dir="ltr">{{ money(r.all_cost) }}</div><div class="mh">Claude + خرائط Google + شراء البيانات</div></div>
+<div class="aic-k"><div class="mt">نصيب Claude</div><div class="mv">{{ ((r.cost / r.all_cost * 100)|round|int ~ '%') if r.all_cost else '—' }}</div><div class="mh">من كل تكاليف الفترة</div></div>
+</div>
+
+<div class="card aic-chart"><div class="aic-cap-top"><h2>الصرف {{ r.unit }}</h2><span class="small muted">بالدولار • {{ plabel }}</span></div>
+{% set n = r.bars|length %}{% set W, H, P = 1000, 220, 44 %}{% set top = r.peak if r.peak > 0 else 1 %}{% set bw = (W - P) / n %}
+{% set every = 1 if n <= 31 else ((n / 15)|round(0, 'ceil')|int) %}
+<svg viewBox="0 0 {{ W }} {{ H + 26 }}" class="aic-svg" role="img" aria-label="الصرف {{ r.unit }}">
+{% for f in [0, 0.5, 1] %}{% set y = H - f * (H - 14) %}<line x1="{{ P }}" x2="{{ W }}" y1="{{ y }}" y2="{{ y }}" class="gl"/><text x="0" y="{{ y + 4 }}" class="ax">${{ '%.2f'|format(top * f) }}</text>{% endfor %}
+{% for x in r.bars %}{% set h = (x.value / top) * (H - 14) %}<rect x="{{ P + loop.index0 * bw + bw * 0.12 }}" y="{{ H - h }}" width="{{ bw * 0.76 }}" height="{{ [h, 0]|max }}" rx="3" class="br"><title>{{ x.label }}: ${{ '%.4f'|format(x.value) }}</title></rect>
+{% if loop.index0 % every == 0 %}<text x="{{ P + loop.index0 * bw + bw / 2 }}" y="{{ H + 18 }}" class="ax" text-anchor="middle">{{ x.label }}</text>{% endif %}{% endfor %}
+</svg>
+{% if not r.calls %}<p class="small muted" style="margin:6px 0 0">لا استدعاءات لـ Claude في هذه الفترة.</p>{% endif %}</div>
+
+<div class="card"><h2>حسب الغرض</h2>
+<div class="tablewrap"><table class="aic-table"><tr><th>الغرض</th><th>التكلفة</th><th>الاستدعاءات</th><th>النسبة</th></tr>
+{% for p in r.by_purpose %}<tr><td>{{ p.label }}</td><td dir="ltr" style="text-align:start">{{ money(p.cost, 3) }}</td><td>{{ p.calls }}</td>
+<td><div class="aic-share"><i style="width:{{ p.share }}%"></i></div><span class="small">{{ p.share|round|int }}%</span></td></tr>
+{% else %}<tr><td colspan="4" class="muted">لا يوجد صرف في هذه الفترة.</td></tr>{% endfor %}</table></div></div>
+</section>
+{% endblock %}

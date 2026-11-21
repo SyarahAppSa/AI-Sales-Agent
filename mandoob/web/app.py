@@ -2083,6 +2083,34 @@ def followups_xlsx(request: Request, user: User = Depends(current_user), s=Depen
                                + CONTACT_HEADERS, rows)]), "followups.xlsx")
 
 
+def _aic_args(period: str, d_from: str, d_to: str):
+    def _d(v):
+        try:
+            return date.fromisoformat(v) if v else None
+        except ValueError:
+            return None
+    return (period or "today"), _d(d_from), _d(d_to)
+
+
+@app.get("/ai-costs", response_class=HTMLResponse)
+def ai_costs_page(request: Request, period: str = "today", d_from: str = "", d_to: str = "",
+                  user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import ai_costs as A
+    k, a, b = _aic_args(period, d_from, d_to)
+    return render(request, "ai_costs.html", user, s, r=A.report(s, k, a, b), PERIODS=A.PERIODS)
+
+
+@app.get("/ai-costs.xlsx")
+def ai_costs_xlsx(request: Request, period: str = "today", d_from: str = "", d_to: str = "",
+                  user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import ai_costs as A
+    from ..xlsx import response, workbook
+    k, a, b = _aic_args(period, d_from, d_to)
+    r = A.report(s, k, a, b)
+    return response(workbook([("تكلفة الذكاء الاصطناعي", ["البند", "القيمة", "", ""], A.rows_for_export(r))]),
+                    f"ai-costs-{r['from']}-{r['to']}.xlsx")
+
+
 @app.get("/daily-report.xlsx")
 def daily_report_xlsx(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from ..xlsx import response, workbook

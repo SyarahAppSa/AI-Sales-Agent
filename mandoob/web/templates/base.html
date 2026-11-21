@@ -14,6 +14,7 @@
 {% if user.role in ('admin','manager') %}{% set groups = [
   ('dash', 'grid', 'لوحة التحكم', '/', []),
 ] + ([('emerg', 'bell', 'لوحة طوارئ', '/emergency', [])] if can_emergency else []) + [
+  ('aicost', 'dollar', 'تكلفة الذكاء الاصطناعي', '/ai-costs', []),
   ('social', 'users', 'مواقع التواصل الاجتماعي', '/social', []),
   ('crm', 'building', 'عملاء CRM', '/crm', []),
   ('signals', 'search', 'اكتشاف من خرائط جوجل', '/signals', []),

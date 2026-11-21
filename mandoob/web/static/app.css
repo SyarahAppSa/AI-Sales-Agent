@@ -329,3 +329,35 @@ html[dir="rtl"] .sigtable .nm[dir="ltr"]{text-align:right}
 .mon-dark .pill.err{background:var(--err-soft);color:var(--err)}.mon-dark .pill.ok{background:var(--ok-soft);color:var(--ok)}
 @media (max-width:520px){.mon-dark{padding:10px;border-radius:16px}}
 .mon-dark .card.mon-need.on{border:1.5px solid #e9b949;background:#1f1a14}
+/* تكلفة الذكاء الاصطناعي */
+.aic{padding:22px}.aic-head h1{margin:0 0 4px;color:var(--ink)}.aic-head{margin-bottom:14px}
+.aic .card{margin-bottom:14px}
+.aic-cap-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.aic-cap-top h2{margin:0}
+.aic-bar{height:10px;border-radius:999px;background:#2b2540;overflow:hidden}
+.aic-bar i{display:block;height:100%;border-radius:999px;background:var(--ok)}.aic-bar i.warn{background:var(--warn)}
+.aic-tabs{display:flex;flex-wrap:wrap;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px;width:max-content;max-width:100%;margin:4px 0 14px auto}
+html[dir="rtl"] .aic-tabs{margin:4px auto 14px 0}
+.aic-tabs a{padding:7px 14px;border-radius:999px;color:var(--ink);font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap}
+.aic-tabs a.on{background:#7c5cf0;color:#fff}.aic-tabs a:not(.on):hover{background:var(--soft)}
+.aic-range{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:10px}
+.aic-range label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.aic-range input{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 10px;color-scheme:dark}
+.aic-range .btn{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.aic-range .aic-xl{margin-inline-start:auto}
+.aic-period{font-size:14px;color:var(--muted);margin:0 0 12px}.aic-period b{color:var(--ink)}
+.aic-period .dotp{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7c5cf0;vertical-align:middle}
+.aic-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.aic-k{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.aic-k .mt{font-size:13px;color:var(--muted)}
+.aic-k .mv{font-size:28px;font-weight:800;color:var(--ink);margin:6px 0 4px;text-align:end;overflow-wrap:anywhere}
+.aic-k .mh{font-size:12px;color:var(--muted);text-align:end}
+.aic-delta{display:inline-block;font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 6px;margin-inline-start:4px}
+.aic-delta.bad{background:var(--err-soft);color:var(--err)}.aic-delta.good{background:var(--ok-soft);color:var(--ok)}
+.aic-svg{width:100%;height:auto;display:block}
+.aic-svg .gl{stroke:var(--line);stroke-width:1}.aic-svg .ax{fill:var(--muted);font-size:12px}.aic-svg .br{fill:#7c5cf0}
+.aic-table th,.aic-table td{border-color:var(--line);color:var(--ink)}.aic-table th{color:var(--muted);background:transparent}
+.aic-share{display:inline-block;width:90px;height:6px;border-radius:999px;background:#2b2540;overflow:hidden;vertical-align:middle;margin-inline-end:6px}
+.aic-share i{display:block;height:100%;background:#7c5cf0}
+@media (max-width:900px){.aic-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.aic-k .mv{font-size:22px}}
+@media (max-width:520px){.aic{padding:12px}.aic-tabs{border-radius:14px}.aic-tabs a{padding:6px 10px;font-size:13px}.aic-range .aic-xl{margin:0}}
