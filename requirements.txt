@@ -14,3 +14,4 @@ xlrd==2.0.1
 cryptography>=42
 tzdata
 pytest>=8
+duckdb>=1.1

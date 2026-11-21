@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block title %}بحث مباشر في خرائط Google{% endblock %}{% block content %}
+<div class="top"><div><h1>بحث مباشر في خرائط Google</h1>
+<p class="sub">نتائج حية من Places API (New) للعرض فقط — لا تُحفظ في المنصة (شروط Google). لحفظ المنشآت وإسنادها يُستخدم «اكتشاف عملاء جدد» من المصادر المستقلة.</p></div>
+<div class="row" style="flex:0 0 auto"><a class="btn" href="/discover">العودة إلى اكتشاف عملاء جدد</a></div></div>
+
+<form class="card row" method="get" action="/discover/google" style="align-items:end">
+  <div style="flex:0 1 220px"><label class="small">النشاط</label><select name="activity">{% for k, a in ACTIVITIES.items() %}<option value="{{ k }}" {{ 'selected' if k == activity }}>{{ a.label }}</option>{% endfor %}</select></div>
+  <div style="flex:0 1 180px"><label class="small">المدينة</label><select name="city">{% for pid, nm in GOOGLE_CITIES %}<option value="{{ pid }}" {{ 'selected' if pid == city }}>{{ nm }}</option>{% endfor %}</select></div>
+  <div style="flex:1 1 240px"><label class="small">أو اكتب عبارة البحث (اختياري)</label><input name="q" value="{{ q }}" placeholder="مثل: شركات نقل في الرياض"></div>
+  <div style="flex:0 0 auto"><button class="btn p">ابحث</button></div>
+</form>
+
+<div class="card"><h2>حالة الاتصال بـGoogle</h2>
+{% if not has_key %}<p><span class="pill err">غير مضبوط</span> المفتاح <code>GOOGLE_PLACES_API_KEY</code> غير موجود على الخادم. أضفه في Render ← mandoob-web ← Environment، وفعّل في Google Cloud «Places API (New)» و«Maps Static API».</p>
+{% elif status.at %}<p>{% if status.ok %}<span class="pill ok">متصل</span> آخر اختبار فعلي: «{{ status.query }}» — {{ status.count }} نتيجة{% else %}<span class="pill err">تعذّر</span> {{ status.error }}{% endif %} <span class="small muted">— {{ fmt(status.at|todt) }}</span></p>
+{% else %}<p><span class="pill warn">لم يُختبر بعد</span> نفّذ بحثًا لاختبار الاتصال.</p>{% endif %}
+</div>
+
+{% if query %}<div class="card"><h2>«{{ query }}»</h2>
+{% if error %}<p style="color:var(--err)">{{ error }}</p>
+{% elif not results %}<p class="muted">لا نتائج.</p>
+{% else %}
+<p class="small muted">{{ results|length }} نتيجة — تكلفة هذا البحث تقريبًا ${{ cost }}. الأرقام والمواقع كما تعرضها Google، ولا تُحفظ.</p>
+{% if map_qs %}<img src="/discover/google/map?{{ map_qs }}" alt="خريطة Google لنتائج «{{ query }}»" style="width:100%;max-width:960px;border-radius:12px;border:1px solid var(--line)" loading="lazy">{% endif %}
+<div class="tablewrap" style="margin-top:10px"><table>
+<tr><th>#</th><th>المنشأة</th><th>النوع</th><th>العنوان</th><th>الهاتف</th><th>الموقع</th><th>التقييم</th><th>الخريطة</th></tr>
+{% for r in results %}<tr><td>{{ "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[loop.index0] }}</td><td translate="no"><b>{{ r.name }}</b>{% if r.status and r.status != 'OPERATIONAL' %} <span class="pill warn small">{{ r.status }}</span>{% endif %}</td>
+<td translate="no" class="small">{{ r.type }}</td><td translate="no" class="small">{{ r.address }}</td>
+<td class="phcell"><div class="ph" dir="ltr" translate="no">{{ r.phone or '—' }}</div></td>
+<td class="small">{% if r.website %}<a href="{{ r.website }}" target="_blank" rel="noopener" class="ltr">{{ r.website.split('//')[-1][:40] }}</a>{% else %}—{% endif %}</td>
+<td class="small">{{ r.rating or '—' }}{% if r.reviews %} ({{ r.reviews }}){% endif %}</td>
+<td><a href="{{ r.maps }}" target="_blank" rel="noopener">فتح في Google Maps</a></td></tr>{% endfor %}
+</table></div>
+<p class="small muted" style="margin-top:6px">البيانات © Google.</p>
+{% endif %}</div>{% endif %}
+{% endblock %}

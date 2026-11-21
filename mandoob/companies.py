@@ -519,7 +519,8 @@ def _add_carrier_opportunity(s: Session, company: Company, operator: dict, categ
 
 
 SOURCE_LABELS = {"google_places": "خرائط جوجل", "web_search": "محرك البحث", "ai_search": "البحث بالذكاء الاصطناعي",
-                 "directory": "دليل أعمال", "website": "موقع الشركة", "recorded": "مصدر موثّق"}
+                 "directory": "دليل أعمال", "website": "موقع الشركة", "recorded": "مصدر موثّق",
+                 "overture": "Overture Maps (بيانات مفتوحة)"}
 
 
 def _merge_source(s: Session, company: Company, cand: Candidate, run_id) -> None:

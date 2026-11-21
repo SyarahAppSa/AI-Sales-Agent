@@ -3779,3 +3779,61 @@ async def crm_import(request: Request, file: UploadFile = File(...), user: User 
     flash(request, f"استُورد ملف الـCRM: {st['added']} مضاف، {st['updated']} محدّث"
                    + (f" (منها {st['linked']} رُبط بعميل موجود)" if st["linked"] else "") + f"، {st['failed']} متعذّر")
     return back("/crm")
+
+
+# ---------------------------------------------------------------- بحث مباشر في خرائط Google (للعرض فقط)
+
+def _google_cities():
+    from ..geo import PLACES
+    from ..overture import CITY_BBOX
+    return [(pid, PLACES[pid]["ar"]) for pid in CITY_BBOX if pid in PLACES]
+
+
+templates.env.globals.update(GOOGLE_CITIES=_google_cities())
+
+
+@app.get("/discover/google", response_class=HTMLResponse)
+def discover_google(request: Request, activity: str = "transport.freight", city: str = "SA-01/riyadh", q: str = "",
+                    user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from urllib.parse import urlencode
+    from .. import google_live as G
+    from ..activities import ACTIVITIES
+    from ..geo import PLACES
+    from ..overture import CITY_BBOX
+    query = q.strip() or (f"{ACTIVITIES[activity]['label']} في {PLACES[city]['ar']}"
+                          if activity in ACTIVITIES and city in PLACES else "")
+    results, error, map_qs = [], None, ""
+    if query and request.query_params:
+        bb = CITY_BBOX.get(city)
+        center = ((bb[2] + bb[3]) / 2, (bb[0] + bb[1]) / 2) if bb else None
+        try:
+            results = G.search(query, center)
+            pts = [f"{r['lat']:.6f},{r['lng']:.6f}" for r in results if r.get("lat") is not None]
+            map_qs = urlencode([("p", x) for x in pts[:20]])
+        except G.LiveError as e:
+            error = str(e)
+    from ..config import settings as _st
+    return render(request, "google_live.html", user, s, ACTIVITIES=ACTIVITIES, activity=activity, city=city, q=q,
+                  query=query if request.query_params else "", results=results, error=error, map_qs=map_qs,
+                  cost=G.COST_PER_SEARCH, status=G.get_status(s), has_key=bool(_st.google_places_api_key))
+
+
+@app.get("/discover/google/map")
+def discover_google_map(request: Request, user: User = Depends(require_manager)):
+    """صورة خريطة Google للنتائج — عبر الخادم (المفتاح لا يصل للمتصفح)، لا تُخزن."""
+    from .. import google_live as G
+    pts = []
+    for v in request.query_params.getlist("p")[:20]:
+        try:
+            la, ln = (float(x) for x in v.split(","))
+            if 15 < la < 33 and 34 < ln < 56:  # داخل المملكة فقط
+                pts.append((la, ln))
+        except ValueError:
+            continue
+    try:
+        img, ct = G.static_map(pts)
+    except G.LiveError as e:
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="80"><rect width="100%" height="100%" fill="#FAF8FC"/>'
+               f'<text x="320" y="45" font-size="16" text-anchor="middle" fill="#6941A5" font-family="sans-serif">{e}</text></svg>')
+        return Response(svg, media_type="image/svg+xml", headers={"cache-control": "no-store"})
+    return Response(img, media_type=ct, headers={"cache-control": "private, max-age=300"})

@@ -567,5 +567,22 @@
  "تحديث تلقائي مرة يوميًا": "Automatic daily update",
  "ما يُنسخ": "What to copy",
  "عنوان واجهة الـCRM": "CRM API address",
- "مخفي": "Hidden"
+ "مخفي": "Hidden",
+ "بحث مباشر في خرائط Google": "Live Google Maps search",
+ "ابحث على الخريطة": "Search on map",
+ "حالة الاتصال بـGoogle": "Google connection status",
+ "متصل": "Connected",
+ "تعذّر": "Failed",
+ "غير مضبوط": "Not configured",
+ "لم يُختبر بعد": "Not tested yet",
+ "فتح في Google Maps": "Open in Google Maps",
+ "العودة إلى اكتشاف عملاء جدد": "Back to new customer discovery",
+ "أو اكتب عبارة البحث (اختياري)": "Or type a search phrase (optional)",
+ "Overture Maps Places (بيانات مفتوحة)": "Overture Maps Places (open data)",
+ "النشاط": "Activity",
+ "التقييم": "Rating",
+ "العنوان": "Address",
+ "الهاتف": "Phone",
+ "الموقع": "Website",
+ "الخريطة": "Map"
 }

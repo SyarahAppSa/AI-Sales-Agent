@@ -30,6 +30,12 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------- سجل المصادر وطريقة الوصول لكل منها
 # auto = يعمل يوميًا تلقائيًا دون انتظار ربط أو ملف؛ optional = اختياري (يحتاج تصريحًا/ملفًا/مفتاحًا)
 SOURCES: dict[str, dict] = {
+    "overture": {
+        "label": "Overture Maps Places (بيانات مفتوحة)", "auto": True,
+        "covers": "منشآت المملكة على الخريطة المفتوحة بالمدينة والنشاط، مع موقعها الرسمي — بتراخيص تسمح بالحفظ "
+                  "(CDLA-Permissive / Apache / CC0)",
+        "method": "ملفات Overture المفتوحة (DuckDB) ثم فتح الموقع الرسمي للتحقق من الهاتف والبريد — بلا مفتاح ولا تكلفة",
+        "kind": "api", "needs": "—"},
     "web_search": {
         "label": "بحث الويب", "auto": True,
         "covers": "محركات البحث والويب المفتوح: مواقع الشركات وصفحات «اتصل بنا»، وروابط خرائط Google التي تظهر في النتائج "
@@ -46,9 +52,10 @@ SOURCES: dict[str, dict] = {
         "covers": "أدلة شركات النقل والمقاولين والمصانع، قوائم المدن الصناعية والعارضين والغرف التجارية المنشورة للعامة",
         "method": "وكيل البحث (قراءة صفحات الأدلة العامة)", "kind": "api", "needs": "MANDOOB_ANTHROPIC_API_KEY"},
     "google_places": {
-        "label": "خرائط Google (ربط مباشر)", "auto": True, "covers": "منشآت مسجلة على الخرائط مع موقعها الإلكتروني",
-        "method": "واجهة Google Places الرسمية", "kind": "api", "needs": "GOOGLE_PLACES_API_KEY",
-        "fallback": "إلى حين المفتاح: روابط الخرائط الظاهرة في «بحث الويب» تُحفظ مرجعًا"},
+        "label": "خرائط Google — بحث مباشر للعرض فقط", "auto": False,
+        "covers": "نتائج حية على خريطة Google داخل الصفحة. لا تُحفظ في سجلات المنصة (شروط Google)؛ السجلات المحفوظة "
+                  "تأتي من المصادر المستقلة",
+        "method": "Places API (New) من الخادم", "kind": "api", "needs": "GOOGLE_PLACES_API_KEY"},
     "file_import": {
         "label": "ملف بيانات رسمي (CSV) — اختياري", "auto": False,
         "covers": "ملف بحق استخدام من: وزارة الصناعة/مدن، هيئة النقل، الهيئة السعودية للمقاولين، الغرف التجارية",
@@ -67,7 +74,8 @@ SOURCES: dict[str, dict] = {
         "method": "Overpass API", "kind": "blocked", "why": "خوادم Overpass لا يصل إليها الخادم حاليًا",
         "needs": "لاحقًا: استيراد ملف OSM للمملكة دوريًا"},
 }
-AUTO_SOURCES = ["web_search", "social", "claude_directory"]
+AUTO_SOURCES = ["overture", "web_search", "social", "claude_directory"]
+SAVING_EXCLUDED = {"google_places"}  # نتائج Google للعرض المباشر فقط — لا تدخل أي دفعة تحفظ سجلات
 
 PROBE_KEY = "directory_probe"
 
@@ -81,6 +89,9 @@ def source_status(s) -> list[dict]:
             st = "works" if settings.ai_enabled else "needs_key"
         elif key == "google_places":
             st = "works" if settings.google_places_api_key else "needs_key"
+        elif key == "overture":
+            from .overture import available
+            st = "works" if available()[0] else "blocked"
         elif key == "file_import":
             n = s.scalar(select(func.count(LeadStub.id)).where(LeadStub.source.like("file%"))) or 0
             st = "works" if n else "needs_file"
@@ -107,6 +118,11 @@ def probe_sources() -> dict:
     res["muqawil"] = "muqawil.org: " + m + (" (تحدي حماية من الروبوتات)" if m == "HTTP 403" else "")
     res["osm"] = "overpass: " + tryget("https://overpass-api.de/api/status")
     res["google_places"] = "مفتاح مضبوط" if settings.google_places_api_key else "لا مفتاح (GOOGLE_PLACES_API_KEY)"
+    try:
+        from .overture import latest_release
+        res["overture"] = f"الإصدار {latest_release()}"
+    except Exception as e:  # noqa: BLE001
+        res["overture"] = type(e).__name__
     for k in ("claude_directory", "web_search", "social"):
         res[k] = "مفتاح Claude مضبوط" if settings.ai_enabled else "لا مفتاح"
     res["at"] = now_utc().isoformat(timespec="minutes")
@@ -404,6 +420,8 @@ def _enrich_stub(sid: int, stats: dict, crawler, drun_id: int, camp_id: int, ove
         _attach_refs(s, co.id, st)
         need = missing_fields(co)
         cid = co.id
+    if need and src == "overture":  # Overture: الهاتف والبريد من الموقع الرسمي فقط (بلا وكيل بحث ولا تكلفة)
+        need = []
     if need and not over_budget():
         kinds = [m for m in ("هاتف", "بريد") if any(m in x for x in need)] or ["هاتف", "بريد"]
         try:
@@ -485,9 +503,9 @@ def run(run_id: int, crawler=None) -> None:
         r = s.get(DirectoryRun, run_id)
         r.status, r.started_at, r.heartbeat = "running", r.started_at or now_utc(), now_utc()
         sources = list(r.sources or AUTO_SOURCES)
-        if "google_places" in sources and not settings.google_places_api_key:
-            sources.remove("google_places")  # ينتظر المفتاح — روابط الخرائط تأتي من «بحث الويب»
-            _log(r, "خرائط Google المباشرة تنتظر مفتاحًا — تُحفظ روابط الخرائط الظاهرة في «بحث الويب» مرجعًا")
+        if SAVING_EXCLUDED & set(sources):
+            sources = [x for x in sources if x not in SAVING_EXCLUDED]
+            _log(r, "خرائط Google للعرض المباشر فقط ولا تُحفظ نتائجها — السجلات من المصادر المستقلة")
         p = r.params or {}
         limit = int(p.get("stage1_limit", 30))
         target = int(p.get("target_complete") or 10 ** 6)
@@ -525,7 +543,8 @@ def run(run_id: int, crawler=None) -> None:
             r = s.get(DirectoryRun, run_id)
             r.heartbeat = now_utc()
             r.stats = {**stats, "_pairs": pairs_done if pairs_done is not None else done_pairs,
-                       "_spent": round(_spent(s, r), 3), "_errors": errors}
+                       "_spent": round(_spent(s, r), 3), "_errors": errors,
+                       "_ov_pairs": (r.stats or {}).get("_ov_pairs") or []}
             if msg:
                 _log(r, msg)
 
@@ -548,7 +567,70 @@ def run(run_id: int, crawler=None) -> None:
                 break
             _enrich_stub(sid, stats, crawler, drun_id, camp_id, over_budget)
             beat()
-    web_sources = [x for x in sources if x in ("web_search", "social", "claude_directory", "google_places")]
+    # Overture: مرحلة الأسماء من البيانات المفتوحة بالنشاط والمدينة، ثم الموقع الرسمي لكل جديد
+    if "overture" in sources and not halted:
+        from . import overture as OV
+        from .activities import ACTIVITIES
+        from . import geo as _geo
+        with session_scope() as s:
+            ov_done = set(((s.get(DirectoryRun, run_id).stats or {}).get("_ov_pairs")) or [])
+        acts = p.get("activities") or ["transport.freight", "construction.contractors", "industry.food_factories"]
+        if acts == "__all__" or "__all__" in acts:
+            acts = list(ACTIVITIES)
+        acts = [a for a in acts if a in ACTIVITIES]
+        places = [x for x in (_geo.scope_places(p.get("scope") or {"all": True}) or list(OV.CITY_BBOX)) if x in OV.CITY_BBOX] \
+            or list(OV.CITY_BBOX)
+        off = int(p.get("day_index") or 0)
+        ov_pairs = [(acts[(off + i) % len(acts)], places[(off * 3 + j) % len(places)])
+                    for i in range(len(acts)) for j in range(len(places))]
+        ov_cap = int(p.get("overture_limit") or (max(target * 3, 300) if target < 10 ** 6 else 600))
+        for ak, pid in ov_pairs:
+            key = f"{ak}|{pid}"
+            if key in ov_done:
+                continue
+            if completes() >= target or stats["overture"]["discovered"] >= ov_cap:
+                break
+            halted = over_budget()
+            if halted:
+                break
+            try:
+                items = OV.search(pid, ak, limit=min(200, ov_cap - stats["overture"]["discovered"]))
+            except Exception as e:  # noqa: BLE001
+                detail = f"{type(e).__name__}: {str(e)[:200]}"
+                errors["overture"] = {"n": int((errors.get("overture") or {}).get("n", 0)) + 1, "last": detail}
+                beat(f"تعذّر Overture ({ACTIVITIES[ak]['label']} — {_geo.PLACES[pid]['ar']}): {detail}")
+                break
+            sector = ACTIVITIES[ak]["sector"]
+            phrase = f"{ACTIVITIES[ak]['label']} في {_geo.PLACES[pid]['ar']}"
+            new_ids = []
+            with session_scope() as s:
+                for it in items:
+                    stub = LeadStub(run_id=run_id, source="overture", external_id=it["external_id"], name=it["name"][:300],
+                                    name_norm=normalize_name(it["name"]), city=it["city"][:120], activity=it["activity"][:200],
+                                    sector_key=sector, website=it["website"], source_url=it["found_url"][:500],
+                                    found_url=it["found_url"][:500], query=phrase[:300],
+                                    vehicle_hint=None)
+                    s.add(stub)
+                    s.flush()
+                    status, dup = dedupe(s, stub)
+                    stub.status, stub.duplicate_of = status, dup
+                    stats["overture"]["discovered"] += 1
+                    stats["overture"][status] = stats["overture"].get(status, 0) + 1
+                    if status == "new":
+                        new_ids.append(stub.id)
+            ov_done.add(key)
+            with session_scope() as s:
+                rr = s.get(DirectoryRun, run_id)
+                rr.stats = {**(rr.stats or {}), "_ov_pairs": sorted(ov_done)}
+            beat(f"Overture — «{phrase}»: {len(items)} منشأة لها موقع رسمي، الجديد {len(new_ids)}")
+            for sid in new_ids:
+                if completes() >= target:
+                    break
+                _enrich_stub(sid, stats, crawler, drun_id, camp_id, over_budget)
+                beat()
+        if completes() >= target:
+            beat(f"بلغت الدفعة هدفها: {completes()} منشأة جديدة مكتملة")
+    web_sources = [x for x in sources if x in ("web_search", "social", "claude_directory")]
     k = done_pairs
     while not halted and web_sources and k < len(pairs) * len(web_sources):
         if completes() >= target:
@@ -613,6 +695,7 @@ def run(run_id: int, crawler=None) -> None:
         spent = _spent(s, r)
         _log(r, (f"توقف: {halted}" if halted else "اكتملت الدفعة") + f" — مكتملة جديدة {completes()} — التكلفة ${spent:.2f}")
         r.stats = {**stats, "_spent": round(spent, 3), "_pairs": k, "_errors": errors,
+                   "_ov_pairs": (r.stats or {}).get("_ov_pairs") or [],
                    "_minutes": round((r.finished_at - r.started_at).total_seconds() / 60, 1)}
 
 
@@ -630,12 +713,17 @@ def request(s, *, sources: list[str], params: dict, budget: float, user_id: int 
 
 AUTO_KEY = "directory_auto"
 AUTO_DEFAULT = {"enabled": False, "start_date": None, "time": "05:30", "budget_usd": 20.0, "target_complete": 400,
-                "sources": AUTO_SOURCES + ["google_places"], "scope": {"all": True}, "activities": "__all__"}
+                "sources": list(AUTO_SOURCES), "scope": {"all": True}, "activities": "__all__"}
 
 
 def get_auto(s) -> dict:
     row = s.get(Setting, AUTO_KEY)
-    return {**AUTO_DEFAULT, **(dict(row.value) if row else {})}
+    cfg = {**AUTO_DEFAULT, **(dict(row.value) if row else {})}
+    srcs = [x for x in (cfg.get("sources") or []) if x not in SAVING_EXCLUDED]
+    if "overture" not in srcs and not cfg.get("overture_off"):
+        srcs = ["overture"] + srcs  # مصدر مستقل يسمح بالحفظ — يُضاف للإعداد المحفوظ قبله
+    cfg["sources"] = srcs
+    return cfg
 
 
 def set_auto(s, **kw) -> dict:

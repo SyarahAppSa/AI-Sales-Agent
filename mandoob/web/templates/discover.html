@@ -3,6 +3,12 @@
 <div class="top"><div><h1>اكتشاف عملاء جدد</h1><p class="sub" style="margin:0">أدلة النقل والمقاولين والمصانع — على مرحلتين: أسماء ومدن وأنشطة تُطابق مع قاعدتنا أولًا، ثم الهاتف والبريد من موقع المنشأة للجديد فقط.</p></div>
 <form method="post" action="/discover/probe" style="flex:0 0 auto"><button class="btn">افحص الوصول للمصادر الآن</button></form></div>
 
+<form class="card row" method="get" action="/discover/google" style="align-items:end" id="google-live">
+  <div style="flex:1 1 240px"><b>بحث مباشر في خرائط Google</b><div class="small muted">نتائج حية على خريطة Google للعرض فقط — لا تُحفظ. السجلات المحفوظة تأتي من المصادر المستقلة أدناه.</div></div>
+  <div style="flex:0 1 200px"><label class="small">النشاط</label><select name="activity">{% for k, a in ACTIVITIES.items() %}<option value="{{ k }}" {{ 'selected' if k == 'transport.freight' }}>{{ a.label }}</option>{% endfor %}</select></div>
+  <div style="flex:0 1 170px"><label class="small">المدينة</label><select name="city">{% for pid, nm in GOOGLE_CITIES %}<option value="{{ pid }}" {{ 'selected' if pid == 'SA-01/riyadh' }}>{{ nm }}</option>{% endfor %}</select></div>
+  <div style="flex:0 0 auto"><button class="btn p">ابحث على الخريطة</button></div>
+</form>
 <div class="grid g3" style="margin-bottom:14px">
   <div class="icard"><div class="t"><div class="l">منشآت جديدة مكتملة اليوم</div><div class="v">{{ today_new_complete }} <span class="muted" style="font-size:16px">من {{ auto.target_complete }}</span></div>
   <div class="bar" style="margin-top:6px"><i style="width:{{ [100, (100 * today_new_complete / auto.target_complete)|round|int]|min if auto.target_complete else 0 }}%"></i></div>
@@ -64,7 +70,7 @@
 {% if x.source_url %}<div><a class="ltr" href="{{ x.source_url }}" target="_blank" rel="noopener">{{ x.source_url.split('//')[-1][:45] }}</a></div>{% endif %}
 {% if x.maps_url %}<div>خرائط: <a class="ltr" href="{{ x.maps_url }}" target="_blank" rel="noopener">{{ x.maps_url.split('//')[-1][:35] }}</a></div>{% endif %}
 {% if x.social_url and x.social_url != x.source_url %}<div>حساب: <a class="ltr" href="{{ x.social_url }}" target="_blank" rel="noopener">{{ x.social_url.split('//')[-1][:35] }}</a></div>{% endif %}
-<div class="muted">{{ {'web_search':'بحث الويب','social':'حسابات التواصل','claude_directory':'أدلة الويب','google_places':'خرائط Google'}.get(x.source, x.source) }}</div></td>
+<div class="muted">{{ {'web_search':'بحث الويب','social':'حسابات التواصل','claude_directory':'أدلة الويب','google_places':'خرائط Google','overture':'Overture Maps'}.get(x.source, x.source) }}</div></td>
 <td>{% set lab = {'new':('','جديدة — بانتظار المرحلة ٢'),'duplicate':('','مكررة (لدينا مسبقًا)'),'existing_customer':('','من عملائنا الحاليين'),'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'failed':('err','تعذر'),'skipped':('','تُركت')} %}
 <span class="pill {{ lab.get(x.status, ('',''))[0] }}">{{ lab.get(x.status, ('', x.status))[1] }}</span>{% if x.company_id %} <a class="small" href="/companies/{{ x.company_id }}">السجل</a>{% elif x.duplicate_of %} <a class="small" href="/companies/{{ x.duplicate_of }}">السجل الموجود</a>{% endif %}</td></tr>{% endfor %}
 </table></div>{% endif %}
