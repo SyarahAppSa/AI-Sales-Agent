@@ -310,8 +310,8 @@ def harvest_signals(track: str, phrase: str, city: str, n: int, known: list[str]
             when = _d.fromisoformat(it["evidence_date"]) if it.get("evidence_date") else None
         except ValueError:
             when = None
-        if when and when < oldest:
-            rejected += 1  # دليل قديم
+        if not when or when < oldest:
+            rejected += 1  # دليل بلا تاريخ أو قديم — المندوب يحتاج دليلًا حديثًا مؤرخًا
             continue
         veh = re.sub(r"\D", "", str(it.get("vehicles") or ""))
         ok.append({"name": it["name"], "activity": it.get("activity") or "", "city": it.get("city") or city,
