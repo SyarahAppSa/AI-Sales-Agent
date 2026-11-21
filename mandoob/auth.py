@@ -221,8 +221,7 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
     subject, text, html = login_email(user, code, portal)
     res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "المندوب الذكي لسيارة اب", user.email,
                                                 subject, text, html,
-                                                headers={"Auto-Submitted": "auto-generated", "X-Priority": "1",
-                                                         "Importance": "high", "X-Auto-Response-Suppress": "All"}))
+                                                headers={"Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All"}))
     ok = bool(res and res.accepted)
     if not ok:
         from .emergency import note_incident
