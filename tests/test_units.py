@@ -71,3 +71,11 @@ def test_long_text_is_clipped_not_failing_insert():
     with session_scope() as s:
         a = s.get(Company, cid).activity
         assert len(a) == 200 and a.startswith("محل حلويات ومخبز") and a.endswith("…")
+
+
+def test_platform_and_placeholder_emails_rejected():
+    """فحص Overture: موقع على WordPress أعطى blog@wordpress.com — بريد المنصة ليس بريد المنشأة."""
+    from mandoob.normalize import normalize_email
+    for bad in ("blog@wordpress.com", "x@sentry-next.wixpress.com", "you@example.com", "logo@2x.png", "a@b.wix.com"):
+        assert normalize_email(bad) is None, bad
+    assert normalize_email("Info@Yasoublogistics.com") == "info@yasoublogistics.com"

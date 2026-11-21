@@ -29,6 +29,10 @@ EMAIL_PREFERENCE = [
     ("hello", "عام"), ("cs", "خدمة العملاء"), ("care", "خدمة العملاء"),
     ("support", "الدعم"), ("customerservice", "خدمة العملاء"),
 ]
+_PLATFORM_EMAIL_DOMAINS = {"wordpress.com", "wordpress.org", "wix.com", "wixpress.com", "sentry.io", "sentry-next.wixpress.com",
+                           "example.com", "example.org", "example.net", "domain.com", "yourdomain.com", "email.com",
+                           "mysite.com", "test.com", "godaddy.com", "squarespace.com", "shopify.com", "weebly.com",
+                           "sentry.wixpress.com", "w3.org", "schema.org", "jquery.com", "cloudflare.com", "wpengine.com"}
 _BAD_EMAIL_PREFIXES = ("noreply", "no-reply", "donotreply", "hr", "careers", "jobs", "recruit",
                        "cv", "privacy", "abuse", "postmaster", "webmaster")
 
@@ -80,6 +84,10 @@ def normalize_email(email: str | None) -> str | None:
     e = e.replace("mailto:", "")
     if not re.fullmatch(r"[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}", e):
         return None
+    dom = e.split("@", 1)[1]
+    if dom in _PLATFORM_EMAIL_DOMAINS or any(dom.endswith("." + d) for d in _PLATFORM_EMAIL_DOMAINS) \
+            or re.search(r"\.(png|jpe?g|gif|svg|webp)$", e):
+        return None  # بريد منصة الاستضافة أو قالب أو اسم صورة — ليس بريد المنشأة
     return e
 
 

@@ -583,7 +583,8 @@ def run(run_id: int, crawler=None) -> None:
         off = int(p.get("day_index") or 0)
         ov_pairs = [(acts[(off + i) % len(acts)], places[(off * 3 + j) % len(places)])
                     for i in range(len(acts)) for j in range(len(places))]
-        ov_cap = int(p.get("overture_limit") or (max(target * 3, 300) if target < 10 ** 6 else 600))
+        # نحو ٢١٪ من الجديد يكتمل (فحص الرياض) ← سقف الأسماء ٦ أضعاف الهدف
+        ov_cap = int(p.get("overture_limit") or (max(target * 6, 300) if target < 10 ** 6 else 600))
         for ak, pid in ov_pairs:
             key = f"{ak}|{pid}"
             if key in ov_done:
