@@ -884,26 +884,29 @@ def run(run_id: int, crawler=None) -> None:
         with session_scope() as s:
             d_done = set(((s.get(DirectoryRun, run_id).stats or {}).get("_dir_pairs")) or [])
         st_d = stats["sig_direct"]
+        per_act = max(5, -(-limit // max(1, len(d_acts))))  # نصيب عادل لكل نشاط: لا يملأ نشاط واحد الحد كله
         for ak in d_acts:
+            act_start = st_d["discovered"]
             for pid in d_places:
                 key = f"{ak}|{pid}"
                 if key in d_done:
                     continue
-                if completes() >= target or st_d["discovered"] >= limit:
+                if completes() >= target or st_d["discovered"] >= limit or st_d["discovered"] - act_start >= per_act:
                     break
                 halted = over_budget()
                 if halted:
                     break
+                cap = min(limit - st_d["discovered"], per_act - (st_d["discovered"] - act_start))
                 city_ar = _geo.PLACES.get(pid, {}).get("ar", pid)
                 items = []
                 try:
                     if pid in _OV.CITY_BBOX:
-                        items = direct_overture(ak, pid, limit=max(1, min(60, limit - st_d["discovered"])))
+                        items = direct_overture(ak, pid, limit=max(1, min(60, cap)))
                 except Exception as e:  # noqa: BLE001
                     errors["sig_direct"] = {"n": int((errors.get("sig_direct") or {}).get("n", 0)) + 1,
                                             "last": f"Overture: {type(e).__name__}: {str(e)[:160]}"}
                 if settings.ai_enabled and p.get("direct_web", True) and not over_budget() \
-                        and st_d["discovered"] + len(items) < limit:
+                        and len(items) < cap:
                     with session_scope() as s:
                         known = [d or n for n, d in s.execute(select(Company.name, Company.domain)
                                                               .order_by(Company.id.desc()).limit(150))]
@@ -918,7 +921,7 @@ def run(run_id: int, crawler=None) -> None:
                 phrase = f"{_ACTS[ak]['label']} في {city_ar}"
                 new_ids = []
                 with session_scope() as s:
-                    for it in items[:max(0, limit - st_d["discovered"])]:
+                    for it in items[:max(0, cap)]:
                         stub = LeadStub(run_id=run_id, source="sig_direct", external_id=it.get("external_id"),
                                         name=it["name"][:300], name_norm=normalize_name(it["name"]),
                                         city=(it.get("city") or city_ar)[:120], activity=_ACTS[ak]["label"][:200],
