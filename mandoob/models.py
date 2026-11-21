@@ -364,6 +364,7 @@ class InboundLead(Base):
     source: Mapped[str] = mapped_column(String(80), default="website")
     notes: Mapped[str] = mapped_column(Text, default="")
     ip_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)  # طلب تجريبي — مستبعد من أرقام المبيعات
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -689,6 +690,14 @@ class LeadStub(Base):
     found_url: Mapped[Optional[str]] = mapped_column(String(500))
     maps_url: Mapped[Optional[str]] = mapped_column(String(500))
     social_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # مسارات فرص البيع: الدليل الذي رشّح المنشأة (اقتباس حرفي من صفحة قرأها الوكيل، بتاريخه ورابطه)
+    signal_kind: Mapped[Optional[str]] = mapped_column(String(30))
+    evidence_url: Mapped[Optional[str]] = mapped_column(String(500))
+    evidence_date: Mapped[Optional[date]] = mapped_column(Date)
+    evidence_quote: Mapped[Optional[str]] = mapped_column(Text)
+    reason: Mapped[Optional[str]] = mapped_column(Text)               # سبب الترشيح بجملة للمندوب
+    vehicles_count: Mapped[Optional[int]] = mapped_column(Integer)    # فقط إن ذكره المصدر
+    contact_dept: Mapped[Optional[str]] = mapped_column(String(200))  # الجهة المقترحة للتواصل
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     # new / duplicate / existing_customer / complete / incomplete / failed / skipped
     duplicate_of: Mapped[Optional[int]] = mapped_column(Integer)
@@ -716,6 +725,22 @@ class ProspectRun(Base):
     heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
+class DataPurchase(Base):
+    """عيّنة/دفعة بيانات مشتراة من مزوّد (استيراد Excel بلا ربط تقني): للحكم على جدواها قبل شراء دفعة أكبر."""
+    __tablename__ = "data_purchases"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(200))
+    data_updated_on: Mapped[Optional[date]] = mapped_column(Date)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    file_name: Mapped[str] = mapped_column(String(200), default="")
+    license_note: Mapped[str] = mapped_column(String(500), default="")
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    queued: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_in_file: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class ProspectPool(Base):
     """صفوف ملف مزوّد بيانات مرخّص — تُعالج يوميًا بمسار «العملاء المحتملون» (تكرار ← تحقق من الموقع ← أولوية)."""
     __tablename__ = "prospect_pool"
@@ -729,6 +754,8 @@ class ProspectPool(Base):
     uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    purchase_id: Mapped[Optional[int]] = mapped_column(ForeignKey("data_purchases.id"), index=True)
+
 
 
 class CompanyOfficial(Base):

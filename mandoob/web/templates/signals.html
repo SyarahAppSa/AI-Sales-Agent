@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% block title %}اكتشاف من خرائط جوجل{% endblock %}{% block content %}
+{% if busy %}<span data-autorefresh="30" hidden></span>{% endif %}
+<div class="top"><div><h1>اكتشاف من خرائط جوجل</h1>
+<p class="sub" style="margin:0">فرص بيع بأدلة حديثة: من استلم مركبات، ومن يوظّف للتشغيل والنقل، ومن فاز بعقد تشغيل، والعارضون والموزعون المحليون — ببحث الويب والصفحات العامة، ويعمل الآن دون انتظار مفتاح الخرائط. أمام كل منشأة رابط يفتحها في خرائط Google. التواصل يدوي من فريق المبيعات.</p></div>
+<div class="row" style="flex:0 0 auto"><a class="btn" href="/fleet-calculator" target="_blank" rel="noopener">حاسبة تكلفة وقود الأسطول ↗</a></div></div>
+
+<div class="grid g3" style="margin-bottom:14px">
+  <div class="icard"><div class="t"><div class="l">هدف اليوم (منشآت جديدة مكتملة — كل المصادر)</div><div class="v">{{ goal_n }} <span class="muted" style="font-size:16px">من {{ goal_t }}</span></div></div></div>
+</div>
+
+<form class="card" method="post" action="/signals/run">
+<h2>تشغيل بحث فرص البيع</h2>
+<div class="chips"><span class="small muted">المسارات:</span>
+{% for k, t in TRACKS.items() %}<label><input type="checkbox" name="tracks" value="{{ k }}" {{ 'checked' if k != 'sig_exhibitors' }}> {{ t.label }}</label>{% endfor %}</div>
+<div class="row" style="margin-top:8px">
+  <div style="flex:2 1 320px"><label class="small">النشاط (نشاط أو عدة أنشطة — أو «جميع الأنشطة»)</label>
+    <select name="activities" multiple size="6"><option value="__all__">جميع الأنشطة</option>
+    {% for sk, sec in DIR_SECTORS.items() %}<optgroup label="{{ sec.label }}">{% for ak in sec.activities %}<option value="{{ ak }}">{{ ACTIVITIES[ak].label }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+  <div style="flex:1 1 240px"><label class="small">النطاق</label>
+    <select name="scope_mode" id="sig-scope"><option value="all">جميع مناطق المملكة</option><option value="regions">منطقة أو أكثر</option><option value="places">مدينة بعينها</option></select>
+    <select name="regions" multiple size="4" class="sig-reg" style="margin-top:6px" hidden>{% for rid, r in GEO_REGIONS.items() %}<option value="{{ rid }}">{{ r.ar }}</option>{% endfor %}</select>
+    <select name="places" multiple size="4" class="sig-pl" style="margin-top:6px" hidden>{% for pid, p in GEO_PLACES.items() if p.type in ('capital','city','governorate') %}<option value="{{ pid }}">{{ p.ar }}</option>{% endfor %}</select></div>
+  <div style="flex:0 0 140px"><label class="small">حد الأسماء</label><input type="number" name="limit" value="30" min="3" max="400"></div>
+  <div style="flex:0 0 140px"><label class="small">ميزانية الدفعة ($)</label><input type="number" name="budget" value="5" min="0.5" max="200" step="0.5"></div>
+</div>
+<p class="small muted">تُقبل المنشأة فقط إن ظهر اسمها في صفحة حقيقية وظهر اقتباس دليلها حرفيًا في صفحة قرأها الوكيل، بتاريخها ورابطها. الهاتف والبريد من موقعها الرسمي في المرحلة الثانية. يتوقف البحث عند بلوغ هدف اليوم أو حد التكلفة.</p>
+<button class="btn p">ابدأ البحث</button>
+</form>
+<script>(function(){var m=document.getElementById('sig-scope');function u(){document.querySelector('.sig-reg').hidden=m.value!=='regions';document.querySelector('.sig-pl').hidden=m.value!=='places';}m.addEventListener('change',u);u();})();</script>
+
+{% if runs %}<div class="card"><h2>الدفعات</h2><div class="chips">{% for r in runs %}<a class="pill {{ 'info' if cur and r.id == cur.id }}" href="/signals?run={{ r.id }}">#{{ r.id }} — {{ {'pending':'بانتظار البدء','running':'جارية','done':'اكتملت','stopped':'توقفت','failed':'فشلت'}.get(r.status, r.status) }} — {{ fmt(r.created_at) }}</a>{% endfor %}</div></div>{% endif %}
+
+{% if cur %}
+<div class="card tablewrap"><h2>الدفعة #{{ cur.id }} — لكل مصدر</h2>
+<table><tr><th>المصدر</th><th>المكتشفة</th><th>الجديدة المكتملة</th><th>قيد الاستكمال</th><th>المكررة</th><th>عملاء حاليون</th><th>قيد التحقق</th><th>مرفوضة (بلا دليل)</th><th>التكلفة</th><th>تكلفة المنشأة المكتملة</th></tr>
+{% for x in per_src %}<tr><td><b>{{ x.label }}</b></td><td>{{ x.discovered }}</td><td><b>{{ x.complete }}</b></td><td>{{ x.incomplete }}</td><td>{{ x.duplicate }}</td><td>{{ x.existing_customer }}</td><td>{{ x.pending_verify }}</td><td>{{ x.rejected_name }}</td><td>${{ x.cost }}</td><td>{{ '$%s' % x.cpc if x.cpc is not none else '—' }}</td></tr>{% endfor %}
+</table>
+<p class="small muted">وقت البحث: {{ minutes if minutes is not none else '—' }} دقيقة — النطاق: {{ (cur.params or {}).get('scope') }}{% if (cur.log or [])|length %} — آخر سطر: {{ cur.log[-1] }}{% endif %}</p></div>
+
+<div class="card tablewrap"><h2>النتائج ({{ rows|length }})</h2>
+<table>
+<tr><th>المنشأة</th><th>الهاتف والبريد الرسميان</th><th>سبب الترشيح والدليل</th><th>المركبات</th><th>الجهة المقترحة</th><th>قبل الإسناد</th><th>الحالة</th></tr>
+{% for x in rows %}{% set st, c = x.st, x.c %}<tr>
+<td><b translate="no">{% if c %}<a href="/companies/{{ c.id }}">{{ c.name }}</a>{% else %}{{ st.name }}{% endif %}</b>
+  <div class="small muted" translate="no">{{ st.activity }} — {{ st.city }}</div>
+  {% if c and c.website %}<div class="small"><a class="ltr" href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
+  <div class="small"><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ (st.name ~ ' ' ~ st.city)|urlencode }}">فتح في خرائط Google ↗</a></div></td>
+<td class="small">{% for p in x.phones %}<div><span class="ph" dir="ltr" translate="no">{{ p.value }}</span> <a href="{{ p.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% endfor %}
+  {% for e in x.emails %}<div><span class="ltr" translate="no">{{ e.value }}</span> <a href="{{ e.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% endfor %}
+  {% if not x.phones and not x.emails %}<span class="muted">—</span>{% endif %}</td>
+<td class="small" style="max-width:340px"><span class="pill">{{ TRACKS[st.signal_kind].label if st.signal_kind in TRACKS else '' }}</span>
+  <div translate="no">{{ st.reason or '' }}</div>
+  {% if st.evidence_quote %}<div class="muted" translate="no">«{{ st.evidence_quote[:220] }}»</div>{% endif %}
+  {% if st.evidence_url %}<div>{{ fmt_date(st.evidence_date) if st.evidence_date else 'تاريخ غير مذكور' }} — <a href="{{ st.evidence_url }}" target="_blank" rel="noopener">رابط الدليل</a></div>{% endif %}</td>
+<td>{{ st.vehicles_count if st.vehicles_count else 'غير معلوم' }}</td>
+<td class="small" translate="no">{{ st.contact_dept or (c.decision_unit if c else '') or '—' }}</td>
+<td class="small">{% if c %}<div>المسؤول: <b>{{ x.owner or 'غير مسند' }}</b></div>
+  <div>آخر تواصل: {{ fmt(c.last_attempt_at) if c.last_attempt_at else 'لا يوجد' }}{% if x.last_by %} — {{ x.last_by }}{% endif %}</div>
+  <div>النتيجة: {{ STATUSES.get(c.contact_status, c.contact_status) if c.contact_status else '—' }}</div>
+  {% if c.last_note or c.last_action %}<div translate="no">ملاحظة: {{ (c.last_note or c.last_action)[:120] }}</div>{% endif %}
+  {% if not c.owner_id %}<form method="post" action="/companies/assign" class="row" style="gap:4px;margin-top:4px"><input type="hidden" name="company_ids" value="{{ c.id }}">
+    <select name="owner_id" style="width:auto">{% for u in reps %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select><button class="btn sm">إسناد</button></form>{% endif %}
+  {% else %}—{% endif %}</td>
+<td>{% set lbl = {'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'duplicate':('info','مكررة — أُضيف الدليل لسجلها'),'existing_customer':('info','عميل حالي'),'pending_verify':('warn','قيد التحقق'),'new':('info','جارٍ الاستكمال'),'failed':('err','تعذّر')}.get(st.status, ('', st.status)) %}<span class="pill {{ lbl[0] }}">{{ lbl[1] }}</span></td>
+</tr>{% else %}<tr><td colspan="7" class="muted">لا نتائج بعد{% if cur.status in ('pending','running') %} — الدفعة جارية، تتحدث الصفحة تلقائيًا{% endif %}.</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}

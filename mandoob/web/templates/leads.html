@@ -7,7 +7,7 @@
 <td>{% if c %}<a href="/companies/{{ c.id }}"><b><span translate="no">{{ r.company_name }}</span></b></a>{% else %}<span translate="no">{{ r.company_name }}</span>{% endif %}<div class="small muted">{{ r.city }}</div></td>
 <td class="small">{{ r.vehicles or '—' }} مركبة<div>{{ r.service_text or (r.offer_id and 'خدمة محددة') or 'استشارة' }}</div></td>
 <td class="small">{{ r.contact_name }}<div><span class="ltr">{{ r.phone or '' }}</span></div><div><span class="ltr">{{ r.email or '' }}</span></div><span class="pill">{{ {'phone':'اتصال','whatsapp':'واتساب','email':'بريد'}[r.preferred_channel] }}</span></td>
-<td><span class="pill info">{{ source_label(r.source) }}</span></td>
+<td><span class="pill info">{{ source_label(r.source) }}</span>{% if r.is_test %} <span class="pill warn">تجريبي — مستبعد من الأرقام</span>{% endif %}{% if r.source and r.source.startswith('fuel_calculator') %}<div class="small muted">{{ r.notes }}</div>{% endif %}</td>
 <td>{{ c.owner.name if c and c.owner else '—' }}<div class="small muted">{{ STAGE_LABELS.get(c.stage, '') if c else '' }}</div></td>
 <td class="small">{{ fmt(r.created_at) }}</td></tr>{% else %}<tr><td colspan="6" class="muted">لا توجد طلبات بعد.</td></tr>{% endfor %}</table></div>
 {% endblock %}

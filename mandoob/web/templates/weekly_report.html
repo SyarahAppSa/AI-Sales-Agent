@@ -23,4 +23,9 @@
 </div>
 <div class="card"><h2>طلبات «اطلب عرضًا لأسطولك» هذا الأسبوع حسب المصدر</h2>
 {% for k, v in w.leads.items() %}<div class="kv"><span class="k">{{ k }}</span><span class="n">{{ v }}</span></div>{% else %}<p class="muted">لا توجد طلبات.</p>{% endfor %}</div>
+<div class="card tablewrap" id="by-source"><h2>حسب مصدر العملاء — هذا الأسبوع</h2>
+<table><tr><th>المصدر</th><th>جديدة مكتملة</th><th>مسؤولو التشغيل الذين وصل إليهم الفريق</th><th>الاجتماعات المحجوزة</th><th>التكلفة</th><th>تكلفة الاجتماع</th></tr>
+{% for x in by_source %}<tr><td><b>{{ x.label }}</b></td><td>{{ x.complete }}</td><td>{{ x.reached }}</td><td>{{ x.meetings }}</td><td>${{ x.cost }}</td><td>{{ '$%s' % x.cost_per_meeting if x.cost_per_meeting is not none else 'غير متاحة' }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">لا بيانات هذا الأسبوع بعد.</td></tr>{% endfor %}</table>
+<p class="small muted">«وصل الفريق إلى المسؤول» من خانة «وصلت إلى المسؤول / صاحب القرار» في تحديث المتابعة. التكلفة من دفتر التكاليف لكل مصدر.</p></div>
 {% endblock %}

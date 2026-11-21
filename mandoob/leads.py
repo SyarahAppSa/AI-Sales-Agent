@@ -29,7 +29,7 @@ def source_label(source: str | None) -> str:
         return "ناقل لعميل"
     kind, _, rest = source.partition(":")
     base = {"website_form": "نموذج اطلب عرضًا", "website": "موقع الشركة", "campaign": "حملة",
-            "partner": "إحالة شريك"}.get(kind, kind)
+            "partner": "إحالة شريك", "fuel_calculator": "حاسبة تكلفة وقود الأسطول"}.get(kind, kind)
     return f"{base}: {rest}" if rest else base
 
 

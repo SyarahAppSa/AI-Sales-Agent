@@ -47,7 +47,11 @@
         <input type="file" name="file" accept=".csv,.xlsx" required>
         <select name="src_kind" style="margin-top:6px" onchange="this.form.querySelector('.srcurl').style.display=this.value=='url'?'block':'none'"><option value="device">المصدر: من جهازي</option><option value="url">المصدر: رابط</option></select>
         <input name="src_url" class="srcurl ltr" placeholder="https://..." style="display:none;margin-top:6px">
-        <input name="license_note" placeholder="ملاحظة (اختياري): المزوّد أو رقم العقد" style="margin-top:6px">
+        <input name="license_note" placeholder="ملاحظة (اختياري): رقم العقد أو حق الاستخدام" style="margin-top:6px">
+        <details style="margin-top:6px"><summary class="small">عيّنة بيانات مشتراة (للحكم على المزوّد)</summary>
+          <input name="provider" placeholder="اسم المزوّد" style="margin-top:6px">
+          <label class="small">تاريخ تحديث البيانات</label><input type="date" name="data_updated_on">
+          <input name="sample_cost" placeholder="تكلفة العيّنة ($)" inputmode="decimal" style="margin-top:6px"></details>
         <button class="btn p sm" style="margin-top:6px">رفع الملف</button></form>
       <div class="s" style="margin-top:6px">CSV أو Excel. الأعمدة: الاسم، النشاط، المدينة، الموقع، الهاتف، البريد، الرقم الموحد، السجل التجاري، رابط المصدر.</div></div>
     <div class="stat"><div class="l">خرائط Google (الواجهة الرسمية)</div>
@@ -100,4 +104,11 @@
 
 {% if last %}<details class="card"><summary>سجل آخر دفعة (#{{ last.id }} — {{ {'pending':'في الانتظار','running':'قيد التشغيل','done':'اكتملت','stopped':'أُوقفت','failed':'فشلت'}.get(last.status, last.status) }})</summary>
 <pre class="small" style="white-space:pre-wrap">{{ (last.log or [])[-60:]|join('\n') }}</pre></details>{% endif %}
+{% if purchases %}<div class="card tablewrap" id="purchases"><h2>عيّنات البيانات المشتراة</h2>
+<table><tr><th>المزوّد</th><th>تحديث البيانات</th><th>التكلفة</th><th>السجلات</th><th>جديدة جاهزة</th><th>ناقصة (قيد الاستكمال)</th><th>مكررة</th><th>بانتظار المعالجة</th><th>وصلنا لمسؤول التشغيل</th><th>اجتماعات</th><th>تكلفة الاجتماع</th></tr>
+{% for x in purchases %}<tr><td><b translate="no">{{ x.p.provider }}</b><div class="small muted" translate="no">{{ x.p.file_name }} — {{ fmt(x.p.created_at) }}</div></td>
+<td>{{ fmt_date(x.p.data_updated_on) if x.p.data_updated_on else '—' }}</td><td>${{ '%.2f' % x.p.cost_usd }}</td><td>{{ x.p.rows }}</td>
+<td><b>{{ x.new_ready }}</b></td><td>{{ x.needs }}</td><td>{{ x.duplicate }}</td><td>{{ x.queued }}</td><td>{{ x.reached }}</td><td>{{ x.meetings }}</td>
+<td>{{ '$%s' % x.cost_per_meeting if x.cost_per_meeting is not none else 'غير متاحة' }}</td></tr>{% endfor %}</table>
+<p class="small muted">«وصلنا لمسؤول التشغيل» من خانة «وصلت إلى المسؤول / صاحب القرار» في تحديث المتابعة، والاجتماعات من الاجتماعات المحجوزة لمنشآت العيّنة.</p></div>{% endif %}
 {% endblock %}

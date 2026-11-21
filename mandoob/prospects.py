@@ -358,7 +358,8 @@ def parse_pdf(data: bytes) -> list[dict]:
     return rows
 
 
-def queue_upload(s, user, filename: str, data: bytes, license_note: str, kind: str = "provider") -> tuple[int, dict]:
+def queue_upload(s, user, filename: str, data: bytes, license_note: str, kind: str = "provider",
+                 purchase_id: int | None = None) -> tuple[int, dict]:
     from .models import ProspectPool
     if filename.lower().endswith(".pdf"):
         rows, m = parse_pdf(data), {"name": 0, "phone": 1, "email": 2}
@@ -380,11 +381,41 @@ def queue_upload(s, user, filename: str, data: bytes, license_note: str, kind: s
             continue
         seen |= key
         kept.append(r)
+    if purchase_id:
+        from .models import DataPurchase
+        dp = s.get(DataPurchase, purchase_id)
+        dp.rows, dp.queued, dp.duplicate_in_file = len(rows), len(kept), len(rows) - len(kept)
     rows = kept
     for r in rows:
         s.add(ProspectPool(file_name=filename[:200], license_note=license_note[:500], row=r, kind=kind,
-                           status="random" if kind == "random" else "queued", uploaded_by=user.id if user else None))
+                           status="random" if kind == "random" else "queued", uploaded_by=user.id if user else None,
+                           purchase_id=purchase_id))
     return len(rows), m
+
+
+def purchases_report(s) -> list[dict]:
+    """عيّنات البيانات المشتراة: الجديد والمكرر والناقص، ثم ما وصل إليه الفريق والاجتماعات وتكلفتها."""
+    from .models import CompanySource, DataPurchase, Meeting, ProspectPool
+    out = []
+    for dp in s.scalars(select(DataPurchase).order_by(DataPurchase.id.desc()).limit(30)):
+        pools = list(s.execute(select(ProspectPool.id, ProspectPool.result, ProspectPool.status)
+                               .where(ProspectPool.purchase_id == dp.id)))
+        res = {}
+        for _, r, st in pools:
+            res[r or ("queued" if st == "queued" else "other")] = res.get(r or ("queued" if st == "queued" else "other"), 0) + 1
+        ext = [f"import:{pid}" for pid, *_ in pools]
+        cids = [c for (c,) in s.execute(select(CompanySource.company_id).where(CompanySource.external_id.in_(ext or ["-"])))] \
+            if ext else []
+        cids = list(dict.fromkeys(cids))
+        reached = s.scalar(select(func.count(Company.id)).where(Company.id.in_(cids or [0]),
+                                                                Company.reached_dm_at.isnot(None))) or 0
+        meetings = s.scalar(select(func.count(Meeting.id)).where(Meeting.company_id.in_(cids or [0]),
+                                                                 Meeting.status != "cancelled")) or 0
+        out.append({"p": dp, "new_ready": res.get("ready", 0), "needs": res.get("needs", 0),
+                    "duplicate": res.get("duplicate", 0) + res.get("existing_customer", 0) + (dp.duplicate_in_file or 0),
+                    "queued": res.get("queued", 0), "companies": len(cids), "reached": reached, "meetings": meetings,
+                    "cost_per_meeting": round(dp.cost_usd / meetings, 2) if meetings else None})
+    return out
 
 
 def _pool_records(n: int) -> list[tuple[int, dict]]:

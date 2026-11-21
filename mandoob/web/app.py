@@ -524,6 +524,7 @@ def prospects_page(request: Request, day: str = "", city: str = "", sector: str 
     pool = {st_: s.scalar(select(func.count(ProspectPool.id)).where(ProspectPool.status == st_)) or 0 for st_ in ("queued", "done")}
     with_key = bool(settings.google_places_api_key)
     return render(request, "prospects.html", user, s, sm=P.summary(s, d), rows=rows, parents=parents, pool=pool,
+                  purchases=P.purchases_report(s),
                   gkey=with_key, gspent=round(P.google_spent_today(s), 2), auto=P.get_auto(s), SOURCE_LABEL=P.SOURCE_LABEL, total=total, d=d, city=city,
                   sector=sector, level=level, state=state, q=q, owner=owner, all=all, cities=sorted(cities),
                   ASECTORS=ASECTORS, LEVELS=P.LEVELS, CONTACT_LEVELS=P.CONTACT_LEVELS, last=last,
@@ -574,7 +575,8 @@ def prospects_run(request: Request, target: int = Form(100), user: User = Depend
 
 @app.post("/prospects/import")
 async def prospects_import(request: Request, file: UploadFile = File(...), license_note: str = Form(""),
-                           src_kind: str = Form("device"), src_url: str = Form(""),
+                           src_kind: str = Form("device"), src_url: str = Form(""), provider: str = Form(""),
+                           data_updated_on: str = Form(""), sample_cost: str = Form(""),
                            user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """ملف مزوّد بيانات مرخّص (CSV أو Excel): يُضاف إلى طابور المعالجة اليومية."""
     from .. import prospects as P
@@ -584,8 +586,33 @@ async def prospects_import(request: Request, file: UploadFile = File(...), licen
     if len(data) > 30 * 1024 * 1024:
         flash(request, "الملف أكبر من ٣٠ ميغابايت — قسّمه إلى ملفات أصغر.", "err")
         return back("/prospects")
-    n, cols = P.queue_upload(s, user, file.filename or "upload.csv", data, license_note.strip())
+    purchase = None
+    if provider.strip():  # عيّنة بيانات مشتراة: المزوّد وتاريخ تحديث البيانات وتكلفتها
+        from ..models import DataPurchase
+        try:
+            upd = date.fromisoformat(data_updated_on) if data_updated_on else None
+        except ValueError:
+            upd = None
+        try:
+            cost = max(0.0, float(re.sub(r"[^\d.]", "", sample_cost) or 0))
+        except ValueError:
+            cost = 0.0
+        purchase = DataPurchase(provider=provider.strip()[:200], data_updated_on=upd, cost_usd=cost,
+                                file_name=(file.filename or "")[:200], license_note=license_note.strip()[:500],
+                                uploaded_by=user.id)
+        s.add(purchase)
+        s.flush()
+        if cost:
+            from ..costs import record_cost
+            record_cost("data_purchase", 1, cost, note=f"purchase:{purchase.id}", session=s)
+    n, cols = P.queue_upload(s, user, file.filename or "upload.csv", data, license_note.strip(),
+                             purchase_id=purchase.id if purchase else None)
     audit(s, user, "import", user, kind="prospects", rows=n, file=(file.filename or "")[:100])
+    if purchase is not None and n:
+        r = P.request_run(s, user, target=n, sources="import")  # تُعالج العيّنة فورًا
+        flash(request, f"عيّنة «{purchase.provider}»: {purchase.rows} سجلًا — {n} في طابور المعالجة و"
+                       f"{purchase.duplicate_in_file} مكرر داخل الملف أو لدينا. بدأت معالجتها (دفعة #{r.id}).")
+        return back("/prospects#purchases")
     if not n:
         flash(request, "لم أجد عمود «الاسم» في الصف الأول. الأعمدة المقبولة: الاسم، النشاط، المدينة، الموقع، الهاتف، البريد، "
                        "الرقم الموحد، السجل التجاري، رابط المصدر (بالعربية أو الإنجليزية).", "err")
@@ -2886,10 +2913,10 @@ def leads_page(request: Request, user: User = Depends(require_manager), s=Depend
 
 @app.get("/weekly-report", response_class=HTMLResponse)
 def weekly_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
-    from ..reports import weekly_segments
+    from ..reports import weekly_by_source, weekly_segments
     d = date.fromisoformat(day) if day else riyadh_today()
     w = weekly_segments(s, d)
-    return render(request, "weekly_report.html", user, s, w=w, prev=(w["start"] - timedelta(days=7)).isoformat(),
+    return render(request, "weekly_report.html", user, s, w=w, by_source=weekly_by_source(s, d), prev=(w["start"] - timedelta(days=7)).isoformat(),
                   next=(w["start"] + timedelta(days=7)).isoformat())
 
 
@@ -3851,3 +3878,155 @@ def discover_google_map(request: Request, user: User = Depends(require_manager))
                f'<text x="320" y="45" font-size="16" text-anchor="middle" fill="#6941A5" font-family="sans-serif">{e}</text></svg>')
         return Response(svg, media_type="image/svg+xml", headers={"cache-control": "no-store"})
     return Response(img, media_type=ct, headers={"cache-control": "private, max-age=300"})
+
+
+# ---------------------------------------------------------------- «اكتشاف من خرائط جوجل»: فرص البيع بالأدلة
+
+def _signal_runs(s):
+    from .. import directory as D
+    from ..models import DirectoryRun
+    return [r for r in s.scalars(select(DirectoryRun).order_by(DirectoryRun.id.desc()).limit(60))
+            if set(r.sources or []) & set(D.SIGNAL_TRACKS)][:12]
+
+
+def _run_source_costs(s, r) -> dict:
+    """تكلفة كل مصدر في الدفعة (من دفتر التكاليف: dir:<المصدر>:…)."""
+    from ..models import CostEntry
+    if not r.started_at:
+        return {}
+    end = r.finished_at or now_utc()
+    out = {}
+    for note, cost in s.execute(select(CostEntry.note, func.sum(CostEntry.cost_usd)).where(
+            CostEntry.at >= r.started_at, CostEntry.at <= end, CostEntry.note.like("dir:%")).group_by(CostEntry.note)):
+        src = (note or "").split(":")[1] if (note or "").count(":") >= 1 else ""
+        out[src] = round(out.get(src, 0) + float(cost or 0), 3)
+    return out
+
+
+@app.get("/signals", response_class=HTMLResponse)
+def signals_page(request: Request, run: int = 0, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import directory as D, geo
+    from ..activities import ACTIVITIES, SECTORS
+    from ..contact import STATUSES
+    from ..models import DirectoryRun, LeadStub
+    from ..goal import achieved as _ach, target as _goal
+    runs = _signal_runs(s)
+    cur = s.get(DirectoryRun, run) if run else (runs[0] if runs else None)
+    rows = []
+    per_src = []
+    if cur:
+        stubs = list(s.scalars(select(LeadStub).where(LeadStub.run_id == cur.id).order_by(LeadStub.id)))
+        cids = [x.company_id or x.duplicate_of for x in stubs if (x.company_id or x.duplicate_of)]
+        comps = {c.id: c for c in s.scalars(select(Company).where(Company.id.in_(cids or [0])))}
+        users = {u.id: u.name for u in s.scalars(select(User))}
+        for st in stubs:
+            c = comps.get(st.company_id or st.duplicate_of)
+            rows.append({"st": st, "c": c, "owner": users.get(c.owner_id) if c and c.owner_id else None,
+                         "phones": [x for x in (c.contacts if c else []) if x.kind == "phone"],
+                         "emails": [x for x in (c.contacts if c else []) if x.kind == "email"],
+                         "last_by": users.get(c.last_attempt_by_id) if c and c.last_attempt_by_id else None})
+        costs = _run_source_costs(s, cur)
+        minutes = (cur.stats or {}).get("_minutes") or (round(((cur.finished_at or now_utc()) - cur.started_at)
+                                                            .total_seconds() / 60, 1) if cur.started_at else None)
+        for src in cur.sources or []:
+            v = (cur.stats or {}).get(src) or {}
+            comp = v.get("complete", 0)
+            per_src.append({"src": src, "label": D.SOURCES.get(src, {}).get("label", src), **{k: v.get(k, 0) for k in (
+                "discovered", "new", "complete", "incomplete", "duplicate", "existing_customer", "pending_verify", "rejected_name")},
+                "cost": costs.get(src, 0.0), "cpc": round(costs.get(src, 0.0) / comp, 2) if comp else None})
+    else:
+        minutes = None
+    return render(request, "signals.html", user, s, runs=runs, cur=cur, rows=rows, per_src=per_src, minutes=minutes,
+                  TRACKS=D.SIGNAL_TRACKS, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
+                  GEO_PLACES=geo.PLACES, STATUSES=STATUSES, goal_t=_goal(s), goal_n=_ach(s),
+                  reps=list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name))),
+                  busy=any(r.status in ("pending", "running") for r in s.scalars(
+                      select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"])))))
+
+
+@app.post("/signals/run")
+async def signals_run(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    from .. import directory as D, geo
+    from ..activities import ACTIVITIES
+    from ..auth import audit
+    from ..goal import halt_reason
+    form = await request.form()
+    if (h := halt_reason()):
+        flash(request, f"توقف الجمع لهذا اليوم: {h}", "err")
+        return back("/signals")
+    tracks = [x for x in form.getlist("tracks") if x in D.SIGNAL_TRACKS] or ["sig_fleet", "sig_hiring", "sig_contracts"]
+    acts = form.getlist("activities")
+    acts = "__all__" if (not acts or "__all__" in acts) else [a for a in acts if a in ACTIVITIES]
+    mode = form.get("scope_mode") or "all"
+    if mode == "places":
+        pl = [p for p in form.getlist("places") if p in geo.PLACES]
+        scope = {"places": pl} if pl else {"all": True}
+    elif mode == "regions":
+        rg = [r for r in form.getlist("regions") if r in geo.REGIONS]
+        scope = {"regions": rg} if rg else {"all": True}
+    else:
+        scope = {"all": True}
+    try:
+        limit = max(3, min(int(form.get("limit") or 30), 400))
+        budget = max(0.5, min(float(form.get("budget") or 5), 200.0))
+    except ValueError:
+        limit, budget = 30, 5.0
+    r = D.request(s, sources=tracks, params={"activities": acts, "scope": scope, "stage1_limit": limit,
+                                             "signals": True}, budget=budget, user_id=user.id)
+    if r.sources != tracks:
+        flash(request, f"دفعة أخرى تعمل الآن (#{r.id}) — ستبدأ دفعتك بعد انتهائها؛ أعد المحاولة بعد قليل", "err")
+        return back("/signals")
+    audit(s, user, "signals_run", None, tracks=tracks, scope=scope, limit=limit, budget=budget)
+    flash(request, f"بدأت دفعة فرص البيع #{r.id} — يلتقطها العامل خلال دقيقة. الحد {limit} اسمًا والميزانية ${budget:.2f}.")
+    return back(f"/signals?run={r.id}")
+
+
+# ---------------------------------------------------------------- حاسبة تكلفة وقود الأسطول (صفحة عامة)
+
+@app.get("/fleet-calculator", response_class=HTMLResponse)
+def fleet_calculator(request: Request, src: str = "", done: int = 0, s=Depends(get_db, scope="function")):
+    staff = _session_user(request, s, "admin")
+    return templates.TemplateResponse(request, "fleet_calculator.html", {
+        "src": "".join(ch for ch in src if ch.isalnum() or ch in "-_")[:40], "done": done,
+        "is_admin": bool(staff and staff.role in ("admin", "manager")),
+        "flash": request.session.pop("flash", None)})
+
+
+@app.post("/fleet-calculator")
+def fleet_calculator_submit(request: Request, vehicles: str = Form(...), spend: str = Form(...),
+                            company_name: str = Form(...), contact_name: str = Form(""), phone: str = Form(""),
+                            email: str = Form(""), consent: str = Form(""), src: str = Form(""),
+                            website_url: str = Form(""), s=Depends(get_db, scope="function")):
+    """«أرغب في مراجعة تكلفة أسطولي مع فريق سيارة أب»: يظهر الطلب للفريق مع عدد المركبات ومصدر الطلب."""
+    from ..leads import create_lead, hash_ip, too_many
+    from ..models import InboundLead
+    if website_url:  # حقل مخفي لاصطياد البرامج الآلية
+        return back("/fleet-calculator?done=1")
+    try:
+        nveh = max(1, min(int(re.sub(r"\D", "", vehicles) or 0), 100000))
+        per = max(0.0, min(float(re.sub(r"[^\d.]", "", spend) or 0), 1_000_000.0))
+    except ValueError:
+        nveh, per = 0, 0.0
+    if not nveh or not company_name.strip() or not consent or not (normalize_phone(phone) or normalize_email(email)):
+        flash(request, "أدخل عدد المركبات واسم المنشأة ورقم جوال أو بريدًا صحيحًا، ووافق على التواصل", "err")
+        return back("/fleet-calculator")
+    ip = hash_ip(request.client.host if request.client else None, settings.secret_key)
+    if too_many(s, ip):
+        flash(request, "تم استلام عدة طلبات من هذا الجهاز. سنتواصل معكم قريبًا.", "err")
+        return back("/fleet-calculator")
+    monthly, yearly = round(nveh * per), round(nveh * per * 12)
+    staff = _session_user(request, s, "admin")
+    is_test = bool(staff and staff.role in ("admin", "manager"))  # طلب من حساب الإدارة = تجريبي
+    clean_src = "".join(ch for ch in src if ch.isalnum() or ch in "-_")[:40]
+    lead = create_lead(s, company_name=company_name, city="", vehicles=nveh, activity=None, offer_id=None,
+                       service_text="مراجعة تكلفة وقود الأسطول", contact_name=contact_name or company_name,
+                       phone=phone, email=email, preferred_channel="phone",
+                       source="fuel_calculator" + (f":{clean_src}" if clean_src else ""),
+                       notes=f"حاسبة الوقود: {nveh} مركبة × {per:,.0f} ر.س شهريًا = {monthly:,} ر.س شهريًا / {yearly:,} ر.س سنويًا",
+                       ip_hash=ip)
+    if is_test:
+        lead.is_test = True
+        c = s.get(Company, lead.company_id) if lead.company_id else None
+        if c is not None and c.lead_source and c.lead_source.startswith("fuel_calculator"):
+            c.is_test = True  # مستبعد من أرقام المبيعات والهدف اليومي
+    return back("/fleet-calculator?done=1")

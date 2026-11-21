@@ -565,3 +565,58 @@ def daily_target(s: Session) -> int:
     """هدف العملاء الجدد المكتملين يوميًا — الإعداد الموحّد (افتراضيًا ٢٠٠)."""
     from .goal import target as _goal
     return _goal(s)
+
+
+def weekly_by_source(s: Session, day: date | None = None) -> list[dict]:
+    """لكل مصدر هذا الأسبوع: المنشآت الجديدة المكتملة، ومسؤولو التشغيل الذين وصل إليهم الفريق، والاجتماعات المحجوزة،
+    والتكلفة، وتكلفة الاجتماع («غير متاحة» إن لم تُحجز اجتماعات)."""
+    from .directory import SOURCES
+    from .leads import source_label
+    from .models import Meeting
+    day = day or riyadh_today()
+    start, end = week_bounds(day)
+    t0, _ = riyadh_day_bounds_utc(start)
+    _, t1 = riyadh_day_bounds_utc(end)
+
+    def fam(ls: str | None) -> str:
+        ls = ls or "discovery"
+        if ls.startswith("directory:"):
+            return ls
+        return ls.split(":", 1)[0]
+
+    def label(f: str) -> str:
+        if f.startswith("directory:"):
+            k = f.split(":", 1)[1]
+            return SOURCES.get(k, {}).get("label") or {"bluepages": "دليل الصفحات الزرقاء", "earabicmarket": "السوق العربي",
+                                                      "import": "ملف/عيّنة مزوّد بيانات"}.get(k, k)
+        return source_label(f)
+    rows: dict[str, dict] = {}
+
+    def row(f):
+        return rows.setdefault(f, {"key": f, "label": label(f), "complete": 0, "reached": 0, "meetings": 0, "cost": 0.0})
+    for ls, n in s.execute(select(Company.lead_source, func.count(Company.id)).where(
+            Company.is_test.is_(False), Company.counted_on >= start, Company.counted_on <= end,
+            Company.data_status == "complete").group_by(Company.lead_source)):
+        row(fam(ls))["complete"] += n
+    for ls, n in s.execute(select(Company.lead_source, func.count(Company.id)).where(
+            Company.is_test.is_(False), Company.reached_dm_at >= t0, Company.reached_dm_at < t1).group_by(Company.lead_source)):
+        row(fam(ls))["reached"] += n
+    for ls, n in s.execute(select(Company.lead_source, func.count(Meeting.id)).join(Company, Company.id == Meeting.company_id)
+                           .where(Company.is_test.is_(False), Meeting.created_at >= t0, Meeting.created_at < t1,
+                                  Meeting.status != "cancelled").group_by(Company.lead_source)):
+        row(fam(ls))["meetings"] += n
+    for note, cost in s.execute(select(CostEntry.note, func.sum(CostEntry.cost_usd)).where(
+            CostEntry.day >= start, CostEntry.day <= end).group_by(CostEntry.note)):
+        note = note or ""
+        if note.startswith("dir:"):
+            f = "directory:" + note.split(":")[1]
+        elif note.startswith("purchase:"):
+            f = "directory:import"
+        else:
+            continue
+        row(f)["cost"] += float(cost or 0)
+    out = sorted(rows.values(), key=lambda r: (-r["complete"], r["label"]))
+    for r in out:
+        r["cost"] = round(r["cost"], 2)
+        r["cost_per_meeting"] = round(r["cost"] / r["meetings"], 2) if r["meetings"] else None
+    return out

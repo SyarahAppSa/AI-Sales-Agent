@@ -1,0 +1,36 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>حاسبة تكلفة وقود الأسطول — سيارة أب</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<style>.calc{max-width:720px;margin:0 auto;padding:24px 16px}.big{font-size:30px;font-weight:800;color:var(--brand,#6941A5)}.res{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}</style>
+</head><body style="background:#FAF8FC"><main class="calc">
+<h1 style="color:#6941A5;margin-bottom:4px">حاسبة تكلفة وقود الأسطول</h1>
+<p class="muted" style="margin-top:0">اعرف تكلفة وقود أسطولك الشهرية والسنوية خلال ثوانٍ.</p>
+{% if flash %}<div class="card" style="border-color:var(--err);color:var(--err)">{{ flash.msg }}</div>{% endif %}
+{% if done %}<div class="card" style="border-color:var(--ok)"><b>وصل طلبك.</b> سيتواصل معك فريق سيارة أب لمراجعة تكلفة أسطولك.</div>{% endif %}
+<div class="card">
+  <div class="row"><div><label for="v">عدد المركبات</label><input id="v" type="number" min="1" inputmode="numeric" value="10"></div>
+  <div><label for="p">متوسط إنفاق المركبة الشهري على الوقود (ر.س)</label><input id="p" type="number" min="0" inputmode="decimal" value="1500"></div></div>
+  <div class="res"><div class="stat"><div class="l">التكلفة الشهرية</div><div class="big"><span id="m">0</span> ر.س</div></div>
+    <div class="stat"><div class="l">التكلفة السنوية</div><div class="big"><span id="y">0</span> ر.س</div></div></div>
+</div>
+<form class="card" method="post" action="/fleet-calculator">
+  <label class="chips" style="font-weight:700"><input type="checkbox" id="want" onchange="document.getElementById('more').hidden=!this.checked"> أرغب في مراجعة تكلفة أسطولي مع فريق سيارة أب</label>
+  <div id="more" hidden>
+    <input type="hidden" name="vehicles" id="fv"><input type="hidden" name="spend" id="fp"><input type="hidden" name="src" value="{{ src }}">
+    <input type="text" name="website_url" value="" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+    <div class="row"><div><label>اسم المنشأة</label><input name="company_name" required></div><div><label>اسمك</label><input name="contact_name"></div></div>
+    <div class="row"><div><label>رقم الجوال</label><input name="phone" dir="ltr" inputmode="tel" placeholder="05xxxxxxxx"></div><div><label>أو البريد</label><input name="email" dir="ltr" type="email"></div></div>
+    <label class="chips"><input type="checkbox" name="consent" value="1" required> أوافق على تواصل فريق سيارة أب معي بخصوص هذا الطلب</label>
+    {% if is_admin %}<p class="small" style="color:#a15c00">أنت داخل بحساب الإدارة: هذا الطلب سيُسجَّل «تجريبيًا» ويُستبعد من أرقام المبيعات.</p>{% endif %}
+    <button class="btn p">أرسل الطلب</button>
+  </div>
+</form>
+<p class="small muted">سيارة أب — الأرقام تقديرية حسب ما أدخلته.</p>
+</main>
+<script>(function(){var v=document.getElementById('v'),p=document.getElementById('p');
+function f(){var n=Math.max(0,+v.value||0),x=Math.max(0,+p.value||0),m=Math.round(n*x);
+document.getElementById('m').textContent=m.toLocaleString('ar-SA');document.getElementById('y').textContent=(m*12).toLocaleString('ar-SA');
+document.getElementById('fv').value=n;document.getElementById('fp').value=x;}
+v.addEventListener('input',f);p.addEventListener('input',f);f();})();</script>
+</body></html>
