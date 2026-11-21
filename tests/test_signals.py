@@ -106,7 +106,12 @@ def test_signal_tracks_evidence_dedupe_and_rep_view():
         assert "اكتشاف من خرائط جوجل" in page and "شركة الواحة لتوزيع الأغذية" in page
         assert "أعلنت هذا الأسبوع عن توظيف مشرف حركة" in page and JOB in page and "إدارة النقل والتوزيع" in page
         assert "+966126651100" in page and "sales@waha-food-sig.example" in page and "غير معلوم" in page
-        assert "قيد التحقق" in page and "مكررة — أُضيف الدليل لسجلها" in page
+        assert "قيد التحقق" in page and "مكررة — دُمج الدليل في سجلها" in page
+        # العرض المختصر: خمسة أعمدة، الرقم كاملًا LTR مع زر نسخ، ما ينقص واضح، والتفاصيل في لوحة جانبية
+        assert '<bdi class="ph" dir="ltr" translate="no">+966126651100</bdi>' in page and 'data-copy="+966126651100"' in page
+        assert "البريد غير متوفر" in page or "الهاتف غير متوفر" in page
+        assert 'class="det-src"' in page and "عرض التفاصيل" in page and "سجل التواصل" in page and 'id="drawer"' in page
+        assert "الموقع الرسمي" in page and "<th class=\"c-fu\">المتابعة</th>" in page
         assert "اتصلت الأسبوع الماضي" in page and "طلب التواصل لاحقًا" in page and "غير مسند" in page  # قبل الإسناد
         assert "google.com/maps/search/?api=1" in page and "تكلفة المنشأة المكتملة" in page
         # التشغيل من اللوحة

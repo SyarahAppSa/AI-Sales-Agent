@@ -264,3 +264,43 @@ select.mk-later{background:var(--warn-soft);color:var(--warn)}
 .kitbody summary{list-style:none;display:inline-block}
 .kittext{white-space:pre-line;margin-top:8px;padding:10px;border-radius:8px;background:var(--soft);line-height:1.9}
 .kitedit{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+/* «اكتشاف من خرائط جوجل»: نتائج مختصرة بخمسة أعمدة، بطاقات على الجوال، لوحة تفاصيل جانبية */
+.sigwrap{max-height:78vh;overflow:auto;border-radius:12px}
+.sigtable{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.sigtable thead th{position:sticky;top:0;z-index:2;background:var(--soft,#EFE8F8);text-align:start;padding:10px 12px;font-size:13px}
+.sigtable td{padding:10px 12px;vertical-align:top;border-top:1px solid var(--line)}
+.sigtable .c-name{width:31%}.sigtable .c-contact{width:25%}.sigtable .c-ver{width:18%}.sigtable .c-fu{width:15%}.sigtable .c-det{width:11%}
+html[dir="rtl"] .sigtable .nm[dir="ltr"]{text-align:right}
+.sigtable .nm{font-weight:800;font-size:15px;line-height:1.5;word-break:normal;overflow-wrap:normal;hyphens:none}
+.sigtable .sub{font-size:13px;color:var(--muted);margin:2px 0 0}
+.sigtable .cline{display:flex;align-items:center;gap:6px;justify-content:flex-start;margin:2px 0}
+.sigtable .cline bdi{white-space:nowrap;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.sigtable .cline.em bdi{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:13px}
+.sigtable .cline{min-width:0}
+.sigtable .cp{border:1px solid var(--line);background:#fff;border-radius:8px;font-size:12px;padding:1px 8px;cursor:pointer;flex:0 0 auto}
+.sigtable .miss{font-size:12px;color:var(--warn)}
+.sigtable .c-ver .pill{display:inline-block;margin:0 0 4px;white-space:normal;line-height:1.5}
+.sigtable details.assign summary{list-style:none;display:inline-block;margin-top:4px}
+.sigtable details.assign form{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.sigtable .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.drawer-bg{position:fixed;inset:0;background:rgba(41,36,49,.35);z-index:40}
+.drawer{position:fixed;top:0;bottom:0;inset-inline-start:0;width:min(460px,100vw);background:#FAF8FC;z-index:41;overflow:auto;
+  padding:18px 20px;box-shadow:0 0 30px rgba(41,36,49,.25)}
+.drawer[hidden],.drawer-bg[hidden]{display:none}
+.drawer h3{margin:4px 0;color:#6941A5}.drawer h4{margin:14px 0 4px;font-size:14px}
+.drawer blockquote{margin:6px 0;padding:8px 10px;background:#EFE8F8;border-radius:8px;font-size:13px}
+.drawer-x{float:inline-end}
+@media (max-width:760px){
+  .sigwrap{max-height:none;overflow:visible}
+  .sigtable,.sigtable tbody,.sigtable tr,.sigtable td{display:block;width:100%!important}
+  .sigtable thead{display:none}
+  .sigtable tr{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff}
+  .sigtable td{border:0;padding:0;min-height:0;height:auto}
+  .sigtable td.c-name,.sigtable td.c-contact{grid-column:1/-1}
+  .sigtable td.c-ver,.sigtable .cline.em~.cline.em{display:none}
+  .sigtable td.c-fu{display:flex!important;flex-wrap:wrap;align-items:center;gap:4px 8px;width:auto!important}
+  .sigtable td.c-fu .assign{margin:0}
+  .sigtable td.c-det{width:auto!important;align-self:end}
+  .sigtable td.c-det .btn{width:auto}
+}
+.sig-src{overflow-x:auto}.sig-src table{min-width:760px}.sig-src td:first-child{min-width:180px}.sig-src th{white-space:nowrap}

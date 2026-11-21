@@ -690,6 +690,20 @@ def _phone_full(v: str) -> str:
 
 
 templates.env.globals.update(phone_full=_phone_full)
+templates.env.filters["textdir"] = lambda v: "rtl" if re.search(r"[\u0600-\u06FF]", str(v or "")) else "ltr"
+
+
+def _scope_label(sc) -> str:
+    from mandoob import geo as _g
+    sc = sc or {}
+    if not isinstance(sc, dict) or sc.get("all") or not (sc.get("places") or sc.get("regions")):
+        return "جميع مناطق المملكة"
+    parts = [_g.REGIONS[r]["ar"] for r in sc.get("regions") or [] if r in _g.REGIONS]
+    parts += [_g.PLACES[p]["ar"] for p in sc.get("places") or [] if p in _g.PLACES]
+    return "، ".join(parts) or "—"
+
+
+templates.env.filters["scope_label"] = _scope_label
 templates.env.filters["todt"] = lambda v: datetime.fromisoformat(v) if isinstance(v, str) and v else v
 
 
@@ -3919,9 +3933,21 @@ def signals_page(request: Request, run: int = 0, user: User = Depends(require_ma
         cids = [x.company_id or x.duplicate_of for x in stubs if (x.company_id or x.duplicate_of)]
         comps = {c.id: c for c in s.scalars(select(Company).where(Company.id.in_(cids or [0])))}
         users = {u.id: u.name for u in s.scalars(select(User))}
+        from ..models import Activity
+        acts_by: dict[int, list] = {}
+        for a in s.scalars(select(Activity).where(Activity.company_id.in_(list(comps) or [0]))
+                           .order_by(Activity.at.desc()).limit(600)):
+            if len(acts_by.setdefault(a.company_id, [])) < 6:
+                acts_by[a.company_id].append(a)
         for st in stubs:
             c = comps.get(st.company_id or st.duplicate_of)
+            note = st.operator_note or ""
+            veh_word = "الحافلات" if any(w in (st.activity or "") for w in ("مدرس", "حافلات", "طلاب", "نقل الموظفين", "ركاب")) \
+                else "المركبات"
             rows.append({"st": st, "c": c, "owner": users.get(c.owner_id) if c and c.owner_id else None,
+                         "acts": acts_by.get(c.id, []) if c else [],
+                         "op_short": (f"تشغيل {veh_word} غير مؤكد" if "غير مؤكد" in note else
+                                      (f"تشغيل {veh_word} مؤكد" if note else "")),
                          "phones": [x for x in (c.contacts if c else []) if x.kind == "phone"],
                          "emails": [x for x in (c.contacts if c else []) if x.kind == "email"],
                          "last_by": users.get(c.last_attempt_by_id) if c and c.last_attempt_by_id else None})

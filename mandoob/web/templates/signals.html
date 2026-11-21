@@ -40,39 +40,75 @@ f.addEventListener('input',function(){var q=f.value.trim();[].forEach.call(sel.q
 {% if runs %}<div class="card"><h2>الدفعات</h2><div class="chips">{% for r in runs %}<a class="pill {{ 'info' if cur and r.id == cur.id }}" href="/signals?run={{ r.id }}">#{{ r.id }} — {{ {'pending':'بانتظار البدء','running':'جارية','done':'اكتملت','stopped':'توقفت','failed':'فشلت'}.get(r.status, r.status) }} — {{ fmt(r.created_at) }}</a>{% endfor %}</div></div>{% endif %}
 
 {% if cur %}
-<div class="card tablewrap"><h2>الدفعة #{{ cur.id }} — لكل مصدر</h2>
+<div class="card tablewrap sig-src"><h2>الدفعة #{{ cur.id }} — لكل مصدر</h2>
 <table><tr><th>المصدر</th><th>المكتشفة</th><th>الجديدة المكتملة</th><th>قيد الاستكمال</th><th>المكررة</th><th>عملاء حاليون</th><th>قيد التحقق</th><th>مرفوضة (بلا دليل)</th><th>التكلفة</th><th>تكلفة المنشأة المكتملة</th></tr>
 {% for x in per_src %}<tr><td><b>{{ x.label }}</b></td><td>{{ x.discovered }}</td><td><b>{{ x.complete }}</b></td><td>{{ x.incomplete }}</td><td>{{ x.duplicate }}</td><td>{{ x.existing_customer }}</td><td>{{ x.pending_verify }}</td><td>{{ x.rejected_name }}</td><td>${{ x.cost }}</td><td>{{ '$%s' % x.cpc if x.cpc is not none else '—' }}</td></tr>{% endfor %}
 </table>
-<p class="small muted">وقت البحث: {{ minutes if minutes is not none else '—' }} دقيقة — النطاق: {{ (cur.params or {}).get('scope') }}{% if (cur.log or [])|length %} — آخر سطر: {{ cur.log[-1] }}{% endif %}</p></div>
+<p class="small muted">وقت البحث: {{ minutes if minutes is not none else '—' }} دقيقة — النطاق: {{ (cur.params or {}).get('scope')|scope_label }}{% if (cur.log or [])|length %} — آخر سطر: {{ cur.log[-1] }}{% endif %}</p></div>
 
-<div class="card tablewrap"><h2>النتائج ({{ rows|length }})</h2>
-<table>
-<tr><th>المنشأة</th><th>الهاتف والبريد الرسميان</th><th>سبب الترشيح والدليل</th><th>مشغّل المركبات</th><th>المركبات</th><th>الجهة المقترحة</th><th>قبل الإسناد</th><th>الحالة</th></tr>
-{% for x in rows %}{% set st, c = x.st, x.c %}<tr>
-<td><b translate="no">{% if c %}<a href="/companies/{{ c.id }}">{{ c.name }}</a>{% else %}{{ st.name }}{% endif %}</b>
-  <div class="small muted" translate="no">{{ st.activity }} — {{ st.city }}</div>
-  {% if c and c.website %}<div class="small"><a class="ltr" href="{{ c.website }}" target="_blank" rel="noopener">{{ c.domain or c.website }}</a></div>{% endif %}
-  <div class="small"><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ (st.name ~ ' ' ~ st.city)|urlencode }}">فتح في خرائط Google ↗</a></div></td>
-<td class="small">{% for p in x.phones %}<div><span class="ph" dir="ltr" translate="no">{{ p.value }}</span> <a href="{{ p.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% endfor %}
-  {% for e in x.emails %}<div><span class="ltr" translate="no">{{ e.value }}</span> <a href="{{ e.source_url }}" target="_blank" rel="noopener">المصدر</a></div>{% endfor %}
-  {% if not x.phones and not x.emails %}<span class="muted">—</span>{% endif %}</td>
-<td class="small" style="max-width:340px"><span class="pill">{{ TRACKS[st.signal_kind].label if st.signal_kind in TRACKS else '' }}</span>
-  <div translate="no">{{ st.reason or '' }}</div>
-  {% if st.evidence_quote %}<div class="muted" translate="no">«{{ st.evidence_quote[:220] }}»</div>{% endif %}
-  {% if st.evidence_url %}<div>{{ fmt_date(st.evidence_date) if st.evidence_date else 'تاريخ غير مذكور' }} — <a href="{{ st.evidence_url }}" target="_blank" rel="noopener">رابط الدليل</a></div>{% endif %}</td>
-<td class="small" translate="no">{% if st.operator_note %}{% if 'غير مؤكد' in st.operator_note %}<span class="pill warn">{{ st.operator_note }}</span>{% else %}{{ st.operator_note }}{% endif %}{% else %}—{% endif %}</td>
-<td>{{ st.vehicles_count if st.vehicles_count else 'غير معلوم' }}</td>
-<td class="small" translate="no">{{ st.contact_dept or (c.decision_unit if c else '') or '—' }}</td>
-<td class="small">{% if c %}<div>المسؤول: <b>{{ x.owner or 'غير مسند' }}</b></div>
-  <div>آخر تواصل: {{ fmt(c.last_attempt_at) if c.last_attempt_at else 'لا يوجد' }}{% if x.last_by %} — {{ x.last_by }}{% endif %}</div>
-  <div>النتيجة: {{ STATUSES.get(c.contact_status, c.contact_status) if c.contact_status else '—' }}</div>
-  {% if c.last_note or c.last_action %}<div translate="no">ملاحظة: {{ (c.last_note or c.last_action)[:120] }}</div>{% endif %}
-  {% if not c.owner_id %}<form method="post" action="/companies/assign" class="row" style="gap:4px;margin-top:4px"><input type="hidden" name="company_ids" value="{{ c.id }}">
-    <select name="owner_id" style="width:auto">{% for u in reps %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select><button class="btn sm">إسناد</button></form>{% endif %}
-  {% else %}—{% endif %}</td>
-<td>{% set lbl = {'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'duplicate':('info','مكررة — أُضيف الدليل لسجلها'),'existing_customer':('info','عميل حالي'),'pending_verify':('warn','قيد التحقق'),'new':('info','جارٍ الاستكمال'),'failed':('err','تعذّر')}.get(st.status, ('', st.status)) %}<span class="pill {{ lbl[0] }}">{{ lbl[1] }}</span></td>
-</tr>{% else %}<tr><td colspan="8" class="muted">لا نتائج بعد{% if cur.status in ('pending','running') %} — الدفعة جارية، تتحدث الصفحة تلقائيًا{% endif %}.</td></tr>{% endfor %}
-</table></div>
+<div class="card sig-results"><h2>النتائج ({{ rows|length }})</h2>
+{% set DS = {'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'duplicate':('info','مكررة — دُمج الدليل في سجلها'),'existing_customer':('info','عميل حالي'),'pending_verify':('warn','قيد التحقق'),'new':('info','جارٍ الاستكمال'),'failed':('err','تعذّر')} %}
+<div class="sigwrap"><table class="sigtable">
+<thead><tr><th class="c-name">المنشأة</th><th class="c-contact">بيانات التواصل</th><th class="c-ver">حالة التحقق</th><th class="c-fu">المتابعة</th><th class="c-det"><span class="sr">التفاصيل</span></th></tr></thead>
+<tbody>
+{% for x in rows %}{% set st, c = x.st, x.c %}{% set ds = DS.get(st.status, ('', st.status)) %}
+{% if st.status == 'complete' and not (x.phones and x.emails) %}{% set ds = ('warn', 'قيد الاستكمال — ينقص ' ~ ('الهاتف' if not x.phones else 'البريد')) %}{% endif %}
+{% set nm = c.name if c else st.name %}
+<tr>
+<td class="c-name"><div class="nm" translate="no" dir="{{ nm|textdir }}">{{ nm }}</div>
+  <div class="sub"><span translate="no">{{ st.activity }}</span> · <span translate="no">{{ st.city }}</span></div></td>
+<td class="c-contact">
+  {% for p in x.phones %}<div class="cline"><bdi class="ph" dir="ltr" translate="no">{{ p.value }}</bdi><button type="button" class="cp" data-copy="{{ p.value }}" aria-label="نسخ الرقم {{ p.value }}">نسخ</button></div>{% endfor %}
+  {% if not x.phones %}<div class="miss">الهاتف غير متوفر</div>{% endif %}
+  {% for e in x.emails %}<div class="cline em"><bdi dir="ltr" translate="no" title="{{ e.value }}">{{ e.value }}</bdi><button type="button" class="cp" data-copy="{{ e.value }}" aria-label="نسخ البريد {{ e.value }}">نسخ</button></div>{% endfor %}
+  {% if not x.emails %}<div class="miss">البريد غير متوفر</div>{% endif %}</td>
+<td class="c-ver"><span class="pill {{ ds[0] }}">{{ ds[1] }}</span>
+  {% if x.op_short %}<span class="pill {{ 'warn' if 'غير مؤكد' in x.op_short else 'ok' }}">{{ x.op_short }}</span>{% endif %}</td>
+<td class="c-fu">{% if c %}
+  <div class="who">{% if x.owner %}<b translate="no">{{ x.owner }}</b>{% else %}<span class="pill warn">غير مسند</span>{% endif %}</div>
+  <div class="small muted">{% if c.last_attempt_at %}آخر تواصل {{ fmt_date(c.last_attempt_at) }} — {{ STATUSES.get(c.contact_status, c.contact_status) }}{% elif c.contact_status and c.contact_status != 'new' %}آخر نتيجة: {{ STATUSES.get(c.contact_status, c.contact_status) }}{% else %}لا تواصل بعد{% endif %}</div>
+  {% if not c.owner_id %}<details class="assign"><summary class="btn sm">إسناد</summary>
+    <form method="post" action="/companies/assign"><input type="hidden" name="company_ids" value="{{ c.id }}">
+    <select name="owner_id" aria-label="اختر الموظف">{% for u in reps %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select>
+    <button class="btn sm p">تأكيد الإسناد</button></form></details>{% endif %}
+{% else %}<span class="small muted">—</span>{% endif %}</td>
+<td class="c-det"><button type="button" class="btn sm" data-open="det-{{ st.id }}">عرض التفاصيل</button>
+<div class="det-src" id="det-{{ st.id }}" hidden>
+  <h3 translate="no" dir="{{ nm|textdir }}">{{ nm }}</h3>
+  <p class="small muted"><span translate="no">{{ st.activity }}</span> · <span translate="no">{{ st.city }}</span> — {{ TRACKS[st.signal_kind].label if st.signal_kind in TRACKS else '' }}</p>
+  <h4>سبب الترشيح</h4><p translate="no">{{ st.reason or '—' }}</p>
+  {% if st.evidence_quote %}<blockquote translate="no" dir="auto">«{{ st.evidence_quote[:400] }}»</blockquote>{% endif %}
+  <p class="small">{{ ('تاريخ الدليل: ' ~ fmt_date(st.evidence_date)) if st.evidence_date else 'تاريخ الدليل غير مذكور' }}{% if st.evidence_url %} — <a href="{{ st.evidence_url }}" target="_blank" rel="noopener">{{ 'فتح في الخرائط' if 'overturemaps' in st.evidence_url else 'رابط الدليل' }}</a>{% endif %}</p>
+  <h4>مشغّل المركبات</h4><p translate="no">{{ st.operator_note or 'مشغّل المركبات غير مؤكد' }}</p>
+  <p class="small">المركبات: {{ st.vehicles_count if st.vehicles_count else 'غير معلوم' }}{% if st.contact_dept or (c and c.decision_unit) %} — الجهة المقترحة: <span translate="no">{{ st.contact_dept or c.decision_unit }}</span>{% endif %}</p>
+  <h4>مصادر التواصل</h4>
+  <ul class="small">{% for p in x.phones %}<li><bdi dir="ltr">{{ p.value }}</bdi> — <a href="{{ p.source_url }}" target="_blank" rel="noopener">المصدر</a></li>{% endfor %}
+  {% for e in x.emails %}<li><bdi dir="ltr">{{ e.value }}</bdi> — <a href="{{ e.source_url }}" target="_blank" rel="noopener">المصدر</a></li>{% endfor %}
+  {% if not x.phones and not x.emails %}<li class="muted">لا وسائل تواصل موثّقة بعد</li>{% endif %}</ul>
+  <p class="small links">{% if c and c.website %}<a href="{{ c.website }}" target="_blank" rel="noopener">الموقع الرسمي</a> · {% endif %}<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ ((c.name if c else st.name) ~ ' ' ~ st.city)|urlencode }}">فتح في خرائط Google</a>{% if c %} · <a href="/companies/{{ c.id }}">بطاقة المنشأة</a>{% endif %}</p>
+  {% if c and (c.last_note or c.last_action) %}<h4>الملاحظات</h4><p translate="no">{{ c.last_note or c.last_action }}</p>{% endif %}
+  <h4>سجل التواصل</h4>
+  {% if x.acts %}<ul class="small">{% for a in x.acts %}<li>{{ fmt(a.at) }} — <span translate="no">{{ a.title }}</span></li>{% endfor %}</ul>{% else %}<p class="small muted">لا سجل بعد.</p>{% endif %}
+</div></td>
+</tr>{% else %}<tr><td colspan="5" class="muted">لا نتائج بعد{% if cur.status in ('pending','running') %} — الدفعة جارية، تتحدث الصفحة تلقائيًا{% endif %}.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="drawer-bg" id="drawer-bg" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="تفاصيل المنشأة" hidden>
+  <button type="button" class="btn sm drawer-x" id="drawer-x" aria-label="إغلاق">إغلاق ✕</button>
+  <div id="drawer-body"></div>
+</aside>
+<script>(function(){
+  var dr=document.getElementById('drawer'),bg=document.getElementById('drawer-bg'),body=document.getElementById('drawer-body');
+  function close(){dr.hidden=true;bg.hidden=true;}
+  document.querySelectorAll('[data-open]').forEach(function(b){b.addEventListener('click',function(){
+    body.innerHTML=document.getElementById(b.dataset.open).innerHTML;dr.hidden=false;bg.hidden=false;document.getElementById('drawer-x').focus();});});
+  document.getElementById('drawer-x').addEventListener('click',close);bg.addEventListener('click',close);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+  function copy(t){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(t);
+    var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();return Promise.resolve();}
+  document.querySelectorAll('.cp').forEach(function(b){b.addEventListener('click',function(){copy(b.dataset.copy).then(function(){
+    var o=b.textContent;b.textContent='✓';setTimeout(function(){b.textContent=o;},1200);});});});
+})();</script>
 {% endif %}
 {% endblock %}
