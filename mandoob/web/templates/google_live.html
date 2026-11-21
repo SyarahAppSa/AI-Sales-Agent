@@ -7,7 +7,8 @@
   <div style="flex:0 1 220px"><label class="small">النشاط</label><select name="activity">{% for k, a in ACTIVITIES.items() %}<option value="{{ k }}" {{ 'selected' if k == activity }}>{{ a.label }}</option>{% endfor %}</select></div>
   <div style="flex:0 1 180px"><label class="small">المدينة</label><select name="city">{% for pid, nm in GOOGLE_CITIES %}<option value="{{ pid }}" {{ 'selected' if pid == city }}>{{ nm }}</option>{% endfor %}</select></div>
   <div style="flex:1 1 240px"><label class="small">أو اكتب عبارة البحث (اختياري)</label><input name="q" value="{{ q }}" placeholder="مثل: شركات نقل في الرياض"></div>
-  <div style="flex:0 0 auto"><button class="btn p">ابحث</button></div>
+  <div style="flex:0 0 auto" class="row"><button class="btn p">ابحث</button>
+    <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ (query or q or (ACTIVITIES[activity].label ~ ' في ' ~ dict(GOOGLE_CITIES)[city]))|urlencode }}">بحث في خرائط Google ↗</a></div>
 </form>
 
 <div class="card"><h2>حالة الاتصال بـGoogle</h2>

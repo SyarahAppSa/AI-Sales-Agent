@@ -120,6 +120,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         sources["ai_agent"].per_call = min(sources["ai_agent"].per_call, max(per_cat_cap + 1, 3))
 
     def batch_full(s) -> bool:
+        from ..goal import halt_reason as _halt
+        if _halt():  # هدف اليوم الموحّد أو حد التكلفة
+            return True
         if per_cat_cap is not None:
             return False  # نصيب كل قطاع هو الحد
         return max_new is not None and sum(_count_today(s, cid, day) for cid, *_ in cats) - baseline >= max_new
@@ -128,6 +131,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
         cat_base = {cid: _count_today(s, cid, day) for cid, *_ in cats}
 
     def cat_full(s, cat_id: int, quota: int) -> bool:
+        from ..goal import halt_reason as _halt
+        if _halt():
+            return True
         have = _count_today(s, cat_id, day)
         return have >= quota or (per_cat_cap is not None and have - cat_base[cat_id] >= per_cat_cap)
 
@@ -262,6 +268,9 @@ def run_campaign_discovery(campaign_id: int, *, day: date | None = None, sources
             reasons.append(f"المصدر «{SOURCE_LABELS.get(name, name)}» تعذّر: {classify(str(err))['cause']}")
         if incomplete_today:
             reasons.append(f"{incomplete_today} شركة مطابقة ينقصها هاتف أو بريد موثّق (قيد الاستكمال)")
+        from ..goal import halt_reason as _halt
+        if (h := _halt()) and run.shortfall:
+            reasons.insert(0, f"توقف الجمع لهذا اليوم: {h}")
         run.shortfall_reason = "\n".join(reasons) if run.shortfall else ""
         run.status = "done" if run.shortfall == 0 else "partial"
         run.finished_at = now_utc()

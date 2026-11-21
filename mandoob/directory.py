@@ -509,6 +509,9 @@ def run(run_id: int, crawler=None) -> None:
         p = r.params or {}
         limit = int(p.get("stage1_limit", 30))
         target = int(p.get("target_complete") or 10 ** 6)
+        if p.get("auto"):  # الدفعة اليومية: المتبقي من الهدف الموحّد بعد ما اكتمل اليوم من كل المصادر
+            from .goal import achieved as _ach, target as _goal
+            target = max(0, _goal(s) - _ach(s))
         budget = float(r.budget_usd or 5)
         camp = _campaign(s)
         today = riyadh_today()
@@ -724,6 +727,8 @@ def get_auto(s) -> dict:
     if "overture" not in srcs and not cfg.get("overture_off"):
         srcs = ["overture"] + srcs  # مصدر مستقل يسمح بالحفظ — يُضاف للإعداد المحفوظ قبله
     cfg["sources"] = srcs
+    from .goal import target as _goal
+    cfg["target_complete"] = _goal(s)  # الهدف اليومي الموحّد
     return cfg
 
 

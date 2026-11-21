@@ -211,7 +211,7 @@ def test_web_and_social_sources_keep_trace_fallback_on_failure_daily_schedule_an
             x.status = "done"
         D.set_auto(s, enabled=True, time="00:00", budget_usd=1)
         a = D.schedule_daily(s)
-        assert a is not None and a.params["auto"] and a.params["target_complete"] == 400
+        assert a is not None and a.params["auto"] and a.params["target_complete"] == 200
         a.status = "done"
         assert D.schedule_daily(s) is None
     # «قيد الاستكمال»: العودة للناقص فقط دون مرحلة ١ جديدة

@@ -5,7 +5,7 @@ import io
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, func, or_, select, true
+from sqlalchemy import and_, func, literal, or_, select, true
 from sqlalchemy.orm import Session
 
 from .models import (Activity, Call, Campaign, Category, Company, CostEntry, DiscoveryRun, InboundMessage,
@@ -245,7 +245,8 @@ def dashboard(s: Session, user: User, day: date | None = None) -> dict:
     start, end = riyadh_day_bounds_utc(day)
     cq = lambda *w: s.scalar(scope_companies(select(func.count(Company.id)), user)  # noqa: E731
                              .where(visible(s), *w)) or 0
-    target = s.scalar(select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")) or 0
+    from .goal import achieved as _ach, shortfall_reason as _why, target as _goal
+    target = _goal(s)
     runs = list(s.scalars(select(DiscoveryRun).where(DiscoveryRun.run_date == day)))
     complete_today = cq(Company.counted_on == day, Company.data_status == "complete")
     msgs = lambda *w: s.scalar(select(func.count(OutboundMessage.id)).join(Company, Company.id == OutboundMessage.company_id)  # noqa: E731
@@ -264,6 +265,7 @@ def dashboard(s: Session, user: User, day: date | None = None) -> dict:
     eligible = cq(Company.data_status == "complete", Company.stage == "new", Company.do_not_contact.is_(False))
     return {
         "day": day, "target": target, "complete_today": complete_today,
+        "goal_achieved": _ach(s, day), "goal_why": _why(s, day),
         "incomplete_total": cq(Company.data_status == "incomplete"),
         "incomplete_today": cq(Company.data_status == "incomplete", Company.first_found_at >= start,
                                Company.first_found_at < end),
@@ -431,7 +433,8 @@ def customers_in_period(s: Session, user: User, date_from: date, date_to: date,
         runs_q = runs_q.where(DiscoveryRun.campaign_id == campaign_id)
     runs = list(s.scalars(runs_q.order_by(DiscoveryRun.run_date)))
     days = (date_to - date_from).days + 1
-    target_q = select(func.coalesce(func.sum(Campaign.daily_target), 0)).where(Campaign.status == "active")
+    from .goal import target as _goal
+    target_q = select(literal(_goal(s)))
     if campaign_id:
         target_q = select(Campaign.daily_target).where(Campaign.id == campaign_id)
     complete = sum(1 for r in rows if r["complete"])
@@ -559,9 +562,6 @@ def recent_customers(s: Session, user: User, n: int = 8) -> list[Company]:
 
 
 def daily_target(s: Session) -> int:
-    """هدف العملاء الجدد المكتملين يوميًا (من إعداد البحث الآلي اليومي، افتراضيًا ٤٠٠)."""
-    try:
-        from .directory import get_auto
-        return int(get_auto(s).get("target_complete") or 400)
-    except Exception:  # noqa: BLE001
-        return 400
+    """هدف العملاء الجدد المكتملين يوميًا — الإعداد الموحّد (افتراضيًا ٢٠٠)."""
+    from .goal import target as _goal
+    return _goal(s)

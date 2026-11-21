@@ -7,7 +7,7 @@
 <tr><td><b>المجموع</b></td><td>{{ by_src|sum(attribute='discovered') }}</td><td>{{ by_src|sum(attribute='new') }}</td><td><b>{{ by_src|sum(attribute='complete') }}</b></td><td>{{ by_src|sum(attribute='incomplete') }}</td><td>${{ by_src|sum(attribute='cost')|round(2) }}</td><td></td><td>{{ by_src|sum(attribute='reached_dm') }}</td></tr>
 </table><p class="small muted">«وصل الفريق إلى المسؤول» يُسجَّل من «تحديث المتابعة» (خانة «وصلت إلى المسؤول / صاحب القرار»)، وهو تراكمي لكل مصدر.</p></div>
 <div class="grid g4" style="margin-bottom:14px">
-<div class="stat"><div class="v">{{ r.complete }}</div><div class="l">شركات مكتملة جديدة</div></div>
+<div class="stat"><div class="v">{{ goal_n }} <small class="muted">من {{ goal_t }}</small></div><div class="l">الهدف اليومي: منشآت جديدة مكتملة{% if goal_why %}<div class="small" style="margin-top:4px"><b>سبب النقص:</b> {{ goal_why }}</div>{% endif %}</div></div>
 <div class="stat"><div class="v">${{ r.total_cost }}</div><div class="l">التكلفة التقديرية لليوم</div></div>
 <div class="stat"><div class="v">{{ ('$%s' % r.cost_per_lead) if r.cost_per_lead else '—' }}</div><div class="l">تكلفة العميل المكتمل</div></div>
 <div class="stat"><div class="v">{{ r.actions|length }}</div><div class="l">فرص تحتاج إجراء غدًا (ومتأخرة)</div></div></div>

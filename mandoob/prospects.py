@@ -435,7 +435,11 @@ def google_spent_today(s) -> float:
 
 def get_auto(s) -> dict:
     row = s.get(Setting, AUTO_KEY)
-    return {**AUTO_DEFAULT, **((row.value if row else {}) or {})}
+    cfg = {**AUTO_DEFAULT, **((row.value if row else {}) or {})}
+    from .goal import target as _goal
+    cfg["target"] = _goal(s)  # الهدف اليومي الموحّد
+    cfg["sources"] = ",".join(x for x in str(cfg.get("sources") or "").split(",") if x and x != "google_places")
+    return cfg
 
 
 def set_auto(s, **kw) -> dict:
@@ -762,6 +766,10 @@ def run(run_id: int, crawler=None, client: httpx.Client | None = None, per_page:
             resume_at = None
         _log(r, f"بدء/استئناف: الهدف {target} منشأة جديدة قابلة للتواصل — المصادر: {r.sources or r.source}")
     sources = [x for x in (src_list or "bluepages").split(",") if x in SOURCE_LABEL]
+    if "google_places" in sources:  # نتائج Google للعرض المباشر فقط — لا تدخل دفعة تحفظ سجلات
+        sources.remove("google_places")
+        with session_scope() as s:
+            _log(s.get(ProspectRun, run_id), "خرائط Google للعرض المباشر فقط ولا تُحفظ نتائجها — تُجمع السجلات من المصادر المستقلة")
 
     def beat(msg=None):
         with session_scope() as s:

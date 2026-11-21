@@ -34,6 +34,8 @@ def get_config(s) -> dict:
     from .models import Setting
     row = s.get(Setting, SETTING)
     cfg = {**DEFAULT, **(dict(row.value) if row else {})}
+    from .goal import target as _goal
+    cfg["daily_target"] = _goal(s)  # الهدف اليومي الموحّد
     cfg["activities"] = list(ACTIVITIES) if cfg.get("all") else (normalize_selection(cfg["activities"]) or DEFAULT_ACTIVITIES)
     from . import geo
     if not cfg.get("scope"):
@@ -121,7 +123,16 @@ def save_config(s, *, activities: list[str], daily_target: int, scheduled: bool,
     sched = dict(row.value) if row else {"discovery_time": "06:00", "daily_report_time": "18:00"}
     sched["discovery_time"] = new_cfg["time"]
     _put(s, "schedule", sched)
+    s.flush()
+    from .goal import set_goal
+    set_goal(s, daily_target)  # يحفظ الهدف الموحّد ويطبّقه على «اكتشاف عملاء جدد» و«العملاء المحتملون»
     return camp
+
+
+def halt_reason() -> str | None:
+    """«اكتشاف عملاء جدد» ووكيل البحث يسألانها قبل كل خطوة: بلغ هدف اليوم أو حد التكلفة؟"""
+    from .goal import halt_reason as _h
+    return _h()
 
 
 def request_run(s, campaign_id: int, max_new: int | None, user_id: int | None) -> dict:

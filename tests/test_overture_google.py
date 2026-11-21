@@ -90,7 +90,7 @@ def test_overture_source_saves_only_site_verified_contacts_and_excludes_customer
         saved = dict(row.value) if row else None
         D.set_auto(s, sources=["web_search", "google_places"])
         cfg = D.get_auto(s)
-        assert cfg["sources"][0] == "overture" and "google_places" not in cfg["sources"] and cfg["target_complete"] == 400
+        assert cfg["sources"][0] == "overture" and "google_places" not in cfg["sources"] and cfg["target_complete"] == 200
         if saved is not None:
             s.get(Setting, D.AUTO_KEY).value = saved
 

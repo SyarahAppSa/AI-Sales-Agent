@@ -163,8 +163,8 @@ def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatc
         c = s.query(Company).filter(Company.name == "مصنع الملف المرخص للتغليف").one()
         assert c.unified_number == "7009988776" and c.contact_level == "provider" and c.contactable
         assert s.query(ProspectPool).filter(ProspectPool.status == "queued").count() == 0
-        # موقع شركة الخرائط هو نفسه موقع منشأة موجودة ← مكررة، ولا يُخزَّن شيء من بيانات الخرائط
-        assert st["google_places"]["duplicate"] == 1
+        # خرائط Google للعرض المباشر فقط: لا تدخل دفعة تحفظ سجلات، ولا يُخزَّن شيء منها
+        assert "google_places" not in st and not s.query(Company).filter(Company.name == "شركة الخرائط للتوزيع").count()
     # الجدولة اليومية: مرة واحدة في اليوم بعد الموعد
     with session_scope() as s:
         P.set_auto(s, enabled=True, time="00:00")
@@ -172,7 +172,8 @@ def test_licensed_file_import_and_google_discovery_and_daily_schedule(monkeypatc
     assert P.schedule_daily() is True and P.schedule_daily() is False
     with session_scope() as s:
         r = s.scalar(__import__("sqlalchemy").select(ProspectRun).order_by(ProspectRun.id.desc()))
-        assert r.target == 1000 and "google_places" in r.sources
+        from mandoob.goal import target as _goal
+        assert r.target == _goal(s) and "google_places" not in r.sources  # الهدف الموحّد، وGoogle لا يحفظ
         r.status = "done"
         P.set_auto(s, enabled=False)
 

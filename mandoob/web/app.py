@@ -488,7 +488,10 @@ def home(request: Request, period: str = "7d", user: User = Depends(current_user
            "replied": s.scalar(select(func.count(AdminListContact.id)).where(AdminListContact.status == "replied")) or 0,
            "first": lists_[-1][0] if lists_ else None}
     adm["none"] = max(adm["rows"] - adm["done"], 0)
+    from ..goal import achieved as _ach, shortfall_reason as _why
+    goal_n = _ach(s)
     return render(request, "dashboard.html", user, s, adm=adm, cards=cards, links=links, target=daily_target(s),
+                  goal_n=goal_n, goal_why=_why(s) if goal_n < daily_target(s) else "",
                   today=riyadh_today(), recent=recent_customers(s, user), follow=needs_followup_today(s, user)[:8],
                   health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
 
@@ -1249,8 +1252,11 @@ def prospects_auto(request: Request, enabled: str = Form(""), time_: str = Form(
     from .. import prospects as P
     if not re.fullmatch(r"\d{2}:\d{2}", time_ or ""):
         time_ = "05:30"
-    cfg = P.set_auto(s, enabled=bool(enabled), time=time_, target=max(10, min(int(target), 5000)),
-                     google_budget_usd=max(0.0, min(float(google_budget_usd), 500.0)))
+    P.set_auto(s, enabled=bool(enabled), time=time_, target=max(10, min(int(target), 5000)),
+               google_budget_usd=max(0.0, min(float(google_budget_usd), 500.0)))
+    from ..goal import set_goal
+    set_goal(s, max(1, min(int(target), 5000)))
+    cfg = P.get_auto(s)
     flash(request, (f"التشغيل اليومي مفعّل الساعة {cfg['time']} بتوقيت الرياض — الهدف {cfg['target']} منشأة، "
                     f"وميزانية خرائط Google ${cfg['google_budget_usd']:.2f} يوميًا.") if cfg["enabled"] else "التشغيل اليومي متوقف.")
     return back("/prospects")
@@ -1708,8 +1714,9 @@ def _companies_query(user, status, q, city, sector, source, operator, signals, k
     """استعلام قائمة الشركات بالفلاتر — نفسه للصفحة ولملف Excel ولأرقام بطاقات لوحة التحكم."""
     from ..models import CompanySignal
     qq = scope_companies(select(Company), user).where(Company.data_status == status)
-    if found == "today":  # عملاء جدد اليوم: المكتملون المحتسبون في هدف اليوم
-        qq = qq.where(Company.counted_on == riyadh_today())
+    if found == "today":  # عملاء جدد اليوم = تعريف الهدف الموحّد (جوال سعودي + بريد برابط إثبات، بلا عملاء حاليين ولا تجريبي)
+        from ..goal import counted_filter
+        qq = qq.where(*counted_filter(riyadh_today()))
     if contact:
         qq = qq.where(Company.contact_status == contact)
     if kind == "test":
@@ -1866,7 +1873,8 @@ def discover_page(request: Request, run: Optional[int] = None, user: User = Depe
     today_rows = D.daily_by_source(s)
     auto = D.get_auto(s)
     return render(request, "discover.html", user, s, sources=D.source_status(s), runs=runs, cur=cur, stubs=stubs, rv=rv,
-                  today_rows=today_rows, auto=auto,
+                  today_rows=today_rows, auto=auto, google_key=bool(settings.google_places_api_key),
+                  google_status=__import__("mandoob.google_live", fromlist=["x"]).get_status(s),
                   today_new_complete=sum(x["complete"] for x in today_rows if x["key"] != "prospecting"),
                   busy=busy, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
                   defaults=DISCOVER_DEFAULT, KIND={"works": ("ok", "يعمل"), "needs_key": ("warn", "يحتاج ربطًا (مفتاح)"),
@@ -1879,8 +1887,11 @@ def discover_auto(request: Request, enabled: str = Form(""), time: str = Form("0
                   budget: float = Form(20), user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import directory as D
     from ..auth import audit
-    v = D.set_auto(s, enabled=bool(enabled), time=(time or "05:30")[:5], target_complete=max(1, min(target, 5000)),
-                   budget_usd=max(1.0, min(budget, 2000.0)))
+    D.set_auto(s, enabled=bool(enabled), time=(time or "05:30")[:5], target_complete=max(1, min(target, 5000)),
+               budget_usd=max(1.0, min(budget, 2000.0)))
+    from ..goal import set_goal
+    set_goal(s, max(1, min(target, 5000)), cost_cap_usd=max(1.0, min(budget, 2000.0)))  # الهدف وحد التكلفة الموحّدان
+    v = D.get_auto(s)
     audit(s, user, "directory_auto", None, **{k: v[k] for k in ("enabled", "time", "target_complete", "budget_usd")})
     flash(request, f"البحث اليومي التلقائي {'مفعّل' if v['enabled'] else 'متوقف'}: {v['time']} — هدف {v['target_complete']} "
                    f"— ميزانية ${v['budget_usd']:.0f}")
@@ -2705,7 +2716,10 @@ def runs(request: Request, user: User = Depends(current_user), s=Depends(get_db,
 def daily_report_page(request: Request, day: str = "", user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     d = date.fromisoformat(day) if day else riyadh_today()
     from ..directory import daily_by_source
-    return render(request, "daily_report.html", user, s, r=daily_report(s, d), by_src=daily_by_source(s, d))
+    from ..goal import achieved as _ach, shortfall_reason as _why, target as _goal
+    g_n, g_t = _ach(s, d), _goal(s)
+    return render(request, "daily_report.html", user, s, r=daily_report(s, d), by_src=daily_by_source(s, d),
+                  goal_n=g_n, goal_t=g_t, goal_why=_why(s, d) if g_n < g_t else "")
 
 
 @app.get("/notifications", response_class=HTMLResponse)

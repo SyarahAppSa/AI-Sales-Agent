@@ -7,8 +7,16 @@
   <div style="flex:1 1 240px"><b>بحث مباشر في خرائط Google</b><div class="small muted">نتائج حية على خريطة Google للعرض فقط — لا تُحفظ. السجلات المحفوظة تأتي من المصادر المستقلة أدناه.</div></div>
   <div style="flex:0 1 200px"><label class="small">النشاط</label><select name="activity">{% for k, a in ACTIVITIES.items() %}<option value="{{ k }}" {{ 'selected' if k == 'transport.freight' }}>{{ a.label }}</option>{% endfor %}</select></div>
   <div style="flex:0 1 170px"><label class="small">المدينة</label><select name="city">{% for pid, nm in GOOGLE_CITIES %}<option value="{{ pid }}" {{ 'selected' if pid == 'SA-01/riyadh' }}>{{ nm }}</option>{% endfor %}</select></div>
-  <div style="flex:0 0 auto"><button class="btn p">ابحث على الخريطة</button></div>
+  <div style="flex:0 0 auto" class="row"><button type="button" class="btn" onclick="gmapsOpen(this.form)">بحث في خرائط Google ↗</button>
+    <button class="btn p" {{ 'disabled title="يحتاج المفتاح GOOGLE_PLACES_API_KEY"' if not google_key }}>عرض النتائج داخل المنصة</button></div>
+  <div style="flex:1 1 100%" class="small">حالة ربط Places API (New):
+    {% if not google_key %}<span class="pill warn">بانتظار المفتاح</span> «بحث في خرائط Google» يعمل الآن بلا مفتاح؛ العرض داخل المنصة يعمل بعد إضافة <code>GOOGLE_PLACES_API_KEY</code> في Render وتفعيل الفوترة.
+    {% elif google_status.at %}{% if google_status.ok %}<span class="pill ok">متصل</span> آخر اختبار: «{{ google_status.query }}» — {{ google_status.count }} نتيجة{% else %}<span class="pill err">تعذّر</span> {{ google_status.error }}{% endif %} <span class="muted">({{ fmt(google_status.at|todt) }})</span>
+    {% else %}<span class="pill info">المفتاح مضبوط — لم يُختبر بعد</span>{% endif %}</div>
 </form>
+<script>function gmapsOpen(f){var a=f.elements['activity'],c=f.elements['city'];
+  var q=a.options[a.selectedIndex].text+' في '+c.options[c.selectedIndex].text;
+  window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank','noopener');}</script>
 <div class="grid g3" style="margin-bottom:14px">
   <div class="icard"><div class="t"><div class="l">منشآت جديدة مكتملة اليوم</div><div class="v">{{ today_new_complete }} <span class="muted" style="font-size:16px">من {{ auto.target_complete }}</span></div>
   <div class="bar" style="margin-top:6px"><i style="width:{{ [100, (100 * today_new_complete / auto.target_complete)|round|int]|min if auto.target_complete else 0 }}%"></i></div>

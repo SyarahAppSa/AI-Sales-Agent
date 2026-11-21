@@ -58,7 +58,7 @@ def test_four_cards_match_their_lists_and_branding():
         assert re.search(r'class="on"\s+aria-current="page"><span class="lbl">الشركات وإسنادها للموظفين', sub)
         cards = re.findall(r'<a class="kpi[^"]*" href="([^"]+)" data-card="(\w+)">.*?<div class="v">(\d+)', html, re.S)
         assert [k for _, k, _ in cards] == ["new", "incomplete", "ready", "followups"]
-        assert "من 400" in html
+        assert "من 200" in html  # الهدف اليومي الموحّد
         for href, key, n in cards:
             page = c.get(href.replace("&amp;", "&")).text
             assert _total(page) == int(n), (key, _total(page), n)

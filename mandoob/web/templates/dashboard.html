@@ -12,6 +12,7 @@
     <div class="l">عملاء جدد اليوم {{ icon('building', 20) }}</div>
     <div class="v">{{ cards.new }} <small>من {{ target }}</small></div>
     <div class="progress" role="progressbar" aria-valuenow="{{ cards.new }}" aria-valuemin="0" aria-valuemax="{{ target }}"><i style="width:{{ [100, (100 * cards.new / target)|round(1)]|min if target else 0 }}%"></i></div>
+    <div class="s">مكتملة: جوال سعودي + بريد منشوران برابط يثبتهما{% if goal_why %} — <b>سبب النقص:</b> {{ goal_why }}{% endif %}</div>
     <div class="go">عرض العملاء</div>
   </a>
   <a class="kpi" href="{{ links.incomplete }}" data-card="incomplete">
