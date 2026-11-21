@@ -38,8 +38,6 @@ envVarGroups:
         sync: false
       - key: VOICE_WEBHOOK_SECRET
         sync: false
-      - key: SENTRY_DSN
-        sync: false
 
 services:
   - type: web

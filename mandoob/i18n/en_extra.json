@@ -650,8 +650,5 @@
  "آخر نتيجة: {x}": "Last result: {x}",
  "المركبات: {x}": "Vehicles: {x}",
  "مكررة — دُمج الدليل في سجلها": "Duplicate — evidence merged into its record",
- "وقت البحث: {x} دقيقة": "Search time: {x} min",
- "إرسال حدث تجريبي إلى Sentry": "Send a test event to Sentry",
- "Sentry (مراقبة الأخطاء)": "Sentry (error monitoring)",
- "Sentry غير مربوط: أضف SENTRY_DSN في إعدادات الخادم ثم أعد النشر": "Sentry is not connected: add SENTRY_DSN in the server settings, then redeploy"
+ "وقت البحث: {x} دقيقة": "Search time: {x} min"
 }

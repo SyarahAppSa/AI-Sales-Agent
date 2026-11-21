@@ -47,8 +47,6 @@ def start_background() -> BackgroundScheduler:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    from . import monitoring
-    monitoring.init("worker")
     init_db()
     if jobs.recover_on_start():
         logging.getLogger(__name__).info("resumed an interrupted search request")

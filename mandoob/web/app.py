@@ -47,9 +47,6 @@ async def _lifespan(_app):
     yield
 
 
-from .. import monitoring as _monitoring
-_monitoring.init("web")
-
 app = FastAPI(title="المندوب الذكي لسيارة اب", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
 
@@ -2625,22 +2622,11 @@ def settings_page(request: Request, user: User = Depends(require_manager), s=Dep
         "Microsoft 365": bool(settings.ms_client_id),
         "Google Workspace": bool(settings.google_client_id),
         "ElevenLabs (المكالمات)": bool(settings.elevenlabs_api_key),
-        "Sentry (مراقبة الأخطاء)": _monitoring.enabled(),
     }
     from ..seed_test import verify as _verify_test
     return render(request, "settings.html", user, s, voice=voice, integrations=integrations, test_check=_verify_test(s),
                   customers=s.scalar(select(func.count(ExistingCustomer.id))),
                   suppressions=list(s.scalars(select(Suppression).order_by(Suppression.id.desc()).limit(50))))
-
-
-@app.post("/settings/sentry-test")
-def settings_sentry_test(request: Request, user: User = Depends(require_admin)):
-    if not _monitoring.enabled():
-        flash(request, "Sentry غير مربوط: أضف SENTRY_DSN في إعدادات الخادم ثم أعد النشر", "err")
-        return back("/settings")
-    eid = _monitoring.send_test()
-    flash(request, f"أُرسل حدث تجريبي إلى Sentry (المعرّف {eid}) — تحقق منه في لوحة Sentry")
-    return back("/settings")
 
 
 @app.post("/settings/voice")
