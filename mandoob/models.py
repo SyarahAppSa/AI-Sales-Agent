@@ -698,6 +698,7 @@ class LeadStub(Base):
     reason: Mapped[Optional[str]] = mapped_column(Text)               # سبب الترشيح بجملة للمندوب
     vehicles_count: Mapped[Optional[int]] = mapped_column(Integer)    # فقط إن ذكره المصدر
     contact_dept: Mapped[Optional[str]] = mapped_column(String(200))  # الجهة المقترحة للتواصل
+    operator_note: Mapped[Optional[str]] = mapped_column(Text)        # من يشغّل المركبات فعلًا (أو «غير مؤكد»)
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     # new / duplicate / existing_customer / complete / incomplete / failed / skipped
     duplicate_of: Mapped[Optional[int]] = mapped_column(Integer)

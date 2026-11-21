@@ -18,7 +18,8 @@ VEHICLE_INDICATOR = {"confirmed": "مؤكد", "unconfirmed": "غير مؤكد"}
 _DIR = [
     ("industry", "الصناعة والإنتاج", "C", [
         ("food_factories", "مصانع الأغذية", ["مصنع مواد غذائية", "مصنع أغذية توزيع"], "توزيع منتجاته بأسطول"),
-        ("water_factories", "مصانع المياه المعبأة", ["مصنع مياه معبأة", "مياه صحية توصيل"], "توصيل للمنازل والشركات"),
+        ("water_factories", "مصانع المياه المعبأة", ["مصنع مياه معبأة", "مصنع مياه صحية", "مياه شرب معبأة توصيل",
+                                                      "bottled water factory", "drinking water company"], "توصيل للمنازل والشركات"),
         ("plastic_factories", "مصانع البلاستيك والتغليف", ["مصنع بلاستيك", "مصنع تغليف وكرتون"], "توزيع"),
         ("furniture_factories", "مصانع الأثاث", ["مصنع أثاث", "مصنع مطابخ وخزائن"], "توصيل وتركيب"),
         ("pharma_factories", "مصانع الأدوية والمستلزمات", ["مصنع أدوية", "مصنع مستلزمات طبية"], "توزيع"),
@@ -33,7 +34,8 @@ _DIR = [
         ("nurseries", "الحضانات ورياض الأطفال", ["حضانة أطفال", "روضة أطفال أهلية"], "نقل الأطفال"),
         ("universities", "الجامعات والكليات", ["جامعة أهلية", "كلية أهلية"], "حافلات ومركبات تشغيل"),
         ("institutes", "المعاهد ومراكز التدريب", ["معهد تدريب", "مركز تدريب أهلي"], "نقل متدربين"),
-        ("school_transport", "مشغلو النقل المدرسي", ["نقل مدرسي", "توصيل طالبات ومعلمات"], "أسطول حافلات وفانات"),
+        ("school_transport", "مشغلو النقل المدرسي", ["مؤسسة نقل مدرسي", "نقل مدرسي", "توصيل طالبات ومعلمات",
+                                                     "school transport company", "school bus operator"], "أسطول حافلات وفانات"),
     ]),
     ("food", "المطاعم والأغذية", "I", [
         ("restaurants", "المطاعم", ["مطعم توصيل", "مطاعم فروع"], "توصيل وتموين الفروع"),
@@ -59,6 +61,58 @@ _DIR = [
         ("tankers", "ناقلات المياه والوقود", ["وايت ماء", "نقل وقود", "صهاريج"], "صهاريج"),
         ("passenger", "نقل الركاب والموظفين", ["نقل موظفين", "تأجير حافلات", "نقل ركاب"], "حافلات"),
         ("movers", "نقل الأثاث", ["نقل عفش", "نقل أثاث"], "دينات وشاحنات"),
+    ]),
+    # مجموعات البحث المباشر عن المشغّلين (مرادفات عربية وإنجليزية؛ المنشآت الصغيرة بصيغة «مؤسسة فلان للنقليات»)
+    ("land_freight", "النقل البري والشحن", "H49", [
+        ("truckers", "شركات ومؤسسات النقليات", ["مؤسسة نقليات", "شركة نقليات", "مؤسسة للنقليات", "نقليات وشحن",
+                                                "trucking company", "transport establishment"], "أسطول شاحنات"),
+        ("trucking", "نقل البضائع بالشاحنات", ["نقل بضائع بالشاحنات", "شحن بري بين المدن", "freight trucking"], "شاحنات"),
+        ("heavy", "النقل الثقيل", ["نقل ثقيل", "تريلات نقل", "heavy transport", "heavy haulage"], "تريلات ورؤوس"),
+        ("containers", "نقل الحاويات", ["نقل حاويات", "container transport", "container haulage"], "رؤوس وتريلات حاويات"),
+        ("flatbeds", "السطحات ونقل السيارات", ["سطحات نقل سيارات", "سطحة", "car carrier", "tow truck"], "سطحات"),
+        ("tippers", "القلابات", ["قلابات", "تأجير قلابات", "نقل رمل وبطحاء", "dump truck"], "قلابات"),
+        ("building_haulage", "نقل مواد البناء والمعدات", ["نقل مواد بناء", "نقل معدات ثقيلة", "equipment transport"],
+         "شاحنات ولوبد"),
+    ]),
+    ("logistics", "الخدمات اللوجستية والتوصيل", "H52/H53", [
+        ("express", "الشحن السريع والطرود", ["شحن سريع", "شركة طرود", "courier company", "express delivery"], "مناديب ومركبات"),
+        ("store_delivery", "التوصيل للمتاجر", ["توصيل للمتاجر", "توصيل طلبات المتاجر", "last mile delivery"], "فانات"),
+        ("home_delivery", "التوصيل للمنازل", ["توصيل للمنازل", "home delivery company"], "مناديب"),
+        ("branch_distribution", "التوزيع بين الفروع", ["توزيع بين الفروع", "نقل بين المستودعات", "inter-branch distribution"],
+         "شاحنات توزيع"),
+        ("warehousing", "التخزين والتوزيع", ["تخزين وتوزيع", "مستودعات وتوزيع", "3PL logistics", "warehousing and distribution"],
+         "أسطول توزيع"),
+        ("delivery_contractors", "متعهدو النقل والتوصيل", ["متعهد نقل", "متعهد توصيل", "مقاول نقل", "transport contractor"],
+         "أسطول متعاقد"),
+    ]),
+    ("cold_transport", "النقل المبرد", "H49", [
+        ("reefer_operators", "مشغّلو الشاحنات المبردة والمجمّدة", ["شاحنات مبردة", "نقل مجمد", "refrigerated trucking",
+                                                                "reefer transport"], "أسطول مبرد"),
+        ("food_dairy_distributors", "موزعو الأغذية والألبان", ["موزع أغذية", "توزيع ألبان", "موزع مواد غذائية",
+                                                             "food distributor", "dairy distribution"], "شاحنات توزيع مبردة"),
+        ("pharma_transport", "نقل الأدوية والمستلزمات الطبية", ["نقل أدوية مبرد", "توزيع أدوية", "pharma logistics",
+                                                              "medical supplies distribution"], "مركبات مبردة"),
+    ]),
+    ("water", "المياه والصهاريج", "E36/H49", [
+        ("distributors", "موزعو المياه للمنازل والشركات", ["توزيع مياه للمنازل", "موزع مياه صحية", "توصيل مياه شرب",
+                                                         "water delivery company"], "فانات توصيل"),
+        ("tankers", "مشغّلو صهاريج ووايتات المياه", ["وايتات مياه", "صهاريج مياه", "مؤسسة نقل مياه", "وايت ماء",
+                                                    "water tanker", "water truck service"], "صهاريج ووايتات"),
+    ]),
+    ("school_transport", "النقل المدرسي والجامعي", "H49", [
+        ("bus_contractors", "متعهدو حافلات المدارس", ["متعهد نقل مدرسي", "حافلات مدارس", "عقود نقل طلاب",
+                                                       "school bus contractor"], "حافلات مدرسية"),
+        ("university", "مشغّلو نقل طلاب الجامعات", ["نقل طالبات الجامعة", "نقل طلاب الجامعات", "university student transport"],
+         "حافلات"),
+        ("own_buses", "المدارس الأهلية والعالمية التي تشغّل حافلاتها", ["مدارس أهلية حافلات خاصة", "مدرسة توفر النقل",
+                                                                        "school with own buses"], "حافلات مملوكة للمدرسة"),
+    ]),
+    ("passenger_transport", "نقل الموظفين والركاب", "H49", [
+        ("staff", "نقل موظفي الشركات والمصانع", ["نقل موظفين", "نقل موظفات", "employee transportation"], "حافلات وفانات"),
+        ("workers", "نقل العمال", ["نقل عمال", "حافلات نقل عمالة", "labor transport"], "حافلات"),
+        ("bus_operation", "تشغيل الحافلات", ["تشغيل حافلات", "تأجير حافلات بالسائق", "bus operator", "bus rental"], "حافلات"),
+        ("tourist", "النقل السياحي", ["نقل سياحي", "حافلات سياحية", "tourist transport"], "حافلات سياحية"),
+        ("pilgrims", "نقل الحجاج والمعتمرين", ["نقل حجاج", "نقل معتمرين", "حافلات العمرة", "hajj umrah transport"], "حافلات"),
     ]),
     ("construction", "المقاولات والعقار", "F/L/M", [
         ("contractors", "المقاولون", ["شركة مقاولات عامة", "مقاولات بناء", "مقاولات طرق"], "معدات ومركبات مواقع"),
@@ -137,6 +191,16 @@ for _k, _label, _isic, _acts in _DIR:
         ACTIVITIES[key] = {"sector": _k, "label": _al, "q": _q, "vehicle": _v}
         SECTORS[_k]["activities"].append(key)
 
+# مجموعات «البحث المباشر عن الشركات والمؤسسات حسب النشاط» (تُختار مجموعة كاملة أو أنشطة منها)
+SEARCH_GROUPS = [
+    ("land_freight", "النقل البري والشحن", SECTORS["land_freight"]["activities"]),
+    ("logistics", "الخدمات اللوجستية والتوصيل", SECTORS["logistics"]["activities"]),
+    ("cold_transport", "النقل المبرد", SECTORS["cold_transport"]["activities"]),
+    ("water", "المياه والصهاريج", ["industry.water_factories"] + SECTORS["water"]["activities"]),
+    ("school_transport", "النقل المدرسي والجامعي", ["education.school_transport"] + SECTORS["school_transport"]["activities"]),
+    ("passenger_transport", "نقل الموظفين والركاب", SECTORS["passenger_transport"]["activities"]),
+]
+
 # الأنشطة الأقرب لاستخدام المركبات (الاختيار الافتراضي)
 DEFAULT_ACTIVITIES = [k for k in ACTIVITIES if k.split(".")[0] in ("transport", "construction", "field_services")] + \
     ["industry.food_factories", "industry.water_factories", "trade.distributors"]
@@ -157,6 +221,8 @@ def normalize_selection(keys: list[str]) -> list[str]:
             chosen |= set(ACTIVITIES)
         elif k.startswith("sector:") and k[7:] in SECTORS:
             chosen |= set(SECTORS[k[7:]]["activities"])
+        elif k.startswith("group:"):
+            chosen |= set(next((g[2] for g in SEARCH_GROUPS if g[0] == k[6:]), []))
         elif k in ACTIVITIES:
             chosen.add(k)
         elif k in LEGACY:

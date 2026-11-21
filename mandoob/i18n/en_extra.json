@@ -607,5 +607,14 @@
  "حسب مصدر العملاء — هذا الأسبوع": "By customer source — this week",
  "غير متاحة": "Not available",
  "تكلفة الاجتماع": "Cost per meeting",
- "الاجتماعات المحجوزة": "Meetings booked"
+ "الاجتماعات المحجوزة": "Meetings booked",
+ "البحث المباشر عن الشركات والمؤسسات حسب النشاط": "Direct search for companies by activity",
+ "مشغّل المركبات": "Vehicle operator",
+ "مشغّل المركبات غير مؤكد": "Vehicle operator unconfirmed",
+ "النقل البري والشحن": "Land freight & shipping",
+ "الخدمات اللوجستية والتوصيل": "Logistics & delivery",
+ "المياه والصهاريج": "Water & tankers",
+ "النقل المدرسي والجامعي": "School & university transport",
+ "نقل الموظفين والركاب": "Staff & passenger transport",
+ "حالة الربط المباشر بخرائط Google:": "Google Maps direct connection status:"
 }

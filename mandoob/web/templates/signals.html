@@ -11,11 +11,17 @@
 <form class="card" method="post" action="/signals/run">
 <h2>تشغيل بحث فرص البيع</h2>
 <div class="chips"><span class="small muted">المسارات:</span>
-{% for k, t in TRACKS.items() %}<label><input type="checkbox" name="tracks" value="{{ k }}" {{ 'checked' if k != 'sig_exhibitors' }}> {{ t.label }}</label>{% endfor %}</div>
+{% for k, t in TRACKS.items() %}<label><input type="checkbox" name="tracks" value="{{ k }}" {{ 'checked' if k == 'sig_direct' }}> {% if k == 'sig_direct' %}<b>{{ t.label }}</b>{% else %}{{ t.label }}{% endif %}</label>{% endfor %}</div>
+<div class="small muted" style="margin-top:4px">حالة الربط المباشر بخرائط Google:
+  {% if not google_key %}<span class="pill warn">بانتظار المفتاح</span> — البحث يعمل الآن بالمصادر المتاحة (Overture وبحث الويب).
+  {% elif google_status.at and google_status.ok %}<span class="pill ok">متصل</span>{% elif google_status.at %}<span class="pill err">تعذّر</span> {{ google_status.error }}{% else %}<span class="pill info">المفتاح مضبوط — لم يُختبر</span>{% endif %}</div>
 <div class="row" style="margin-top:8px">
-  <div style="flex:2 1 320px"><label class="small">النشاط (نشاط أو عدة أنشطة — أو «جميع الأنشطة»)</label>
-    <select name="activities" multiple size="6"><option value="__all__">جميع الأنشطة</option>
-    {% for sk, sec in DIR_SECTORS.items() %}<optgroup label="{{ sec.label }}">{% for ak in sec.activities %}<option value="{{ ak }}">{{ ACTIVITIES[ak].label }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+  <div style="flex:2 1 320px"><label class="small" for="act-filter">النشاط (نشاط واحد، أو عدة أنشطة، أو مجموعة كاملة، أو «جميع الأنشطة»)</label>
+    <input id="act-filter" placeholder="ابحث في الأنشطة… مثل: مدرسي، وايت، نقليات" autocomplete="off" style="margin-bottom:6px">
+    <select name="activities" id="act-select" multiple size="10"><option value="__all__">جميع الأنشطة</option>
+    {% for gid, glabel, keys in SEARCH_GROUPS %}<optgroup label="{{ glabel }}"><option value="group:{{ gid }}">◆ المجموعة كاملة: {{ glabel }}</option>{% for ak in keys %}<option value="{{ ak }}">{{ ACTIVITIES[ak].label }}</option>{% endfor %}</optgroup>{% endfor %}
+    {% for sk, sec in DIR_SECTORS.items() if sk not in ('land_freight','logistics','cold_transport','water','school_transport','passenger_transport') %}<optgroup label="{{ sec.label }}">{% for ak in sec.activities %}<option value="{{ ak }}">{{ ACTIVITIES[ak].label }}</option>{% endfor %}</optgroup>{% endfor %}</select>
+    <div class="small muted">للاختيار المتعدد: اضغط Ctrl (أو ⌘) مع النقر.</div></div>
   <div style="flex:1 1 240px"><label class="small">النطاق</label>
     <select name="scope_mode" id="sig-scope"><option value="all">جميع مناطق المملكة</option><option value="regions">منطقة أو أكثر</option><option value="places">مدينة بعينها</option></select>
     <select name="regions" multiple size="4" class="sig-reg" style="margin-top:6px" hidden>{% for rid, r in GEO_REGIONS.items() %}<option value="{{ rid }}">{{ r.ar }}</option>{% endfor %}</select>
@@ -26,7 +32,10 @@
 <p class="small muted">تُقبل المنشأة فقط إن ظهر اسمها في صفحة حقيقية وظهر اقتباس دليلها حرفيًا في صفحة قرأها الوكيل، بتاريخها ورابطها. الهاتف والبريد من موقعها الرسمي في المرحلة الثانية. يتوقف البحث عند بلوغ هدف اليوم أو حد التكلفة.</p>
 <button class="btn p">ابدأ البحث</button>
 </form>
-<script>(function(){var m=document.getElementById('sig-scope');function u(){document.querySelector('.sig-reg').hidden=m.value!=='regions';document.querySelector('.sig-pl').hidden=m.value!=='places';}m.addEventListener('change',u);u();})();</script>
+<script>(function(){var f=document.getElementById('act-filter'),sel=document.getElementById('act-select');
+f.addEventListener('input',function(){var q=f.value.trim();[].forEach.call(sel.querySelectorAll('optgroup'),function(g){var any=false;
+[].forEach.call(g.querySelectorAll('option'),function(o){var hit=!q||o.text.indexOf(q)>=0||g.label.indexOf(q)>=0;o.hidden=!hit;any=any||hit;});g.hidden=!any;});});})();
+(function(){var m=document.getElementById('sig-scope');function u(){document.querySelector('.sig-reg').hidden=m.value!=='regions';document.querySelector('.sig-pl').hidden=m.value!=='places';}m.addEventListener('change',u);u();})();</script>
 
 {% if runs %}<div class="card"><h2>الدفعات</h2><div class="chips">{% for r in runs %}<a class="pill {{ 'info' if cur and r.id == cur.id }}" href="/signals?run={{ r.id }}">#{{ r.id }} — {{ {'pending':'بانتظار البدء','running':'جارية','done':'اكتملت','stopped':'توقفت','failed':'فشلت'}.get(r.status, r.status) }} — {{ fmt(r.created_at) }}</a>{% endfor %}</div></div>{% endif %}
 
@@ -39,7 +48,7 @@
 
 <div class="card tablewrap"><h2>النتائج ({{ rows|length }})</h2>
 <table>
-<tr><th>المنشأة</th><th>الهاتف والبريد الرسميان</th><th>سبب الترشيح والدليل</th><th>المركبات</th><th>الجهة المقترحة</th><th>قبل الإسناد</th><th>الحالة</th></tr>
+<tr><th>المنشأة</th><th>الهاتف والبريد الرسميان</th><th>سبب الترشيح والدليل</th><th>مشغّل المركبات</th><th>المركبات</th><th>الجهة المقترحة</th><th>قبل الإسناد</th><th>الحالة</th></tr>
 {% for x in rows %}{% set st, c = x.st, x.c %}<tr>
 <td><b translate="no">{% if c %}<a href="/companies/{{ c.id }}">{{ c.name }}</a>{% else %}{{ st.name }}{% endif %}</b>
   <div class="small muted" translate="no">{{ st.activity }} — {{ st.city }}</div>
@@ -52,6 +61,7 @@
   <div translate="no">{{ st.reason or '' }}</div>
   {% if st.evidence_quote %}<div class="muted" translate="no">«{{ st.evidence_quote[:220] }}»</div>{% endif %}
   {% if st.evidence_url %}<div>{{ fmt_date(st.evidence_date) if st.evidence_date else 'تاريخ غير مذكور' }} — <a href="{{ st.evidence_url }}" target="_blank" rel="noopener">رابط الدليل</a></div>{% endif %}</td>
+<td class="small" translate="no">{% if st.operator_note %}{% if 'غير مؤكد' in st.operator_note %}<span class="pill warn">{{ st.operator_note }}</span>{% else %}{{ st.operator_note }}{% endif %}{% else %}—{% endif %}</td>
 <td>{{ st.vehicles_count if st.vehicles_count else 'غير معلوم' }}</td>
 <td class="small" translate="no">{{ st.contact_dept or (c.decision_unit if c else '') or '—' }}</td>
 <td class="small">{% if c %}<div>المسؤول: <b>{{ x.owner or 'غير مسند' }}</b></div>
@@ -62,7 +72,7 @@
     <select name="owner_id" style="width:auto">{% for u in reps %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select><button class="btn sm">إسناد</button></form>{% endif %}
   {% else %}—{% endif %}</td>
 <td>{% set lbl = {'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'duplicate':('info','مكررة — أُضيف الدليل لسجلها'),'existing_customer':('info','عميل حالي'),'pending_verify':('warn','قيد التحقق'),'new':('info','جارٍ الاستكمال'),'failed':('err','تعذّر')}.get(st.status, ('', st.status)) %}<span class="pill {{ lbl[0] }}">{{ lbl[1] }}</span></td>
-</tr>{% else %}<tr><td colspan="7" class="muted">لا نتائج بعد{% if cur.status in ('pending','running') %} — الدفعة جارية، تتحدث الصفحة تلقائيًا{% endif %}.</td></tr>{% endfor %}
+</tr>{% else %}<tr><td colspan="8" class="muted">لا نتائج بعد{% if cur.status in ('pending','running') %} — الدفعة جارية، تتحدث الصفحة تلقائيًا{% endif %}.</td></tr>{% endfor %}
 </table></div>
 {% endif %}
 {% endblock %}

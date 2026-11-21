@@ -3940,6 +3940,9 @@ def signals_page(request: Request, run: int = 0, user: User = Depends(require_ma
                   TRACKS=D.SIGNAL_TRACKS, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
                   GEO_PLACES=geo.PLACES, STATUSES=STATUSES, goal_t=_goal(s), goal_n=_ach(s),
                   reps=list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name))),
+                  SEARCH_GROUPS=__import__("mandoob.activities", fromlist=["x"]).SEARCH_GROUPS,
+                  google_key=bool(settings.google_places_api_key),
+                  google_status=__import__("mandoob.google_live", fromlist=["x"]).get_status(s),
                   busy=any(r.status in ("pending", "running") for r in s.scalars(
                       select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"])))))
 
@@ -3954,9 +3957,10 @@ async def signals_run(request: Request, user: User = Depends(require_manager), s
     if (h := halt_reason()):
         flash(request, f"توقف الجمع لهذا اليوم: {h}", "err")
         return back("/signals")
-    tracks = [x for x in form.getlist("tracks") if x in D.SIGNAL_TRACKS] or ["sig_fleet", "sig_hiring", "sig_contracts"]
+    tracks = [x for x in form.getlist("tracks") if x in D.SIGNAL_TRACKS] or ["sig_direct"]
     acts = form.getlist("activities")
-    acts = "__all__" if (not acts or "__all__" in acts) else [a for a in acts if a in ACTIVITIES]
+    acts = "__all__" if (not acts or "__all__" in acts) else \
+        [a for a in acts if a in ACTIVITIES or a.startswith(("group:", "sector:"))]
     mode = form.get("scope_mode") or "all"
     if mode == "places":
         pl = [p for p in form.getlist("places") if p in geo.PLACES]
