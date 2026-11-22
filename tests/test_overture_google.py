@@ -203,7 +203,8 @@ def test_signals_google_by_activity(monkeypatch):
             {"id": "x1", "displayName": {"text": "مؤسسة مياه نقية للفحص"}, "nationalPhoneNumber": "055 777 1201",
              "googleMapsUri": "https://maps.google.com/?cid=91", "location": {"latitude": 24.7, "longitude": 46.7}},
             {"id": "x2", "displayName": {"text": "منشأة موجودة لفحص جوجل"}, "nationalPhoneNumber": "055 777 1202",
-             "googleMapsUri": "https://maps.google.com/?cid=92"}]})
+             "googleMapsUri": "https://maps.google.com/?cid=92"},
+            {"id": "x3", "displayName": {"text": "منشأة بلا رقم لفحص جوجل"}, "googleMapsUri": "https://maps.google.com/?cid=93"}]})
     monkeypatch.setattr(settings, "google_places_api_key", "AIza-test-key")
     monkeypatch.setattr(G.httpx, "Client", _google(handler))
     with session_scope() as s:
@@ -221,6 +222,12 @@ def test_signals_google_by_activity(monkeypatch):
         html = cl.get("/signals/google", params=[("activities", ak), ("places", "SA-01/riyadh")]).text
         assert len(seen) == 1 and seen[0].endswith("في الرياض")
         assert "مؤسسة مياه نقية للفحص" in html and "جديدة" in html and "موجودة" in html and "+966557771201" in html
+        assert "منشأة بلا رقم لفحص جوجل" not in html and "أُخفيت 1 بلا رقم" in html
+        again = cl.get("/signals/google", params=[("activities", ak), ("places", "SA-01/riyadh")]).text
+        assert len(seen) == 1 and "سبق البحث عن هذه العبارة" in again  # لا طلب مكرر خلال 30 يومًا
+        cl.get("/signals/google", params=[("activities", ak), ("places", "SA-01/riyadh"), ("repeat", "1")])
+        assert len(seen) == 2  # «أعد البحث» صراحةً
+        seen.pop()
         assert "اختر في «النطاق»" in cl.get("/signals/google", params=[("activities", ak)]).text
         many = cl.get("/signals/google", params=[("activities", "__all__"), ("places", "SA-01/riyadh")]).text
         assert "اختر نشاطًا واحدًا على الأقل" in many and len(seen) == 1  # لا صرف على «جميع الأنشطة»

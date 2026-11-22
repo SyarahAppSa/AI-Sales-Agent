@@ -30,6 +30,7 @@
   <div style="flex:0 0 140px"><label class="small">ميزانية الدفعة ($)</label><input type="number" name="budget" value="5" min="0.5" max="200" step="0.5"></div>
 </div>
 <p class="small muted">تُقبل المنشأة فقط إن ظهر اسمها في صفحة حقيقية وظهر اقتباس دليلها حرفيًا في صفحة قرأها الوكيل، بتاريخها ورابطها. الهاتف والبريد من موقعها الرسمي في المرحلة الثانية. يتوقف البحث عند بلوغ هدف اليوم أو حد التكلفة.</p>
+<label class="small" style="display:block;margin:0 0 8px"><input type="checkbox" name="repeat" value="1"> أعد البحث في نشاط ومدينة سبق البحث فيهما خلال 30 يومًا (افتراضيًا تُتخطى توفيرًا للتكلفة)</label>
 <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
 <button class="btn p">ابدأ البحث</button>
 {% if google_key %}<button class="btn" formaction="/signals/google" formmethod="get" id="g-btn">🔎 ابحث في خرائط Google عن النشاط المختار</button>
@@ -55,7 +56,8 @@ sel.addEventListener('change',cnt);pl.addEventListener('change',cnt);m.addEventL
 </table>
 <p class="small muted">وقت البحث: {{ minutes if minutes is not none else '—' }} دقيقة — النطاق: {{ (cur.params or {}).get('scope')|scope_label }}{% if (cur.log or [])|length %} — آخر سطر: {{ cur.log[-1] }}{% endif %}</p></div>
 
-<div class="card sig-results"><h2>النتائج ({{ rows|length }})</h2>
+<div class="card sig-results"><div class="head2"><h2>النتائج ({{ rows|length }})</h2>
+{% if hidden_n %}<span class="small muted">{% if show_all %}تظهر كل المنشآت، ومنها {{ hidden_n }} بلا هاتف ولا بريد — <a href="/signals?run={{ cur.id }}">إخفاؤها</a>{% else %}أُخفيت {{ hidden_n }} منشأة بلا هاتف ولا بريد — <a href="/signals?run={{ cur.id }}&all=1">عرضها</a>{% endif %}</span>{% endif %}</div>
 {% set DS = {'complete':('ok','مكتملة'),'incomplete':('warn','قيد الاستكمال'),'duplicate':('info','مكررة — دُمج الدليل في سجلها'),'existing_customer':('info','عميل حالي'),'pending_verify':('warn','قيد التحقق'),'new':('info','جارٍ الاستكمال'),'failed':('err','تعذّر')} %}
 <div class="sigwrap"><table class="sigtable">
 <thead><tr><th class="c-name">المنشأة</th><th class="c-contact">بيانات التواصل</th><th class="c-ver">حالة التحقق</th><th class="c-fu">المتابعة</th><th class="c-det"><span class="sr">التفاصيل</span></th></tr></thead>

@@ -11,8 +11,10 @@
 {% if error %}<div class="card" style="border-color:var(--err)"><p style="color:var(--err);margin:0">{{ error }}</p></div>{% endif %}
 
 {% for g in gresults %}<div class="card"><div class="head2"><h2>«{{ g.query }}»</h2>
-{% set new_n = g.rows|rejectattr('exists')|list|length %}<span class="small muted">{{ g.rows|length }} نتيجة — {{ new_n }} غير موجودة في المنصة</span></div>
-{% if g.error %}<p style="color:var(--err)">{{ g.error }}</p>{% elif not g.rows %}<p class="muted">لا نتائج جديدة (أو كلها ظهرت في بحث سابق بهذه الصفحة).</p>{% else %}
+{% set new_n = g.rows|rejectattr('exists')|list|length %}{% if not g.skipped %}<span class="small muted">{{ g.rows|length }} برقم — {{ new_n }} غير موجودة في المنصة{% if g.hidden %} — أُخفيت {{ g.hidden }} بلا رقم{% endif %}</span>{% endif %}</div>
+{% if g.skipped %}<p class="small">⏭ سبق البحث عن هذه العبارة بتاريخ {{ g.skipped }} — تُخطي لأن Google تعيد النتائج نفسها (وفّرت ${{ '%.3f'|format(cost) }}).
+<a href="/signals/google?{{ back_qs }}&repeat=1">أعد البحث على أي حال</a></p>
+{% elif g.error %}<p style="color:var(--err)">{{ g.error }}</p>{% elif not g.rows %}<p class="muted">لا نتائج جديدة (أو كلها ظهرت في بحث سابق بهذه الصفحة).</p>{% else %}
 <div class="tablewrap"><table>
 <tr><th>المنشأة</th><th>الهاتف</th><th>الموقع</th><th>التقييم</th><th>في المنصة</th><th></th></tr>
 {% for r in g.rows %}<tr><td translate="no"><b>{{ r.name }}</b><div class="small muted">{{ r.type }}{% if r.address %} · {{ r.address }}{% endif %}</div></td>

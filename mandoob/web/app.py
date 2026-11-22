@@ -4075,7 +4075,8 @@ def _run_source_costs(s, r) -> dict:
 
 
 @app.get("/signals", response_class=HTMLResponse)
-def signals_page(request: Request, run: int = 0, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+def signals_page(request: Request, run: int = 0, show_all: int = Query(0, alias="all"), user: User = Depends(require_manager),
+                 s=Depends(get_db, scope="function")):
     from .. import directory as D, geo
     from ..activities import ACTIVITIES, SECTORS
     from ..contact import STATUSES
@@ -4119,7 +4120,14 @@ def signals_page(request: Request, run: int = 0, user: User = Depends(require_ma
                 "cost": costs.get(src, 0.0), "cpc": round(costs.get(src, 0.0) / comp, 2) if comp else None})
     else:
         minutes = None
+    def _reachable(x):  # هاتف أو بريد، أو منشأة لها مسؤول أو ملاحظة متابعة لدينا
+        c = x["c"]
+        return bool(x["phones"] or x["emails"] or (c and (c.owner_id or c.last_note)))
+    no_contact = [x for x in rows if not _reachable(x)]
+    if not show_all:  # بلا هاتف ولا بريد: لا يستطيع الفريق التواصل معها — تُخفى افتراضيًا
+        rows = [x for x in rows if _reachable(x)]
     return render(request, "signals.html", user, s, runs=runs, cur=cur, rows=rows, per_src=per_src, minutes=minutes,
+                  hidden_n=len(no_contact), show_all=bool(show_all),
                   TRACKS=D.SIGNAL_TRACKS, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
                   GEO_PLACES=geo.PLACES, STATUSES=STATUSES, goal_t=_goal(s), goal_n=_ach(s), g_cost=__import__("mandoob.google_live", fromlist=["x"]).COST_PER_SEARCH, g_max=GOOGLE_MAX_SEARCHES,
                   reps=list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name))),
@@ -4154,27 +4162,36 @@ def signals_google(request: Request, user: User = Depends(require_manager), s=De
     else:
         phones = {v for (v,) in s.execute(select(Contact.value).where(Contact.kind == "phone"))}
         names = {v for (v,) in s.execute(select(Company.name_norm))}
+        force = request.query_params.get("repeat") == "1"
+        log = G.query_log(s)
         for a, p in plan:
             q = f"{ACTIVITIES[a]['label']} في {geo.PLACES[p]['ar']}"
+            if q in log and not force:  # سبق خلال 30 يومًا: Google تعيد النتائج نفسها — لا نصرف مرتين
+                groups.append({"query": q, "rows": [], "error": None, "skipped": log[q], "hidden": 0})
+                continue
             bb = CITY_BBOX.get(p)
             center = ((bb[2] + bb[3]) / 2, (bb[0] + bb[1]) / 2) if bb else None
             try:
                 rows = G.search(q, center)
                 done += 1
             except G.LiveError as e:
-                groups.append({"query": q, "rows": [], "error": str(e)})
+                groups.append({"query": q, "rows": [], "error": str(e), "skipped": None, "hidden": 0})
                 break
-            out = []
+            G.log_query(q)
+            out, hidden = [], 0
             for r in rows:
                 k = r.get("maps") or (r["name"], r.get("phone"))
                 if k in seen:
                     continue
                 seen.add(k)
+                if not r.get("phone"):  # بلا رقم: لا فائدة للمبيعات (Google لا تعرض البريد)
+                    hidden += 1
+                    continue
                 ph = normalize_phone(r.get("phone") or "")
                 r["e164"] = ph
                 r["exists"] = bool((ph and ph in phones) or normalize_name(r["name"]) in names)
                 out.append(r)
-            groups.append({"query": q, "rows": out, "error": None})
+            groups.append({"query": q, "rows": out, "error": None, "skipped": None, "hidden": hidden})
     return render(request, "signals_google.html", user, s, gresults=groups, error=error, done=done, plan=plan,
                   cost=G.COST_PER_SEARCH, budget=G.budget(s), ACTIVITIES=ACTIVITIES, GEO_PLACES=geo.PLACES,
                   acts=acts, places=places, max_n=GOOGLE_MAX_SEARCHES,
@@ -4210,7 +4227,8 @@ async def signals_run(request: Request, user: User = Depends(require_manager), s
     except ValueError:
         limit, budget = 30, 5.0
     r = D.request(s, sources=tracks, params={"activities": acts, "scope": scope, "stage1_limit": limit,
-                                             "signals": True}, budget=budget, user_id=user.id)
+                                             "signals": True, "force_repeat": bool(form.get("repeat"))},
+                  budget=budget, user_id=user.id)
     if r.sources != tracks:
         flash(request, f"دفعة أخرى تعمل الآن (#{r.id}) — ستبدأ دفعتك بعد انتهائها؛ أعد المحاولة بعد قليل", "err")
         return back("/signals")

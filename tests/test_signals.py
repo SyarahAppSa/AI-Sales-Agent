@@ -109,7 +109,10 @@ def test_signal_tracks_evidence_dedupe_and_rep_view():
         assert "قيد التحقق" in page and "مكررة — دُمج الدليل في سجلها" in page
         # العرض المختصر: خمسة أعمدة، الرقم كاملًا LTR مع زر نسخ، ما ينقص واضح، والتفاصيل في لوحة جانبية
         assert '<bdi class="ph" dir="ltr" translate="no">+966126651100</bdi>' in page and 'data-copy="+966126651100"' in page
-        assert "البريد غير متوفر" in page or "الهاتف غير متوفر" in page
+        full = cl.get(f"/signals?run={rid}&all=1").text
+        assert "البريد غير متوفر" in full or "الهاتف غير متوفر" in full
+        if "بلا هاتف ولا بريد" in page:  # المنشأة بلا هاتف ولا بريد تُخفى افتراضيًا وتظهر بـ«عرضها»
+            assert "أُخفيت" in page and "إخفاؤها" in full
         assert 'class="det-src"' in page and "عرض التفاصيل" in page and "سجل التواصل" in page and 'id="drawer"' in page
         assert "الموقع الرسمي" in page and "<th class=\"c-fu\">المتابعة</th>" in page
         assert "اتصلت الأسبوع الماضي" in page and "طلب التواصل لاحقًا" in page and "غير مسند" in page  # قبل الإسناد
@@ -243,6 +246,32 @@ def test_direct_activity_search_operator_and_merge(monkeypatch):
         assert not s.query(LeadStub).filter(LeadStub.run_id == rid, LeadStub.name == "مقهى لا علاقة له").count()
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
-        page = cl.get(f"/signals?run={rid}").text
+        page = cl.get(f"/signals?run={rid}&all=1").text
         assert "مؤسسة الرواحل للنقل المدرسي" in page and "+966114201001" in page and "مشغّل المركبات غير مؤكد" in page
+        default = cl.get(f"/signals?run={rid}").text
+        assert "مؤسسة الرواحل للنقل المدرسي" in default and "أُخفيت" in default and "مدارس النخبة العالمية" not in default
         assert "explore.overturemaps.org" in page and "تطابق" in page
+    # إعادة الطلب نفسه خلال 30 يومًا: لا بحث ولا تكلفة مكررة، إلا عند اختيار «أعد البحث»
+    calls = []
+    import mandoob.directory as DD
+    monkeypatch.setattr(DD, "direct_overture", lambda *a, **k: calls.append(a) or [])
+    for repeat, expect in (("", 0), ("1", None)):
+        with TestClient(app) as cl:
+            otp_login(cl, ADMIN, "admin")
+            data = {"tracks": ["sig_direct"], "activities": ["group:school_transport"], "scope_mode": "places",
+                    "places": ["SA-01/riyadh"], "limit": "5", "budget": "1"}
+            if repeat:
+                data["repeat"] = "1"
+            cl.post("/signals/run", data=data, follow_redirects=False)
+        with session_scope() as s:
+            rr = s.query(DirectoryRun).order_by(DirectoryRun.id.desc()).first()
+            rid2 = rr.id
+        n0 = len(calls)
+        D.run(rid2, crawler=FakeCrawler())
+        with session_scope() as s:
+            rr = s.get(DirectoryRun, rid2)
+            if expect is None:
+                assert len(calls) - n0 >= 1  # «أعد البحث» يتجاوز الذاكرة
+            else:
+                assert len(calls) - n0 == 0
+                assert rr.stats["sig_direct"].get("skipped_recent", 0) >= 1 and any("سبق تنفيذه خلال 30 يومًا" in x for x in rr.log)

@@ -47,6 +47,34 @@ def budget(s) -> dict:
             "pct": min(100.0, spent / cap * 100) if cap else 100.0, "searches_left": int(max(0.0, cap - spent) / COST_PER_SEARCH)}
 
 
+QUERY_LOG_KEY = "google_query_log"
+REPEAT_DAYS = 30
+
+
+def query_log(s, days: int = REPEAT_DAYS) -> dict[str, str]:
+    """عبارات بحث Google المنفّذة خلال آخر N يومًا ← التاريخ (نص العبارة فقط، بلا أي نتائج من Google)."""
+    from datetime import date as _d, timedelta as _td
+
+    from .timeutil import riyadh_today
+    row = s.get(Setting, QUERY_LOG_KEY)
+    cut = riyadh_today() - _td(days=days)
+    return {k: v for k, v in ((row.value if row else None) or {}).items() if _d.fromisoformat(v) >= cut}
+
+
+def log_query(q: str) -> None:
+    from .timeutil import riyadh_today
+    with session_scope() as s:
+        row = s.get(Setting, QUERY_LOG_KEY)
+        v = dict((row.value if row else None) or {})
+        v[q] = riyadh_today().isoformat()
+        if len(v) > 3000:
+            v = dict(sorted(v.items(), key=lambda x: x[1])[-3000:])
+        if row is None:
+            s.add(Setting(key=QUERY_LOG_KEY, value=v))
+        else:
+            row.value = v
+
+
 def set_budget(s, monthly_usd: float) -> None:
     row = s.get(Setting, BUDGET_KEY)
     v = {**((row.value if row else None) or {}), "monthly_usd": round(max(1.0, min(monthly_usd, 100000.0)), 2)}

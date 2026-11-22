@@ -371,6 +371,30 @@ def _operator_note(ak: str, role: str = "", linked: str = "", taxonomy: str = ""
     return "مشغّل المركبات غير مؤكد" + (f" — {_ROLE_HINT[ak]}" if ak in _ROLE_HINT else "")
 
 
+SEARCHED_KEY = "direct_searched_pairs"
+REPEAT_DAYS = 30
+
+
+def searched_recently(s, days: int = REPEAT_DAYS) -> dict[str, str]:
+    """أزواج «نشاط|مدينة» بُحث فيها خلال آخر N يومًا ← تاريخ البحث (لا يُعاد البحث فيها توفيرًا للتكلفة)."""
+    from datetime import date as _d, timedelta as _td
+    row = s.get(Setting, SEARCHED_KEY)
+    cut = riyadh_today() - _td(days=days)
+    return {k: v for k, v in ((row.value if row else None) or {}).items() if _d.fromisoformat(v) >= cut}
+
+
+def mark_searched(s, key: str) -> None:
+    row = s.get(Setting, SEARCHED_KEY)
+    v = dict((row.value if row else None) or {})
+    v[key] = riyadh_today().isoformat()
+    if len(v) > 5000:
+        v = dict(sorted(v.items(), key=lambda x: x[1])[-5000:])
+    if row is None:
+        s.add(Setting(key=SEARCHED_KEY, value=v))
+    else:
+        row.value = v
+
+
 def direct_overture(ak: str, pid: str, limit: int = 60) -> list[dict]:
     """البحث المباشر من Overture (مجاني): التصنيف وكلمات الاسم بمرادفات النشاط."""
     from . import overture as OV
@@ -883,13 +907,18 @@ def run(run_id: int, crawler=None) -> None:
             d_places = [x for x in d_places if x in _OV.CITY_BBOX] or d_places
         with session_scope() as s:
             d_done = set(((s.get(DirectoryRun, run_id).stats or {}).get("_dir_pairs")) or [])
+            recent = searched_recently(s)
         st_d = stats["sig_direct"]
+        skipped_recent = []
         per_act = max(5, -(-limit // max(1, len(d_acts))))  # نصيب عادل لكل نشاط: لا يملأ نشاط واحد الحد كله
         for ak in d_acts:
             act_start = st_d["discovered"]
             for pid in d_places:
                 key = f"{ak}|{pid}"
                 if key in d_done:
+                    continue
+                if key in recent and not p.get("force_repeat"):  # بُحث خلال 30 يومًا: نتائجه نفسها — توفير للتكلفة
+                    skipped_recent.append(f"{_ACTS[ak]['label']} في {_geo.PLACES.get(pid, {}).get('ar', pid)} ({recent[key]})")
                     continue
                 if completes() >= target or st_d["discovered"] >= limit or st_d["discovered"] - act_start >= per_act:
                     break
@@ -945,6 +974,7 @@ def run(run_id: int, crawler=None) -> None:
                 with session_scope() as s:
                     rr = s.get(DirectoryRun, run_id)
                     rr.stats = {**(rr.stats or {}), "_dir_pairs": sorted(d_done)}
+                    mark_searched(s, key)
                 beat(f"بحث مباشر — «{phrase}»: {len(items)} منشأة، الجديد {len(new_ids)}")
                 for sid in new_ids:
                     if completes() >= target:
@@ -953,6 +983,10 @@ def run(run_id: int, crawler=None) -> None:
                     beat()
             if halted or completes() >= target or st_d["discovered"] >= limit:
                 break
+        if skipped_recent:
+            st_d["skipped_recent"] = len(skipped_recent)
+            beat(f"تُخطي {len(skipped_recent)} بحثًا سبق تنفيذه خلال 30 يومًا (لا تكلفة مكررة): "
+                 + "، ".join(skipped_recent[:8]) + ("…" if len(skipped_recent) > 8 else ""))
     web_sources = [x for x in sources if x in ("web_search", "social", "claude_directory")
                    or (x in SIGNAL_TRACKS and x != "sig_direct")]
     k = done_pairs
