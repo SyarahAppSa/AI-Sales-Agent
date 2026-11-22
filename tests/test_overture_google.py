@@ -189,3 +189,43 @@ def test_google_monthly_budget_blocks_and_alerts(monkeypatch):
         assert "سقف خرائط Google الشهري الآن $500" in r.text
     with session_scope() as s:
         assert G.budget(s)["cap"] == 500.0
+
+
+def test_signals_google_by_activity(monkeypatch):
+    from mandoob import google_live as G
+    from mandoob.models import Contact as Ct
+    seen = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        seen.append(body["textQuery"])
+        return httpx.Response(200, json={"places": [
+            {"id": "x1", "displayName": {"text": "مؤسسة مياه نقية للفحص"}, "nationalPhoneNumber": "055 777 1201",
+             "googleMapsUri": "https://maps.google.com/?cid=91", "location": {"latitude": 24.7, "longitude": 46.7}},
+            {"id": "x2", "displayName": {"text": "منشأة موجودة لفحص جوجل"}, "nationalPhoneNumber": "055 777 1202",
+             "googleMapsUri": "https://maps.google.com/?cid=92"}]})
+    monkeypatch.setattr(settings, "google_places_api_key", "AIza-test-key")
+    monkeypatch.setattr(G.httpx, "Client", _google(handler))
+    with session_scope() as s:
+        G.set_budget(s, 500)
+        co = Company(name="منشأة موجودة لفحص جوجل", name_norm=normalize_name("منشأة موجودة لفحص جوجل"))
+        s.add(co)
+        s.flush()
+        s.add(Ct(company_id=co.id, kind="phone", value="+966557771202", source_url="https://x.example"))
+        n0 = s.query(Company).count()
+    from mandoob.activities import ACTIVITIES
+    ak = next(k for k, a in ACTIVITIES.items() if "مياه" in a["label"] or "وايت" in a["label"])
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        assert "ابحث في خرائط Google عن النشاط المختار" in cl.get("/signals").text
+        html = cl.get("/signals/google", params=[("activities", ak), ("places", "SA-01/riyadh")]).text
+        assert len(seen) == 1 and seen[0].endswith("في الرياض")
+        assert "مؤسسة مياه نقية للفحص" in html and "جديدة" in html and "موجودة" in html and "+966557771201" in html
+        assert "اختر في «النطاق»" in cl.get("/signals/google", params=[("activities", ak)]).text
+        many = cl.get("/signals/google", params=[("activities", "__all__"), ("places", "SA-01/riyadh")]).text
+        assert "اختر نشاطًا واحدًا على الأقل" in many and len(seen) == 1  # لا صرف على «جميع الأنشطة»
+        grp = cl.get("/signals/google", params=[("activities", "group:land_freight"), ("activities", "group:logistics"),
+                                                  ("places", "SA-01/riyadh"), ("places", "SA-02/jeddah")]).text
+        assert "ضيّق الأنشطة أو المدن" in grp and len(seen) == 1
+    with session_scope() as s:
+        assert s.query(Company).count() == n0  # لا يُحفظ شيء من Google

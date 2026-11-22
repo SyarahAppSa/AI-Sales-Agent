@@ -30,11 +30,20 @@
   <div style="flex:0 0 140px"><label class="small">ميزانية الدفعة ($)</label><input type="number" name="budget" value="5" min="0.5" max="200" step="0.5"></div>
 </div>
 <p class="small muted">تُقبل المنشأة فقط إن ظهر اسمها في صفحة حقيقية وظهر اقتباس دليلها حرفيًا في صفحة قرأها الوكيل، بتاريخها ورابطها. الهاتف والبريد من موقعها الرسمي في المرحلة الثانية. يتوقف البحث عند بلوغ هدف اليوم أو حد التكلفة.</p>
+<div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
 <button class="btn p">ابدأ البحث</button>
+{% if google_key %}<button class="btn" formaction="/signals/google" formmethod="get" id="g-btn">🔎 ابحث في خرائط Google عن النشاط المختار</button>
+<span class="small muted" id="g-est">اختر النشاط و«مدينة بعينها» — بحث واحد لكل نشاط في كل مدينة (≈ ${{ '%.3f'|format(g_cost) }} للبحث، والحد {{ g_max }} في المرة). النتائج للعرض فقط.</span>{% endif %}
+</div>
 </form>
 <script>(function(){var f=document.getElementById('act-filter'),sel=document.getElementById('act-select');
 f.addEventListener('input',function(){var q=f.value.trim();[].forEach.call(sel.querySelectorAll('optgroup'),function(g){var any=false;
 [].forEach.call(g.querySelectorAll('option'),function(o){var hit=!q||o.text.indexOf(q)>=0||g.label.indexOf(q)>=0;o.hidden=!hit;any=any||hit;});g.hidden=!any;});});})();
+(function(){var b=document.getElementById('g-btn'),e=document.getElementById('g-est');if(!b)return;var sel=document.getElementById('act-select'),pl=document.querySelector('.sig-pl'),m=document.getElementById('sig-scope');
+function cnt(){var a=0;[].forEach.call(sel.selectedOptions,function(o){if(o.value.indexOf('group:')===0){a+=o.parentNode.querySelectorAll('option').length-1}else if(o.value!=='__all__'){a+=1}});
+var p=m.value==='places'?pl.selectedOptions.length:0,n=a*p;if(!a||!p){e.textContent='اختر النشاط و«مدينة بعينها» — بحث واحد لكل نشاط في كل مدينة (≈ ${{ '%.3f'|format(g_cost) }} للبحث، والحد {{ g_max }} في المرة). النتائج للعرض فقط.';b.disabled=false;return}
+e.textContent=n+' بحث في Google ≈ $'+(n*{{ g_cost }}).toFixed(2)+(n>{{ g_max }}?' — أكثر من الحد {{ g_max }}، ضيّق الاختيار':'');b.disabled=n>{{ g_max }};}
+sel.addEventListener('change',cnt);pl.addEventListener('change',cnt);m.addEventListener('change',cnt);cnt();})();
 (function(){var m=document.getElementById('sig-scope');function u(){document.querySelector('.sig-reg').hidden=m.value!=='regions';document.querySelector('.sig-pl').hidden=m.value!=='places';}m.addEventListener('change',u);u();})();</script>
 
 {% if runs %}<div class="card"><h2>الدفعات</h2><div class="chips">{% for r in runs %}<a class="pill {{ 'info' if cur and r.id == cur.id }}" href="/signals?run={{ r.id }}">#{{ r.id }} — {{ {'pending':'بانتظار البدء','running':'جارية','done':'اكتملت','stopped':'توقفت','failed':'فشلت'}.get(r.status, r.status) }} — {{ fmt(r.created_at) }}</a>{% endfor %}</div></div>{% endif %}

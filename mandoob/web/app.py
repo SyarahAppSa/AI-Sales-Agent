@@ -4121,13 +4121,64 @@ def signals_page(request: Request, run: int = 0, user: User = Depends(require_ma
         minutes = None
     return render(request, "signals.html", user, s, runs=runs, cur=cur, rows=rows, per_src=per_src, minutes=minutes,
                   TRACKS=D.SIGNAL_TRACKS, ACTIVITIES=ACTIVITIES, DIR_SECTORS=SECTORS, GEO_REGIONS=geo.REGIONS,
-                  GEO_PLACES=geo.PLACES, STATUSES=STATUSES, goal_t=_goal(s), goal_n=_ach(s),
+                  GEO_PLACES=geo.PLACES, STATUSES=STATUSES, goal_t=_goal(s), goal_n=_ach(s), g_cost=__import__("mandoob.google_live", fromlist=["x"]).COST_PER_SEARCH, g_max=GOOGLE_MAX_SEARCHES,
                   reps=list(s.scalars(select(User).where(User.active.is_(True)).order_by(User.name))),
                   SEARCH_GROUPS=__import__("mandoob.activities", fromlist=["x"]).SEARCH_GROUPS,
                   google_key=bool(settings.google_places_api_key),
                   google_status=__import__("mandoob.google_live", fromlist=["x"]).get_status(s),
                   busy=any(r.status in ("pending", "running") for r in s.scalars(
                       select(DirectoryRun).where(DirectoryRun.status.in_(["pending", "running"])))))
+
+
+GOOGLE_MAX_SEARCHES = 10  # حد البحث الواحد من «اكتشاف من خرائط جوجل» — للتركيز في الصرف
+
+
+@app.get("/signals/google", response_class=HTMLResponse)
+def signals_google(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    """بحث خرائط Google بالنشاط: نشاط (أو أكثر) × مدينة (أو أكثر)، عبارة لكل زوج — للعرض فقط، لا يُحفظ شيء."""
+    from .. import geo, google_live as G
+    from ..activities import ACTIVITIES, normalize_selection
+    from ..models import Contact
+    from ..overture import CITY_BBOX
+    acts = normalize_selection([a for a in request.query_params.getlist("activities") if a != "__all__"])
+    places = [p for p in request.query_params.getlist("places") if p in geo.PLACES]
+    plan = [(a, p) for a in acts for p in places]
+    error, groups, done, seen = None, [], 0, set()
+    if not acts:
+        error = "اختر نشاطًا واحدًا على الأقل (لا يُبحث في Google عن «جميع الأنشطة» حتى لا يتشتت الصرف)."
+    elif not places:
+        error = "اختر في «النطاق» ← «مدينة بعينها» مدينة واحدة أو أكثر — البحث في Google يكون لكل مدينة على حدة."
+    elif len(plan) > GOOGLE_MAX_SEARCHES:
+        error = (f"اخترت {len(acts)} نشاط × {len(places)} مدينة = {len(plan)} بحثًا (≈ ${len(plan) * G.COST_PER_SEARCH:.2f}). "
+                 f"الحد {GOOGLE_MAX_SEARCHES} بحوث في المرة — ضيّق الأنشطة أو المدن للتركيز في الصرف.")
+    else:
+        phones = {v for (v,) in s.execute(select(Contact.value).where(Contact.kind == "phone"))}
+        names = {v for (v,) in s.execute(select(Company.name_norm))}
+        for a, p in plan:
+            q = f"{ACTIVITIES[a]['label']} في {geo.PLACES[p]['ar']}"
+            bb = CITY_BBOX.get(p)
+            center = ((bb[2] + bb[3]) / 2, (bb[0] + bb[1]) / 2) if bb else None
+            try:
+                rows = G.search(q, center)
+                done += 1
+            except G.LiveError as e:
+                groups.append({"query": q, "rows": [], "error": str(e)})
+                break
+            out = []
+            for r in rows:
+                k = r.get("maps") or (r["name"], r.get("phone"))
+                if k in seen:
+                    continue
+                seen.add(k)
+                ph = normalize_phone(r.get("phone") or "")
+                r["e164"] = ph
+                r["exists"] = bool((ph and ph in phones) or normalize_name(r["name"]) in names)
+                out.append(r)
+            groups.append({"query": q, "rows": out, "error": None})
+    return render(request, "signals_google.html", user, s, gresults=groups, error=error, done=done, plan=plan,
+                  cost=G.COST_PER_SEARCH, budget=G.budget(s), ACTIVITIES=ACTIVITIES, GEO_PLACES=geo.PLACES,
+                  acts=acts, places=places, max_n=GOOGLE_MAX_SEARCHES,
+                  back_qs=str(request.url.query))
 
 
 @app.post("/signals/run")

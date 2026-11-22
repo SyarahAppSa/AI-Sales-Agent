@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}خرائط Google حسب النشاط{% endblock %}{% block content %}
+<div class="top"><div><h1>خرائط Google حسب النشاط</h1>
+<p class="sub" style="margin:0">بحث واحد لكل نشاط في كل مدينة اخترتها — للعرض المباشر فقط، لا يُحفظ شيء في المنصة (شروط Google).</p></div>
+<div class="row" style="flex:0 0 auto"><a class="btn" href="/signals">العودة إلى اكتشاف من خرائط جوجل</a></div></div>
+
+<div class="card"><div class="head2"><h2>الصرف</h2>
+<span class="small">هذا البحث: <b>{{ done }}</b> طلب ≈ <b dir="ltr">${{ '%.2f'|format(done * cost) }}</b> — الشهر: <b dir="ltr">${{ '%.2f'|format(budget.spent) }}</b> من <span dir="ltr">${{ '%.0f'|format(budget.cap) }}</span></span></div>
+<div class="aic-bar" style="background:var(--soft)"><i style="width:{{ [budget.pct, 1]|max }}%" class="{{ 'warn' if budget.pct >= 80 }}"></i></div>
+<p class="small muted" style="margin:8px 0 0">الأنشطة: {% for a in acts %}<span class="pill">{{ ACTIVITIES[a].label }}</span> {% endfor %}— المدن: {% for p in places %}<span class="pill">{{ GEO_PLACES[p].ar }}</span> {% endfor %}</p></div>
+
+{% if error %}<div class="card" style="border-color:var(--err)"><p style="color:var(--err);margin:0">{{ error }}</p></div>{% endif %}
+
+{% for g in gresults %}<div class="card"><div class="head2"><h2>«{{ g.query }}»</h2>
+{% set new_n = g.rows|rejectattr('exists')|list|length %}<span class="small muted">{{ g.rows|length }} نتيجة — {{ new_n }} غير موجودة في المنصة</span></div>
+{% if g.error %}<p style="color:var(--err)">{{ g.error }}</p>{% elif not g.rows %}<p class="muted">لا نتائج جديدة (أو كلها ظهرت في بحث سابق بهذه الصفحة).</p>{% else %}
+<div class="tablewrap"><table>
+<tr><th>المنشأة</th><th>الهاتف</th><th>الموقع</th><th>التقييم</th><th>في المنصة</th><th></th></tr>
+{% for r in g.rows %}<tr><td translate="no"><b>{{ r.name }}</b><div class="small muted">{{ r.type }}{% if r.address %} · {{ r.address }}{% endif %}</div></td>
+<td class="phcell">{% if r.phone %}<bdi class="ph" dir="ltr" translate="no">{{ r.phone }}</bdi> <button type="button" class="cp" data-copy="{{ r.e164 or r.phone }}">نسخ</button>{% else %}—{% endif %}</td>
+<td class="small">{% if r.website %}<a href="{{ r.website }}" target="_blank" rel="noopener" class="ltr">{{ r.website.split('//')[-1][:36] }}</a>{% else %}—{% endif %}</td>
+<td class="small">{{ r.rating or '—' }}{% if r.reviews %} ({{ r.reviews }}){% endif %}</td>
+<td>{% if r.exists %}<span class="pill">موجودة</span>{% else %}<span class="pill ok">جديدة</span>{% endif %}</td>
+<td><a href="{{ r.maps }}" target="_blank" rel="noopener" class="small">فتح في Google Maps</a></td></tr>{% endfor %}
+</table></div>{% endif %}</div>{% endfor %}
+<p class="small muted">البيانات © Google — تُعرض فقط ولا تُخزَّن. «موجودة» تعني أن رقمها أو اسمها مسجل في المنصة مسبقًا.</p>
+<script>document.addEventListener('click',function(e){var b=e.target.closest('[data-copy]');if(!b)return;navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy);var t=b.textContent;b.textContent='✓';setTimeout(function(){b.textContent=t},1200);});</script>
+{% endblock %}
