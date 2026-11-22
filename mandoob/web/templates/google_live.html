@@ -11,6 +11,14 @@
     <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ (query or q or (ACTIVITIES[activity].label ~ ' في ' ~ dict(GOOGLE_CITIES)[city]))|urlencode }}">بحث في خرائط Google ↗</a></div>
 </form>
 
+<div class="card"><div class="head2"><h2>الميزانية الشهرية لخرائط Google</h2>
+<span class="small"><b dir="ltr">${{ '%.2f'|format(budget.spent) }}</b> من <b dir="ltr">${{ '%.0f'|format(budget.cap) }}</b> هذا الشهر — متبقٍ <span dir="ltr">${{ '%.2f'|format(budget.left) }}</span> (≈ {{ '{:,}'.format(budget.searches_left) }} بحث)</span></div>
+<div class="aic-bar" style="background:var(--soft)"><i style="width:{{ [budget.pct, 1]|max }}%" class="{{ 'warn' if budget.pct >= 80 }}"></i></div>
+<p class="small muted" style="margin:8px 0 0">إذا بلغ الصرف السقف يتوقف البحث في Google تلقائيًا حتى أول الشهر، ويصلك تنبيه عند 80٪ وعند البلوغ.</p>
+{% if user.role == 'admin' %}<form method="post" action="/discover/google/budget" class="row" style="gap:8px;align-items:end;margin-top:8px">
+<div style="flex:0 1 200px"><label class="small">السقف الشهري ($)</label><input name="monthly_usd" value="{{ '%.0f'|format(budget.cap) }}" dir="ltr" inputmode="decimal"></div>
+<button class="btn" style="flex:0 0 auto">حفظ السقف</button></form>{% endif %}</div>
+
 <div class="card"><h2>حالة الاتصال بـGoogle</h2>
 {% if not has_key %}<p><span class="pill err">غير مضبوط</span> المفتاح <code>GOOGLE_PLACES_API_KEY</code> غير موجود على الخادم. أضفه في Render ← mandoob-web ← Environment، وفعّل في Google Cloud «Places API (New)» و«Maps Static API».</p>
 {% elif status.at %}<p>{% if status.ok %}<span class="pill ok">متصل</span> آخر اختبار فعلي: «{{ status.query }}» — {{ status.count }} نتيجة{% else %}<span class="pill err">تعذّر</span> {{ status.error }}{% endif %} <span class="small muted">— {{ fmt(status.at|todt) }}</span></p>

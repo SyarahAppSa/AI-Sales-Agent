@@ -159,3 +159,33 @@ def test_google_live_search_displays_results_without_saving(monkeypatch):
             403, json={"error": {"status": "PERMISSION_DENIED", "message": "Places API (New) has not been used in project"}})))
         html = cl.get("/discover/google", params={"q": "مصانع في الدمام", "city": "SA-04/dammam"}).text
         assert "Places API (New) غير مفعّلة" in html and "تعذّر" in html
+
+
+def test_google_monthly_budget_blocks_and_alerts(monkeypatch):
+    from mandoob import google_live as G
+    from mandoob.costs import record_cost
+    from mandoob.models import Notification
+    calls = []
+    monkeypatch.setattr(settings, "google_places_api_key", "AIza-test-key")
+    monkeypatch.setattr(G.httpx, "Client", _google(lambda req: calls.append(1) or httpx.Response(200, json={"places": []})))
+    with session_scope() as s:
+        assert G.budget(s)["cap"] == 500.0  # السقف الافتراضي
+        spent = G.budget(s)["spent"]
+        G.set_budget(s, spent + 1.0)
+    G.search("اختبار السقف")
+    assert calls  # تحت السقف: يمر
+    record_cost("google_places", 1, 2.0, note="google_live")
+    n = len(calls)
+    with pytest.raises(G.LiveError, match="سقفه الشهري"):
+        G.search("بعد السقف")
+    assert len(calls) == n  # لم يُرسل طلب لـGoogle
+    with session_scope() as s:
+        assert s.query(Notification).filter(Notification.title.like("بلغ بحث خرائط Google سقفه الشهري%")).count() >= 1
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/discover/google").text
+        assert "الميزانية الشهرية لخرائط Google" in html and "حفظ السقف" in html
+        r = cl.post("/discover/google/budget", data={"monthly_usd": "500"}, follow_redirects=True)
+        assert "سقف خرائط Google الشهري الآن $500" in r.text
+    with session_scope() as s:
+        assert G.budget(s)["cap"] == 500.0

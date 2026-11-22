@@ -27,6 +27,62 @@ class LiveError(Exception):
     pass
 
 
+BUDGET_KEY = "google_budget"
+DEFAULT_BUDGET = 500.0  # دولار شهريًا — يحدده المالك من صفحة البحث
+SERVICES = ("google_places", "google_static_map")
+
+
+def budget(s) -> dict:
+    """السقف الشهري لخرائط Google وما صُرف هذا الشهر (بتوقيت الرياض)."""
+    from sqlalchemy import func, select
+
+    from .models import CostEntry
+    from .timeutil import riyadh_today
+    row = s.get(Setting, BUDGET_KEY)
+    cap = float(((row.value if row else None) or {}).get("monthly_usd") or DEFAULT_BUDGET)
+    m0 = riyadh_today().replace(day=1)
+    spent = float(s.scalar(select(func.coalesce(func.sum(CostEntry.cost_usd), 0)).where(
+        CostEntry.service.in_(SERVICES), CostEntry.day >= m0)) or 0)
+    return {"cap": cap, "spent": round(spent, 2), "left": round(max(0.0, cap - spent), 2),
+            "pct": min(100.0, spent / cap * 100) if cap else 100.0, "searches_left": int(max(0.0, cap - spent) / COST_PER_SEARCH)}
+
+
+def set_budget(s, monthly_usd: float) -> None:
+    row = s.get(Setting, BUDGET_KEY)
+    v = {**((row.value if row else None) or {}), "monthly_usd": round(max(1.0, min(monthly_usd, 100000.0)), 2)}
+    if row is None:
+        s.add(Setting(key=BUDGET_KEY, value=v))
+    else:
+        row.value = v
+
+
+def _guard() -> None:
+    """يمنع أي طلب جديد لـGoogle إذا بلغ صرف الشهر السقف، وينبّه المدير مرة عند 80٪ ومرة عند البلوغ."""
+    from sqlalchemy import select
+
+    from .models import Notification, User
+    from .timeutil import riyadh_today
+    with session_scope() as s:
+        b = budget(s)
+        row = s.get(Setting, BUDGET_KEY)
+        v = dict((row.value if row else None) or {})
+        month = riyadh_today().strftime("%Y-%m")
+        level = "full" if b["spent"] >= b["cap"] else ("warn" if b["pct"] >= 80 else "")
+        if level and v.get(f"alert_{level}") != month:
+            title = (f"بلغ بحث خرائط Google سقفه الشهري (${b['spent']:.2f} من ${b['cap']:.0f}) — توقف حتى أول الشهر"
+                     if level == "full" else f"بحث خرائط Google استهلك {b['pct']:.0f}٪ من سقفه الشهري (${b['spent']:.2f} من ${b['cap']:.0f})")
+            for uid in s.scalars(select(User.id).where(User.role == "admin", User.active.is_(True))):
+                s.add(Notification(user_id=uid, title=title, body="يمكن تعديل السقف من «بحث مباشر في خرائط Google»."))
+            v[f"alert_{level}"] = month
+            if row is None:
+                s.add(Setting(key=BUDGET_KEY, value=v))
+            else:
+                row.value = v
+    if level == "full":  # بعد حفظ التنبيه (الخطأ داخل الجلسة كان سيلغيه)
+        raise LiveError(f"بلغ بحث خرائط Google سقفه الشهري (${b['spent']:.2f} من ${b['cap']:.0f}) — يُستأنف أول الشهر القادم، "
+                        "أو يرفع المالك السقف من هذه الصفحة")
+
+
 def _explain(code: int, body: dict) -> str:
     err = (body or {}).get("error") or {}
     status, msg = err.get("status") or "", (err.get("message") or "")[:160]
@@ -61,6 +117,7 @@ def search(query: str, center: tuple[float, float] | None = None, http: httpx.Cl
     if not key:
         set_status(ok=False, error="المفتاح GOOGLE_PLACES_API_KEY غير مضبوط على الخادم", query=query, count=0)
         raise LiveError("المفتاح GOOGLE_PLACES_API_KEY غير مضبوط على الخادم — أضفه في Render ثم أعد الاختبار")
+    _guard()
     body = {"textQuery": query, "languageCode": "ar", "regionCode": "SA", "pageSize": 20}
     if center:
         body["locationBias"] = {"circle": {"center": {"latitude": center[0], "longitude": center[1]}, "radius": 40000.0}}
@@ -97,6 +154,7 @@ def static_map(points: list[tuple[float, float]], http: httpx.Client | None = No
     key = settings.google_places_api_key
     if not key:
         raise LiveError("لا مفتاح")
+    _guard()
     labels = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     params = [("size", "640x420"), ("scale", "2"), ("language", "ar"), ("region", "SA"), ("key", key)]
     for i, (la, ln) in enumerate(points[:20]):

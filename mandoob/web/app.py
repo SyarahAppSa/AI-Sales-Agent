@@ -4011,7 +4011,23 @@ def discover_google(request: Request, activity: str = "transport.freight", city:
     from ..config import settings as _st
     return render(request, "google_live.html", user, s, ACTIVITIES=ACTIVITIES, activity=activity, city=city, q=q,
                   query=query if request.query_params else "", results=results, error=error, map_qs=map_qs,
-                  cost=G.COST_PER_SEARCH, status=G.get_status(s), has_key=bool(_st.google_places_api_key))
+                  cost=G.COST_PER_SEARCH, status=G.get_status(s), has_key=bool(_st.google_places_api_key), budget=G.budget(s))
+
+
+@app.post("/discover/google/budget")
+def discover_google_budget(request: Request, monthly_usd: str = Form(...), user: User = Depends(require_admin),
+                           s=Depends(get_db, scope="function")):
+    from .. import google_live as G
+    try:
+        v = float(re.sub(r"[^\d.]", "", monthly_usd) or 0)
+    except ValueError:
+        v = 0
+    if v <= 0:
+        flash(request, "اكتب مبلغًا صحيحًا بالدولار", "err")
+        return back("/discover/google")
+    G.set_budget(s, v)
+    flash(request, f"سقف خرائط Google الشهري الآن ${v:,.0f}")
+    return back("/discover/google")
 
 
 @app.get("/discover/google/map")
