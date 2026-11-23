@@ -128,6 +128,21 @@ def _startup() -> None:
     if settings.run_scheduler_in_web:
         from ..worker import start_background
         start_background()
+    elif not os.environ.get("PYTEST_CURRENT_TEST") and settings.database_url.startswith("postgres"):
+        _start_watchdog()
+
+
+def _start_watchdog() -> None:
+    """مراقبة العامل من خدمة الموقع: يصل تنبيه للمالك إن توقف البحث المجدول."""
+    import threading
+    import time as _t
+    from ..emergency import watchdog
+
+    def loop():
+        while True:
+            _t.sleep(300)
+            watchdog()
+    threading.Thread(target=loop, name="worker-watchdog", daemon=True).start()
 
 
 # ---------------------------------------------------------------- أدوات
@@ -2308,6 +2323,7 @@ async def companies_bulk_assign(request: Request, user: User = Depends(require_m
     reassign = bool(form.get("reassign"))
     ids = [int(x) for x in form.getlist("company_ids") if str(x).isdigit()]
     done, skipped, moved = 0, [], 0
+    from sqlalchemy import update as _upd
     for c in s.scalars(select(Company).where(Company.id.in_(ids))):
         if c.owner_id == u.id:
             continue
@@ -2315,8 +2331,16 @@ async def companies_bulk_assign(request: Request, user: User = Depends(require_m
             skipped.append(f"{c.name} (لدى {c.owner.name})")
             continue
         prev = c.owner.name if c.owner else None
+        # إسناد ذري: يُكتب فقط إن لم يتغير المسؤول منذ قراءته — إسنادان متزامنان لا يكتب أحدهما فوق الآخر
+        res = s.execute(_upd(Company).where(Company.id == c.id, (Company.owner_id == c.owner_id) if c.owner_id
+                                            else Company.owner_id.is_(None))
+                        .values(owner_id=u.id, assigned_at=now_utc()).execution_options(synchronize_session=False))
+        if res.rowcount != 1:
+            s.expire(c)
+            skipped.append(f"{c.name} (أُسندت للتو من مدير آخر)")
+            continue
+        s.expire(c, ["owner_id", "assigned_at"])
         moved += 1 if prev else 0
-        c.owner_id, c.assigned_at = u.id, now_utc()
         for t in s.scalars(select(Task).where(Task.company_id == c.id, Task.status == "open")):
             t.owner_id = u.id
         log_activity(s, c.id, "assigned", f"أُسندت المنشأة إلى {u.name}",
@@ -3707,6 +3731,25 @@ def _kit_page(request: Request, s, user: User, base: str, company_id: int | None
 @app.get("/kit", response_class=HTMLResponse)
 def kit_page(request: Request, company: int = 0, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     return _kit_page(request, s, user, "/kit", company or None)
+
+
+@app.post("/report-issue")
+async def report_issue(request: Request, s=Depends(get_db, scope="function")):
+    """«الإبلاغ عن مشكلة» من أي بوابة: يصل للمالك تنبيهًا في المنصة وعلى بريده، ويُسجَّل في «لوحة طوارئ»."""
+    from ..emergency import alert_admins
+    user = _session_user(request, s, "staff") or _session_user(request, s, "admin")
+    if user is None:
+        raise LoginRequired("/portal/login")
+    form = await request.form()
+    text = (form.get("text") or "").strip()[:2000]
+    page = (form.get("page") or "")[:200]
+    if not text:
+        flash(request, "اكتب وصف المشكلة", "err")
+        return back(_safe_back(request, "/portal"))
+    alert_admins(f"بلاغ من {user.name}: {text[:80]}", f"الموظف: {user.name} ({user.email})\nالصفحة: {page}\n\n{text}",
+                 service="report", throttle=False)
+    flash(request, "وصل بلاغك للإدارة، وسيتواصلون معك. شكرًا.")
+    return back(_safe_back(request, "/portal"))
 
 
 @app.get("/portal/kit", response_class=HTMLResponse)

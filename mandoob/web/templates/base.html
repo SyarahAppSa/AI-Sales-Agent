@@ -58,6 +58,10 @@
     {% endif %}
   {% endfor %}
     <div class="sep"></div>
+    <details class="report-issue"><summary class="top1" title="الإبلاغ عن مشكلة">{{ icon('bell') }}<span class="lbl">الإبلاغ عن مشكلة</span></summary>
+      <form method="post" action="/report-issue" style="padding:6px 8px 10px"><input type="hidden" name="page" value="{{ path }}">
+        <textarea name="text" rows="3" required placeholder="صف المشكلة باختصار: ماذا كنت تفعل وماذا ظهر لك" style="width:100%;font-size:13px"></textarea>
+        <button class="btn sm p" style="margin-top:6px">إرسال للإدارة</button></form></details>
     <a href="/logout" class="top1" title="خروج">{{ icon('logout') }}<span class="lbl">خروج</span></a>
   </nav>
 </aside>

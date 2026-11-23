@@ -189,10 +189,92 @@ class DownloadGuard:
 LATENCY: list[float] = []
 
 
+ALERT_SERVICES = {"email": "البريد وأكواد الدخول", "db": "قاعدة البيانات", "scheduler": "البحث المجدول (العامل)",
+                  "web": "خدمة الموقع"}
+
+
 def note_incident(service: str, kind: str, message: str) -> None:
     try:
         with session_scope() as s:
             s.add(Incident(service=service, kind=kind, message=_clean(message)[:500]))
+    except Exception:  # noqa: BLE001
+        pass
+    if service in ("email", "db", "scheduler"):  # أعطال تمنع العمل: تنبيه المالك (مرة كل ساعة لكل خدمة)
+        alert_admins(f"عطل في {ALERT_SERVICES[service]}", _clean(message)[:500], service=service)
+
+
+def alert_admins(title: str, body: str, service: str = "", throttle: bool = True) -> int:
+    """تنبيه المالك/المديرين: إشعار داخل المنصة + بريد من بريد المنصة، وإن تعطل فمن بريد العملاء.
+    لا يتكرر لنفس الخدمة أكثر من مرة في الساعة."""
+    from .models import Setting as _S
+    try:
+        with session_scope() as s:
+            if throttle and service:
+                row = s.get(_S, "alert_throttle")
+                v = dict((row.value if row else None) or {})
+                last = v.get(service)
+                if last and now_utc() - __import__("datetime").datetime.fromisoformat(last) < timedelta(hours=1):
+                    return 0
+                v[service] = now_utc().isoformat()
+                if row is None:
+                    s.add(_S(key="alert_throttle", value=v))
+                else:
+                    row.value = v
+            admins = list(s.scalars(select(User).where(User.role == "admin", User.active.is_(True))))
+            for u in admins:
+                s.add(Notification(user_id=u.id, title=title[:300], body=body[:2000]))
+            emails = [u.email for u in admins if u.email and not u.email.endswith((".local", ".invalid"))]
+    except Exception:  # noqa: BLE001
+        return 0
+    sent = 0
+    for to in emails:
+        sent += _alert_mail(to, title, body)
+    return sent
+
+
+def _alert_mail(to: str, title: str, body: str) -> int:
+    import html as _h
+    from .mail.base import OutgoingEmail
+    msg = lambda frm: OutgoingEmail(frm, "المندوب الذكي — تنبيه", to, title, body,  # noqa: E731
+                                    f"<div dir='rtl' style='font-family:Tahoma'>{_h.escape(body).replace(chr(10), '<br>')}</div>")
+    try:  # بريد المنصة أولًا
+        from .mail import get_provider
+        from .outreach import active_account
+        with session_scope() as s:
+            acct = active_account(s)
+            if acct is not None:
+                s.expunge(acct)
+        if acct is not None:
+            res = get_provider(acct).send(msg(acct.sender_address))
+            if res and res.accepted:
+                return 1
+    except Exception:  # noqa: BLE001
+        pass
+    try:  # احتياطي: بريد العملاء (صندوق مستقل) — يصل التنبيه حتى لو تعطل بريد أكواد الدخول
+        import smtplib
+        from . import customer_mail as CM
+        from .mail.base import build_mime
+        from .secretbox import unseal
+        with session_scope() as s:
+            cfg = CM.get_cfg(s)
+        if CM.configured(cfg):
+            with CM._smtp(cfg["smtp_host"]) as srv:
+                srv.login(cfg["address"], unseal(cfg["password_enc"]))
+                srv.send_message(build_mime(msg(cfg["address"])))
+            return 1
+    except Exception:  # noqa: BLE001
+        pass
+    return 0
+
+
+def watchdog() -> None:
+    """يعمل داخل خدمة الموقع كل 5 دقائق: إن توقف نبض العامل أكثر من 10 دقائق يُسجَّل عطل ويُنبَّه المالك."""
+    try:
+        with session_scope() as s:
+            hb = s.get(Setting, "worker_heartbeat")
+            at = _dt((hb.value or {}).get("at")) if hb else None
+        if at and now_utc() - at > timedelta(minutes=10):
+            note_incident("scheduler", "stale", f"توقف العامل (البحث المجدول) — آخر نبض {fmt(at)}")
     except Exception:  # noqa: BLE001
         pass
 

@@ -387,3 +387,6 @@ html[dir="rtl"] .aic-tabs{margin:4px auto 14px 0}
 .cm-compose .btn,.cm-form .btn{align-self:flex-start}
 .cm-connect{max-width:640px}
 @media (max-width:900px){.cm-grid{grid-template-columns:1fr}.cm-list{position:static;max-height:none}}
+
+.report-issue summary{list-style:none;cursor:pointer}.report-issue summary::-webkit-details-marker{display:none}
+body.mini .report-issue form{display:none}
