@@ -112,3 +112,49 @@ def test_owner_emergency_link_single_use():
         r = cl2.get(f"/admin/login/link?t={tok}", follow_redirects=True)
         assert "انتهت صلاحيته أو استُخدم" in r.text  # مرة واحدة فقط
         assert "انتهت صلاحيته" in cl2.get("/admin/login/link?t=wrong", follow_redirects=True).text
+
+
+def test_claude_daily_cap_guard(monkeypatch):
+    import pytest
+    from mandoob import ai, goal
+    from mandoob.config import settings
+    from mandoob.costs import record_cost
+    from mandoob.db import init_db, session_scope
+    init_db()
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-test")
+    with session_scope() as s:
+        old = goal.get(s)
+        spent = goal.cost_today(s)
+        goal.set_goal(s, old["target"], cost_cap_usd=spent + 0.5)
+    monkeypatch.setattr(ai, "_client", object())
+    assert ai.client() is not None  # تحت الحد
+    record_cost("claude", 1, 1.0, note="cap-test")
+    with pytest.raises(ai.AIUnavailable, match="حد التكلفة اليومي"):
+        ai.client()
+    with session_scope() as s:
+        goal.set_goal(s, old["target"], cost_cap_usd=old["cost_cap_usd"])
+
+
+def test_customer_mail_imap_not_enabled_message():
+    import imaplib
+    from mandoob import customer_mail as CM
+
+    class NoImap:
+        def __init__(self, h):
+            self.h = h
+
+        def login(self, u, p):
+            if self.h == "imap.zoho.com":
+                raise imaplib.IMAP4.error("[ALERT] You are yet to enable IMAP for your account.")
+            raise imaplib.IMAP4.error("[ALERT] The server details you are using seems incorrect.")
+    host, why = CM.find_imap("a@b.live", "x", NoImap)
+    assert host is None and "IMAP غير مفعّل" in why
+
+    class Ok(NoImap):
+        def login(self, u, p):
+            if self.h != "imap.zoho.com":
+                raise imaplib.IMAP4.error("bad host")
+
+        def logout(self):
+            pass
+    assert CM.find_imap("a@b.live", "x", Ok) == ("imap.zoho.com", "")

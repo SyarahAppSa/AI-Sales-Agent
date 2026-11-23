@@ -64,10 +64,33 @@ def _imap(host: str):
     return imaplib.IMAP4_SSL(host, 993, ssl_context=ssl.create_default_context(), timeout=30)
 
 
+IMAP_HOSTS = ["imap.zoho.com", "imappro.zoho.com", "imap.zoho.sa", "imappro.zoho.sa", "imap.zoho.eu", "imappro.zoho.eu"]
+
+
+def find_imap(address: str, password: str, imap_factory=None) -> tuple[str | None, str]:
+    """يجرّب خوادم IMAP كلًا على حدة (الخادم الصحيح يختلف حسب نوع الحساب). يعيد (الخادم، سبب الفشل)."""
+    why = "تعذّر الوصول إلى خادم IMAP"
+    for ih in IMAP_HOSTS:
+        try:
+            m = (imap_factory or _imap)(ih)
+            m.login(address, password)
+            m.logout()
+            return ih, ""
+        except imaplib.IMAP4.error as e:
+            msg = str(e)
+            if "enable IMAP" in msg or "yet to enable" in msg:
+                return None, ("قراءة الردود متوقفة لأن IMAP غير مفعّل لهذا البريد في Zoho — فعّله من Zoho Mail: "
+                              "الإعدادات ← حسابات البريد ← IMAP، وستبدأ المنصة قراءة الردود تلقائيًا خلال دقائق")
+            continue
+        except OSError:
+            continue
+    return None, why
+
+
 def connect(address: str, password: str) -> tuple[dict | None, str]:
-    """يجرّب الدخول إلى SMTP وIMAP على خوادم Zoho دون إرسال شيء. يعيد (الخوادم، سبب الفشل)."""
+    """يجرّب الدخول إلى SMTP ثم IMAP على خوادم Zoho دون إرسال شيء. يعيد (الخوادم، سبب الفشل)."""
     why = "تعذّر الوصول إلى خوادم Zoho"
-    for sh, ih in ZOHO_PAIRS:
+    for sh in ("smtp.zoho.com", "smtppro.zoho.com", "smtp.zoho.sa", "smtppro.zoho.sa", "smtp.zoho.eu", "smtppro.zoho.eu"):
         try:
             with _smtp(sh) as srv:
                 srv.login(address, password)
@@ -77,16 +100,8 @@ def connect(address: str, password: str) -> tuple[dict | None, str]:
             continue
         except (smtplib.SMTPException, OSError):
             continue
-        try:
-            m = _imap(ih)
-            m.login(address, password)
-            m.logout()
-            return {"smtp_host": sh, "imap_host": ih}, ""
-        except imaplib.IMAP4.error:
-            return {"smtp_host": sh, "imap_host": None}, ("نجح الإرسال لكن قراءة الردود (IMAP) مرفوضة — فعّل «IMAP Access» "
-                                                          "من إعدادات Zoho Mail ← حسابات البريد")
-        except OSError:
-            return {"smtp_host": sh, "imap_host": None}, "نجح الإرسال لكن تعذّر الوصول إلى خادم IMAP"
+        ih, iwhy = find_imap(address, password)
+        return {"smtp_host": sh, "imap_host": ih}, iwhy
     return None, why
 
 
@@ -304,8 +319,20 @@ def sync(imap_factory=None) -> dict:
     from .secretbox import unseal
     with session_scope() as s:
         cfg = get_cfg(s)
-    if not configured(cfg) or not cfg.get("imap_host"):
+    if not configured(cfg):
         return {"skipped": True}
+    if not cfg.get("imap_host"):  # لم يُفعَّل IMAP عند الربط: نعيد المحاولة كل 30 دقيقة فتبدأ القراءة تلقائيًا بعد تفعيله
+        last = cfg.get("imap_probe_at")
+        if last and now_utc() - datetime.fromisoformat(last) < timedelta(minutes=30) and imap_factory is None:
+            return {"skipped": True}
+        ih, why = find_imap(cfg["address"], unseal(cfg["password_enc"]), imap_factory)
+        with session_scope() as s:
+            cur = get_cfg(s)
+            cur.update(imap_probe_at=now_utc().isoformat(), imap_host=ih, last_error="" if ih else why)
+            put_cfg(s, cur)
+        if not ih:
+            return {"skipped": True, "why": why}
+        cfg["imap_host"] = ih
     got = 0
     try:
         c = (imap_factory or _imap)(cfg["imap_host"])

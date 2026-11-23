@@ -40,10 +40,26 @@ def _api_err(msg: str) -> AIUnavailable:
 _client = None
 
 
+def _daily_cap_guard() -> None:
+    """يُفحص قبل كل نداء لـClaude: إذا بلغ صرف اليوم (كل الخدمات) الحد اليومي يتوقف النداء فورًا،
+    فلا تتجاوز العمليات المتوازية الحد كما كان يحدث حين يُفحص بين الخطوات فقط."""
+    try:
+        from . import goal
+        from .db import session_scope
+        with session_scope() as s:
+            cap = float(goal.get(s).get("cost_cap_usd") or 0)
+            spent = goal.cost_today(s)
+    except Exception:  # noqa: BLE001 — لا نوقف العمل بسبب تعذّر قراءة الدفتر
+        return
+    if cap and spent >= cap:
+        raise AIUnavailable(f"بلغ حد التكلفة اليومي (${spent:.2f} من ${cap:.2f}) — يُستأنف غدًا أو برفع الحد")
+
+
 def client():
     global _client
     if not settings.ai_enabled:
         raise AIUnavailable("ANTHROPIC_API_KEY غير مضبوط")
+    _daily_cap_guard()
     if _client is None:
         import anthropic
         _client = anthropic.Anthropic(api_key=settings.anthropic_api_key, base_url=settings.anthropic_base_url,
