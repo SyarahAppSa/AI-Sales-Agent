@@ -82,7 +82,8 @@ def test_overture_source_saves_only_site_verified_contacts_and_excludes_customer
     D.run(rid2, crawler=FakeCrawler())
     with session_scope() as s:
         st2 = s.get(DirectoryRun, rid2).stats["overture"]
-        assert st2.get("new", 0) == 0 and st2["duplicate"] + st2["existing_customer"] == 5
+        assert st2.get("new", 0) == 0 and st2["discovered"] == 0  # ما قُرئ سابقًا يُتخطى دون عدّ
+        assert any("تُخطيت 5 منشأة قرأتها دفعات سابقة" in x for x in s.get(DirectoryRun, rid2).log)
         assert s.query(Company).filter_by(name="شركة الصقر للشحن للفحص").count() == 1
     # الإعداد اليومي: Overture مضاف وخرائط Google خارج الدفعات التي تحفظ
     with session_scope() as s:

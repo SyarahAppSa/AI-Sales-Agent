@@ -846,6 +846,10 @@ def run(run_id: int, crawler=None) -> None:
         from . import geo as _geo
         with session_scope() as s:
             ov_done = set(((s.get(DirectoryRun, run_id).stats or {}).get("_ov_pairs")) or [])
+            # ما قرأته دفعات سابقة من Overture يُتخطى دون عدّ: سقف الأسماء يذهب للجديد فقط (لا تكرار ولا وقت ضائع)
+            ov_known = {e for (e,) in s.execute(select(LeadStub.external_id).where(LeadStub.source == "overture"))
+                        if e}
+        ov_skipped = 0
         acts = p.get("activities") or ["transport.freight", "construction.contractors", "industry.food_factories"]
         if acts == "__all__" or "__all__" in acts:
             acts = list(ACTIVITIES)
@@ -868,7 +872,12 @@ def run(run_id: int, crawler=None) -> None:
             if halted:
                 break
             try:
-                items = OV.search(pid, ak, limit=min(200, ov_cap - stats["overture"]["discovered"]))
+                items = OV.search(pid, ak, limit=100000)
+                before = len(items)
+                items = [it for it in items if it["external_id"] not in ov_known]
+                ov_skipped += before - len(items)
+                items = items[:min(200, ov_cap - stats["overture"]["discovered"])]
+                ov_known.update(it["external_id"] for it in items)
             except Exception as e:  # noqa: BLE001
                 detail = f"{type(e).__name__}: {str(e)[:200]}"
                 errors["overture"] = {"n": int((errors.get("overture") or {}).get("n", 0)) + 1, "last": detail}
@@ -902,6 +911,8 @@ def run(run_id: int, crawler=None) -> None:
                     break
                 _enrich_stub(sid, stats, crawler, drun_id, camp_id, over_budget)
                 beat()
+        if ov_skipped:
+            beat(f"Overture: تُخطيت {ov_skipped} منشأة قرأتها دفعات سابقة (بلا عدّ ولا تكرار)")
         if completes() >= target:
             beat(f"بلغت الدفعة هدفها: {completes()} منشأة جديدة مكتملة")
     # الخطوة المدفوعة بعد المجانية: العودة للناقص في الدفعة اليومية بما تبقى من الميزانية
