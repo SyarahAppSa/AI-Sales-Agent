@@ -209,6 +209,9 @@ def login_email(user: User, code: str, portal: str, lang: str | None = None) -> 
     return LOGIN_SUBJECT, text, html
 
 
+LAST_SEND_FAIL: dict = {"detail": ""}
+
+
 def send_code_email(s, user: User, code: str, portal: str) -> bool:
     """يرسل الكود من بريد الشركة المربوط بالمنصة إلى بريد الموظف — مسار أكواد الدخول منفصل عن العروض التسويقية
     (المعطّلة) ولا يمر بطابور الإرسال."""
@@ -225,7 +228,9 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
     ok = bool(res and res.accepted)
     if not ok:
         from .emergency import note_incident
-        note_incident("email", "login_code", "تعذّر إرسال كود دخول من بريد المنصة")
+        why = "كلمة سر بريد المنصة مرفوضة من Zoho" if (res and res.detail == "auth") else f"({getattr(res, 'detail', '')})"
+        note_incident("email", "login_code", f"تعذّر إرسال كود دخول: {why}")
+        LAST_SEND_FAIL["detail"] = getattr(res, "detail", "") or ""
     return ok
 
 

@@ -56,16 +56,24 @@ class SMTPProvider:
 
     def send(self, msg: OutgoingEmail) -> SendResult:
         mime = build_mime(msg)
-        host, port, user, password = self._creds()
-        try:
-            srv = _connect(host, port)
-            with srv:
-                srv.login(user, password)
-                srv.send_message(mime)
-            mid = msg.ensure_message_id()
-            return SendResult(accepted=True, provider_message_id=mid, internet_message_id=mid)
-        except (smtplib.SMTPException, OSError) as e:
-            return SendResult(accepted=False, detail=type(e).__name__)  # بلا تفاصيل قد تحوي بيانات الدخول
+        tries = [self._creds()]
+        env = (settings.smtp_host, int(settings.smtp_port or 465), settings.smtp_user, settings.smtp_password)
+        if settings.smtp_password and settings.smtp_user and env[3] != tries[0][3]:
+            tries.append(env)  # احتياطي: كلمة السر في Render إن رُفضت المحفوظة (مثل تغيير كلمة السر في Zoho)
+        detail = ""
+        for host, port, user, password in tries:
+            try:
+                srv = _connect(host or "smtp.zoho.com", port)
+                with srv:
+                    srv.login(user, password)
+                    srv.send_message(mime)
+                mid = msg.ensure_message_id()
+                return SendResult(accepted=True, provider_message_id=mid, internet_message_id=mid)
+            except smtplib.SMTPAuthenticationError:
+                detail = "auth"  # كلمة السر مرفوضة — يُجرّب الاحتياطي إن وُجد
+            except (smtplib.SMTPException, OSError) as e:
+                detail = type(e).__name__  # بلا تفاصيل قد تحوي بيانات الدخول
+        return SendResult(accepted=False, detail=detail)
 
     def fetch_new(self, cursor: dict):
         return [], cursor
