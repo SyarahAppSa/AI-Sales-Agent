@@ -162,7 +162,7 @@ def latest_release() -> str:
 def _con():
     import duckdb
     con = duckdb.connect()
-    con.execute("INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET memory_limit='300MB'; SET threads=2;")
+    con.execute("INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET memory_limit='200MB'; SET threads=2;")
     return con
 
 
@@ -174,6 +174,10 @@ def city_rows(pid: str) -> list[dict]:
     with _lock:
         if key in _cache:
             return _cache[key]
+        for k in [k for k in _cache if isinstance(k, tuple) and k and k[0] == "rows"]:
+            del _cache[k]  # مدينة واحدة في الذاكرة: العامل محدود بـ512MB (توقف مرة لتراكم كل المدن)
+        import gc
+        gc.collect()
         rel = latest_release()
         x0, x1, y0, y1 = CITY_BBOX[pid]
         src = f"read_parquet('s3://{BUCKET}/release/{rel}/theme=places/type=place/*', hive_partitioning=1)"

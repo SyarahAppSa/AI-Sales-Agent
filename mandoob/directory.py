@@ -858,8 +858,9 @@ def run(run_id: int, crawler=None) -> None:
         places = [x for x in (_geo.scope_places(p.get("scope") or {"all": True}) or list(OV.CITY_BBOX)) if x in OV.CITY_BBOX] \
             or list(OV.CITY_BBOX)
         off = int(p.get("day_index") or 0)
+        # المدينة في الحلقة الخارجية: تُحمَّل كل مدينة من Overture مرة واحدة وتؤخذ منها كل الأنشطة
         ov_pairs = [(acts[(off + i) % len(acts)], places[(off * 3 + j) % len(places)])
-                    for i in range(len(acts)) for j in range(len(places))]
+                    for j in range(len(places)) for i in range(len(acts))]
         # نحو ٢١٪ من الجديد يكتمل (فحص الرياض) ← سقف الأسماء ٦ أضعاف الهدف
         ov_cap = int(p.get("overture_limit") or (max(target * 6, 300) if target < 10 ** 6 else 600))
         for ak, pid in ov_pairs:
