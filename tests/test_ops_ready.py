@@ -103,3 +103,18 @@ def test_team_activity_report():
             from mandoob.models import Activity
             s.query(Activity).filter_by(company_id=t.id).delete()
             s.delete(t)
+
+
+def test_ops_report_and_logout_audit():
+    from mandoob import ops_report
+    from mandoob.models import AuditLog
+    init_db()
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        cl.get("/logout")
+    with session_scope() as s:
+        assert s.query(AuditLog).filter_by(action="logout").count() >= 1
+    out = "\n".join(ops_report.build(5))
+    for x in ("[الدخول والخروج]", "دخل:", "خرج:", "[التواصل مع العملاء]", "[العملاء]", "[التكلفة اليوم]", "[الأعطال]",
+              "[بلاغات الموظفين]", "[العامل]"):
+        assert x in out, x

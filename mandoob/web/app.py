@@ -447,8 +447,13 @@ def switch_lang(request: Request, to: str = "ar", next: str = "/", s=Depends(get
 
 
 @app.get("/logout")
-def logout(request: Request):
+def logout(request: Request, s=Depends(get_db, scope="function")):
     portal = request.session.get("portal")
+    uid = request.session.get("uid")
+    u = s.get(User, uid) if uid else None
+    if u is not None:  # الخروج يُسجَّل كالدخول (لتقرير المتابعة)
+        from ..auth import audit
+        audit(s, u, "logout", u, portal="staff" if portal == "staff" else "admin")
     request.session.clear()
     return back("/portal/login" if portal == "staff" else "/admin/login")
 
