@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}نشاط الفريق والتواصل{% endblock %}{% block content %}
+<div class="top"><div><h1>نشاط الفريق والتواصل</h1>
+<p class="sub" style="margin:0">من تواصل مع من، ومتى، وما النتيجة، ومتى المتابعة القادمة — بتوقيت الرياض. يظهر فريقك حسب صلاحياتك.</p></div></div>
+
+<form class="card row" method="get" style="align-items:end;gap:10px">
+  <div style="flex:0 1 180px"><label class="small">من</label><input type="date" name="d_from" value="{{ d_from }}"></div>
+  <div style="flex:0 1 180px"><label class="small">إلى</label><input type="date" name="d_to" value="{{ d_to }}"></div>
+  <button class="btn p" style="flex:0 0 auto">عرض</button>
+  <a class="btn" style="flex:0 0 auto" href="/team-activity">اليوم</a>
+  <a class="btn" style="flex:0 0 auto" href="/team-activity?d_from={{ (today - timedelta(days=6)) }}&d_to={{ today }}">آخر 7 أيام</a>
+</form>
+
+<div class="card"><h2>حسب الموظف ({{ r.total }} محاولة تواصل)</h2>
+<div class="tablewrap"><table>
+<tr><th>الموظف</th><th>المحاولات</th><th>العملاء</th>{% for k in r.cols %}<th>{{ r.STATUSES[k] }}</th>{% endfor %}<th>بموعد متابعة</th></tr>
+{% for x in r.reps %}<tr><td><b translate="no">{{ x.name }}</b></td><td><b>{{ x.total }}</b></td><td>{{ x.companies }}</td>
+{% for k in r.cols %}<td>{{ x[k] or '' }}</td>{% endfor %}<td>{{ x.next }}</td></tr>
+{% else %}<tr><td colspan="{{ 4 + r.cols|length }}" class="muted">لا توجد محاولات تواصل في هذه الفترة.</td></tr>{% endfor %}
+</table></div></div>
+
+<div class="card"><h2>سجل المحاولات</h2>
+<div class="tablewrap"><table>
+<tr><th>الوقت</th><th>الموظف</th><th>العميل</th><th>النتيجة</th><th>الملاحظة</th><th>المتابعة القادمة</th></tr>
+{% for lg, co in r.logs %}<tr><td class="small" style="white-space:nowrap">{{ fmt(lg.at) }}</td><td translate="no">{{ lg.user_name }}</td>
+<td><a href="/companies/{{ co.id }}" translate="no">{{ co.name }}</a></td>
+<td><span class="pill {{ 'ok' if lg.status in ('contacted','offer_sent') else ('warn' if lg.status in ('no_answer','call_later') else '') }}">{{ r.STATUSES.get(lg.status, lg.status) }}</span></td>
+<td class="small">{{ lg.note or '' }}</td>
+<td class="small" style="white-space:nowrap">{% if lg.next_at %}{{ fmt(lg.next_at) }}{% if lg.next_owner_name %} — {{ lg.next_owner_name }}{% endif %}{% else %}—{% endif %}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">لا يوجد.</td></tr>{% endfor %}
+</table></div></div>
+{% endblock %}

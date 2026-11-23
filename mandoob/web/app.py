@@ -2522,6 +2522,22 @@ def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=D
                     headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
+@app.get("/team-activity", response_class=HTMLResponse)
+def team_activity_page(request: Request, d_from: str = "", d_to: str = "", user: User = Depends(require_manager),
+                       s=Depends(get_db, scope="function")):
+    from ..reports import team_activity
+    def _d(v, dflt):
+        try:
+            return date.fromisoformat(v) if v else dflt
+        except ValueError:
+            return dflt
+    t = riyadh_today()
+    a, b = _d(d_from, t), _d(d_to, t)
+    a, b = min(a, b), max(a, b)
+    return render(request, "team_activity.html", user, s, r=team_activity(s, user, a, b), d_from=a, d_to=b, today=t,
+                  timedelta=timedelta)
+
+
 @app.get("/followups", response_class=HTMLResponse)
 def followups(request: Request, user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     return render(request, "followups.html", user, s, items=needs_followup_today(s, user))

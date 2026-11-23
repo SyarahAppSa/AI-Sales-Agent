@@ -620,3 +620,32 @@ def weekly_by_source(s: Session, day: date | None = None) -> list[dict]:
         r["cost"] = round(r["cost"], 2)
         r["cost_per_meeting"] = round(r["cost"] / r["meetings"], 2) if r["meetings"] else None
     return out
+
+
+def team_activity(s: Session, user: User, d_from: date, d_to: date) -> dict:
+    """نشاط الفريق: محاولات التواصل ونتائجها لكل موظف بين تاريخين (بتوقيت الرياض)، ثم سجل كل محاولة.
+    المدير يرى فريقه حسب نطاق صلاحياته، والمالك يرى الكل. البيانات التجريبية مستبعدة."""
+    from .contact import ATTEMPT_STATUSES, STATUSES
+    from .models import ContactLog
+    from .permissions import visible_owner_ids
+    from .timeutil import riyadh_day_bounds_utc
+    t0, _ = riyadh_day_bounds_utc(d_from)
+    _, t1 = riyadh_day_bounds_utc(d_to)
+    q = (select(ContactLog, Company).join(Company, Company.id == ContactLog.company_id)
+         .where(ContactLog.at >= t0, ContactLog.at < t1, ContactLog.status.in_(ATTEMPT_STATUSES),
+                Company.is_test.is_(False)))
+    ids = visible_owner_ids(s, user)
+    if ids is not None:
+        q = q.where(ContactLog.user_id.in_(ids))
+    rows = list(s.execute(q.order_by(ContactLog.at.desc())))
+    reps: dict = {}
+    for lg, co in rows:
+        r = reps.setdefault(lg.user_id, {"name": lg.user_name or "—", "total": 0, "companies": set(), "next": 0,
+                                         **{k: 0 for k in ATTEMPT_STATUSES}})
+        r["total"] += 1
+        r[lg.status] += 1
+        r["companies"].add(co.id)
+        r["next"] += 1 if lg.next_at else 0
+    out = sorted(({**v, "companies": len(v["companies"])} for v in reps.values()), key=lambda x: -x["total"])
+    return {"reps": out, "logs": rows[:400], "total": len(rows), "STATUSES": STATUSES,
+            "cols": [k for k in ("contacted", "no_answer", "call_later", "offer_sent", "not_interested", "do_not_contact")]}

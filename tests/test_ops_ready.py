@@ -76,3 +76,30 @@ def test_alert_throttle_and_watchdog():
         assert s.query(Incident).filter(Incident.service == "scheduler", Incident.message.like("توقف العامل%")).count() >= 1
         hb = s.get(Setting, "worker_heartbeat")
         hb.value = old or {"at": now_utc().isoformat()}
+
+
+def test_team_activity_report():
+    from mandoob.contact import update_followup
+    from mandoob.models import ContactLog
+    init_db()
+    with session_scope() as s:
+        rid = _rep(s, "ops.rep3@x.test", "مندوب تقرير الفريق")
+        rep = s.get(User, rid)
+        c = Company(name="عميل تقرير الفريق للفحص", name_norm="عميل تقرير الفريق للفحص", owner_id=rid)
+        t = Company(name="عميل تجريبي مستبعد للفحص", name_norm="عميل تجريبي مستبعد للفحص", owner_id=rid, is_test=True)
+        s.add_all([c, t])
+        s.flush()
+        update_followup(s, c, rep, "no_answer", "لم يرد — للفحص", now_utc() + timedelta(days=1), None, False)
+        update_followup(s, t, rep, "contacted", "تجريبي", None, None, False)
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/team-activity").text
+        assert "نشاط الفريق والتواصل" in html and "مندوب تقرير الفريق" in html and "عميل تقرير الفريق للفحص" in html
+        assert "لم يرد — للفحص" in html and "عميل تجريبي مستبعد للفحص" not in html
+        assert 'href="/team-activity"' in html
+    with session_scope() as s:
+        for t in s.query(Company).filter_by(name="عميل تجريبي مستبعد للفحص"):
+            s.query(ContactLog).filter_by(company_id=t.id).delete()
+            from mandoob.models import Activity
+            s.query(Activity).filter_by(company_id=t.id).delete()
+            s.delete(t)

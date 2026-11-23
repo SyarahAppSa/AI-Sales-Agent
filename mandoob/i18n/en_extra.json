@@ -777,5 +777,19 @@
  "إعادة الربط": "Reconnect",
  "بطاقة المنشأة:": "Business card:",
  "مراسلة العملاء يدويًا من بريد الشركة، بأي نص وأي مرفقات، والردود تظهر هنا تلقائيًا.": "Email customers manually from the company mailbox, with any text and attachments; replies appear here automatically.",
- "لا رسائل بعد. اكتب أول رسالة من «رسالة جديدة».": "No messages yet. Write the first one from “New message”."
+ "لا رسائل بعد. اكتب أول رسالة من «رسالة جديدة».": "No messages yet. Write the first one from “New message”.",
+ "نشاط الفريق والتواصل": "Team activity & contacts",
+ "حسب الموظف ({x} محاولة تواصل)": "By employee ({x} contact attempts)",
+ "المحاولات": "Attempts",
+ "بموعد متابعة": "With follow-up",
+ "سجل المحاولات": "Attempt log",
+ "الموظف": "Employee",
+ "العميل": "Customer",
+ "النتيجة": "Outcome",
+ "الملاحظة": "Note",
+ "المتابعة القادمة": "Next follow-up",
+ "لا توجد محاولات تواصل في هذه الفترة.": "No contact attempts in this period.",
+ "الإبلاغ عن مشكلة": "Report a problem",
+ "إرسال للإدارة": "Send to admin",
+ "صف المشكلة باختصار: ماذا كنت تفعل وماذا ظهر لك": "Briefly describe the problem: what you were doing and what you saw"
 }
