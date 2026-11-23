@@ -371,6 +371,21 @@ def staff_restart(request: Request):
     return back("/portal/login")
 
 
+@app.get("/admin/login/link")
+def admin_owner_link(request: Request, t: str = "", s=Depends(get_db, scope="function")):
+    """رابط دخول طارئ للمالك: مرة واحدة، صالح 15 دقيقة، يُنشأ من خادم المنصة فقط."""
+    from ..auth import audit, use_owner_link
+    u = use_owner_link(s, t)
+    if not u:
+        flash(request, "الرابط غير صالح أو انتهت صلاحيته أو استُخدم من قبل.", "err")
+        return back("/admin/login")
+    audit(s, u, "login", u, portal="admin", method="owner_link")
+    request.session.clear()
+    request.session.update({"uid": u.id, "sv": u.session_version, "portal": "admin", "lang": _remember_lang(request, u)})
+    flash(request, "دخلت برابط الطوارئ. حدّث كلمة سر بريد المنصة من «ربط بريد الشركة» حتى تعود أكواد الدخول.")
+    return back("/")
+
+
 @app.post("/admin/login/password")
 def admin_bootstrap_password(request: Request, email: str = Form(...), password: str = Form(...), s=Depends(get_db, scope="function")):
     """دخول تأسيسي بكلمة المرور لحساب ADMIN_EMAIL فقط، ويُعطَّل تلقائيًا بعد ربط بريد الشركة."""

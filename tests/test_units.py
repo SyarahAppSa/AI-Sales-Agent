@@ -95,3 +95,20 @@ def test_owner_password_fallback_when_mail_auth_rejected(monkeypatch):
     auth._mark_mail_auth(False)
     with session_scope() as s:
         assert auth.mail_ready(s) == base and not s.get(Setting, auth.MAIL_AUTH_FAIL_KEY).value["failed"]
+
+
+def test_owner_emergency_link_single_use():
+    from fastapi.testclient import TestClient
+    from mandoob import auth
+    from mandoob.db import init_db
+    from mandoob.web.app import app
+    init_db()
+    tok = auth.make_owner_link()
+    with TestClient(app) as cl:
+        r = cl.get(f"/admin/login/link?t={tok}", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        assert cl.get("/", follow_redirects=False).status_code == 200
+    with TestClient(app) as cl2:
+        r = cl2.get(f"/admin/login/link?t={tok}", follow_redirects=True)
+        assert "انتهت صلاحيته أو استُخدم" in r.text  # مرة واحدة فقط
+        assert "انتهت صلاحيته" in cl2.get("/admin/login/link?t=wrong", follow_redirects=True).text

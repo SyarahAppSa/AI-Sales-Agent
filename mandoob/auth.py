@@ -272,3 +272,44 @@ def send_invite_email(s, user: User) -> bool:
     res = get_provider(acct).send(OutgoingEmail(acct.sender_address, "المندوب الذكي لسيارة اب", user.email,
                                                 "دعوة إلى بوابة الموظفين — المندوب الذكي لسيارة اب", text, html))
     return bool(res and res.accepted)
+
+
+
+# ---------------------------------------------------------------- رابط دخول طارئ للمالك (مرة واحدة، 15 دقيقة)
+
+OWNER_LINK_KEY = "owner_login_link"
+
+
+def make_owner_link(minutes: int = 15) -> str:
+    """يُنشأ من خادم المنصة فقط (مهمة تشغيل) عند تعذّر وصول كود البريد للمالك. يُخزَّن مُجزّأً ويُستخدم مرة واحدة."""
+    import hashlib
+    from .db import session_scope
+    from .models import Setting
+    from .timeutil import now_utc
+    tok = secrets.token_urlsafe(32)
+    v = {"hash": hashlib.sha256(tok.encode()).hexdigest(), "exp": (now_utc() + timedelta(minutes=minutes)).isoformat(),
+         "used": False}
+    with session_scope() as s:
+        row = s.get(Setting, OWNER_LINK_KEY)
+        if row is None:
+            s.add(Setting(key=OWNER_LINK_KEY, value=v))
+        else:
+            row.value = v
+    return tok
+
+
+def use_owner_link(s, tok: str):
+    """يعيد حساب المالك إن كان الرابط صحيحًا وغير منتهٍ ولم يُستخدم، ويُبطله فورًا."""
+    import hashlib
+    from datetime import datetime
+    from .models import Setting
+    from .timeutil import now_utc
+    row = s.get(Setting, OWNER_LINK_KEY)
+    v = dict((row.value if row else None) or {})
+    if not tok or not v or v.get("used") or datetime.fromisoformat(v["exp"]) < now_utc():
+        return None
+    if not secrets.compare_digest(v.get("hash", ""), hashlib.sha256(tok.encode()).hexdigest()):
+        return None
+    row.value = {**v, "used": True, "used_at": now_utc().isoformat()}
+    return s.scalar(select(User).where(User.email == settings.admin_email.lower(), User.role == "admin",
+                                       User.active.is_(True)))
