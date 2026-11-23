@@ -218,7 +218,7 @@ def test_crm_export_v2_english_headers_and_background_queue(monkeypatch):
         assert {"+966557472556", "+966557472557"} <= {c.value for c in s.query(Contact).filter_by(company_id=b.id)}
     # الملف الكبير: طابور ← العامل
     monkeypatch.setattr(crm, "BIG_FILE", 10)
-    ws.append(["V2-17000", "منشأة الخلفية للفحص", "NULL", "0551112233"] + [None] * 12)
+    ws.append(["V2-17000", "منشأة الخلفية للفحص", "NULL", "0551119871"] + [None] * 12)
     buf2 = io.BytesIO()
     wb.save(buf2)
     crm.queue_file("big.xlsx", buf2.getvalue())
