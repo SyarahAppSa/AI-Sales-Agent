@@ -313,7 +313,7 @@ def _request_code(request: Request, portal: str, email: str, s):
         s.rollback()
         from ..auth import LAST_SEND_FAIL
         flash(request, ("تعذّر إرسال الكود: خادم البريد رفض كلمة سر بريد المنصة (تغيّرت في Zoho). "
-                        "حدّثها في إعدادات الخادم ثم أعد المحاولة." if LAST_SEND_FAIL.get("detail") == "auth" else
+                        "مدير المنصة يستطيع الدخول الآن بكلمة المرور من هذه الصفحة، ثم تحديث كلمة سر البريد." if LAST_SEND_FAIL.get("detail") == "auth" else
                         "تعذر إرسال الكود لأن بريد الشركة غير مربوط بالمنصة بعد. تواصل مع الإدارة."), "err")
         return
     import time as _t

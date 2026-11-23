@@ -87,6 +87,10 @@ def mail_ready(s) -> bool:
     acct = s.scalar(select(MailAccount).where(MailAccount.active.is_(True)).order_by(MailAccount.id).limit(1))
     if acct is None or not provider_configured(acct):
         return False
+    from .models import Setting
+    row = s.get(Setting, MAIL_AUTH_FAIL_KEY)
+    if row and (row.value or {}).get("failed"):  # خادم البريد يرفض كلمة السر: لا تُغلق المنصة على المالك
+        return False
     return acct.provider == "sandbox" or acct.verified_at is not None
 
 
@@ -210,6 +214,22 @@ def login_email(user: User, code: str, portal: str, lang: str | None = None) -> 
 
 
 LAST_SEND_FAIL: dict = {"detail": ""}
+MAIL_AUTH_FAIL_KEY = "mail_auth_failed"
+
+
+def _mark_mail_auth(failed: bool) -> None:
+    """يسجّل رفض خادم البريد لكلمة السر (فيُتاح دخول المالك الاحتياطي بكلمة المرور) ويمسحه عند أول نجاح."""
+    from .db import session_scope
+    from .models import Setting
+    from .timeutil import now_utc
+    with session_scope() as s2:
+        row = s2.get(Setting, MAIL_AUTH_FAIL_KEY)
+        v = {"failed": failed, "at": now_utc().isoformat()}
+        if row is None:
+            if failed:
+                s2.add(Setting(key=MAIL_AUTH_FAIL_KEY, value=v))
+        elif bool((row.value or {}).get("failed")) != failed:
+            row.value = v
 
 
 def send_code_email(s, user: User, code: str, portal: str) -> bool:
@@ -231,6 +251,8 @@ def send_code_email(s, user: User, code: str, portal: str) -> bool:
         why = "كلمة سر بريد المنصة مرفوضة من Zoho" if (res and res.detail == "auth") else f"({getattr(res, 'detail', '')})"
         note_incident("email", "login_code", f"تعذّر إرسال كود دخول: {why}")
         LAST_SEND_FAIL["detail"] = getattr(res, "detail", "") or ""
+    if res is not None:
+        _mark_mail_auth(not ok and res.detail == "auth")
     return ok
 
 

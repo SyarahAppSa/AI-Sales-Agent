@@ -79,3 +79,19 @@ def test_platform_and_placeholder_emails_rejected():
     for bad in ("blog@wordpress.com", "x@sentry-next.wixpress.com", "you@example.com", "logo@2x.png", "a@b.wix.com"):
         assert normalize_email(bad) is None, bad
     assert normalize_email("Info@Yasoublogistics.com") == "info@yasoublogistics.com"
+
+
+def test_owner_password_fallback_when_mail_auth_rejected(monkeypatch):
+    """إذا رفض خادم البريد كلمة السر، يُتاح لمالك المنصة الدخول الاحتياطي بكلمة المرور فلا تُغلق المنصة عليه."""
+    from mandoob import auth
+    from mandoob.db import init_db, session_scope
+    from mandoob.models import Setting
+    init_db()
+    with session_scope() as s:
+        base = auth.mail_ready(s)
+    auth._mark_mail_auth(True)
+    with session_scope() as s:
+        assert auth.mail_ready(s) is False
+    auth._mark_mail_auth(False)
+    with session_scope() as s:
+        assert auth.mail_ready(s) == base and not s.get(Setting, auth.MAIL_AUTH_FAIL_KEY).value["failed"]
