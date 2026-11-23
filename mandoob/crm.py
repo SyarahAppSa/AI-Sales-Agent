@@ -32,24 +32,25 @@ UA = "MandoobSyarahApp/1.0 (read-only CRM sync)"
 
 # أسماء الحقول المحتملة (واجهة ABP بأسماء camelCase، وملفات التصدير بعناوين عربية أو إنجليزية)
 FIELDS = {
-    "crm_id": ["id", "contactid", "customerid", "رقم العميل", "رقم العميل في الcrm", "معرف العميل", "customer id", "crm id"],
+    "crm_id": ["customer id", "customerid", "id", "contactid", "customerid", "رقم العميل", "رقم العميل في الcrm", "معرف العميل", "customer id", "crm id"],
     "number": ["code", "number", "contactnumber", "customernumber", "serial", "serialnumber", "رقم", "الرقم", "كود العميل"],
-    "company": ["companyname", "company", "organization", "organizationname", "accountname", "businessname", "اسم الشركة",
+    "company": ["customer name", "customername", "companyname", "company", "organization", "organizationname", "accountname", "businessname", "اسم الشركة",
                 "الشركة", "المنشأة", "اسم المنشأة", "company name"],
-    "contact": ["contactname", "contactperson", "fullname", "name", "personname", "اسم مسؤول التواصل", "مسؤول التواصل",
+    "contact": ["contact person name", "contactpersonname", "contactname", "contactperson", "fullname", "name", "personname", "اسم مسؤول التواصل", "مسؤول التواصل",
                 "اسم العميل", "الاسم", "contact name"],
     "first": ["firstname", "الاسم الأول"], "last": ["lastname", "surname", "اسم العائلة"],
-    "phone": ["phonenumber", "mobile", "mobilenumber", "phone", "whatsapp", "whatsappnumber", "رقم الجوال", "الجوال",
+    "phone": ["customer phone", "contact person phone", "customerphone", "phonenumber", "mobile", "mobilenumber", "phone", "whatsapp", "whatsappnumber", "رقم الجوال", "الجوال",
               "الهاتف", "رقم الهاتف", "mobile number", "phone number"],
-    "email": ["email", "emailaddress", "البريد", "البريد الإلكتروني", "البريد الالكتروني", "e-mail"],
-    "city": ["city", "cityname", "address.city", "المدينة", "city name"],
+    "email": ["customer email", "contact person email", "customeremail", "email", "emailaddress", "البريد", "البريد الإلكتروني", "البريد الالكتروني", "e-mail"],
+    "city": ["city (arabic)", "city", "cityname", "address.city", "المدينة", "city name"],
     "status": ["status", "statusname", "contactstatus", "leadstatus", "stage", "stagename", "حالة العميل", "الحالة"],
-    "notes": ["notes", "note", "comment", "comments", "description", "remarks", "الملاحظات", "ملاحظات", "ملاحظة"],
-    "owner": ["assignedto.name", "assignedto.fullname", "assignedtoname", "assignedtousername", "assignedto.username",
+    "notes": ["customer description", "notes", "note", "comment", "comments", "description", "remarks", "الملاحظات", "ملاحظات", "ملاحظة"],
+    "owner": ["assigned to", "assigned to username", "assignedto.name", "assignedto.fullname", "assignedtoname", "assignedtousername", "assignedto.username",
               "assigneduser.name", "assigneduser.username", "assignedusername", "ownername", "owner.name", "salesrep",
               "salesrepname", "employeename", "username", "الموظف", "اسم الموظف", "الموظف المسؤول", "المسؤول",
               "assigned to", "owner"],
-    "owner_email": ["assignedto.email", "assigneduser.email", "owner.email", "ownermail"],
+    "cars": ["number of cars", "numberofcars", "عدد السيارات", "عدد المركبات"],
+    "owner_email": ["assigned to email", "assignedto.email", "assigneduser.email", "owner.email", "ownermail"],
 }
 
 
@@ -177,23 +178,41 @@ def _flat(d, prefix="") -> dict:
     return out
 
 
+_EMPTY = {"", "null", "none", "nan", "n/a", "-", "—"}
+
+
 def _pick(f: dict, names: list[str]) -> str:
     for n in names:
         v = f.get(n.lower())
-        if v not in (None, "") and not isinstance(v, (dict, list)):
-            return re.sub(r"<[^>]+>", " ", str(v)).strip()
+        if v is None or isinstance(v, (dict, list)):
+            continue
+        t = re.sub(r"<[^>]+>", " ", str(v)).strip()
+        if t.lower() not in _EMPTY:  # «NULL» في ملفات التصدير = خانة فارغة
+            return t
     return ""
+
+
+def _all_phones(f: dict) -> list[str]:
+    out = []
+    for n in FIELDS["phone"]:
+        v = _pick(f, [n])
+        out += [p for p in re.split(r"[;,/|\n،]+", v) if p.strip()]
+    return list(dict.fromkeys(out))
 
 
 def to_record(item: dict) -> dict:
     f = _flat(item)
     contact = _pick(f, FIELDS["contact"]) or " ".join(x for x in (_pick(f, FIELDS["first"]), _pick(f, FIELDS["last"])) if x)
     company = _pick(f, FIELDS["company"])
-    phones = [p for p in re.split(r"[;,/|\n،]+", _pick(f, FIELDS["phone"])) if p.strip()]
+    phones = _all_phones(f)
+    cars = _pick(f, FIELDS["cars"])
+    notes = _pick(f, FIELDS["notes"])
+    if cars and cars not in ("0", "0.0"):
+        notes = (f"عدد السيارات: {cars}" + (f"\n{notes}" if notes else ""))
     return {"crm_id": _pick(f, FIELDS["crm_id"]), "number": _pick(f, FIELDS["number"]),
             "company": company or contact, "contact": contact if contact != company else "",
             "phones": phones, "email": _pick(f, FIELDS["email"]), "city": _pick(f, FIELDS["city"]),
-            "status": _pick(f, FIELDS["status"]), "notes": _pick(f, FIELDS["notes"]),
+            "status": _pick(f, FIELDS["status"]), "notes": notes, "cars": cars,
             "owner": _pick(f, FIELDS["owner"]), "owner_email": _pick(f, FIELDS["owner_email"])}
 
 
@@ -293,8 +312,10 @@ def _empty_stats() -> dict:
     return {"added": 0, "updated": 0, "linked": 0, "failed": 0, "failures": [], "seen": 0}
 
 
-def _apply(s, items: list[dict], source: str, stats: dict, users: dict) -> None:
-    for item in items:
+def _apply(s, items: list[dict], source: str, stats: dict, users: dict, progress=None) -> None:
+    for n, item in enumerate(items, 1):
+        if progress and n % 500 == 0:
+            progress(n, len(items))
         rec = item if "phones" in item and "crm_id" in item else to_record(item)
         stats["seen"] += 1
         try:
@@ -352,7 +373,51 @@ def sync_api(limit: int | None = None, client: httpx.Client | None = None) -> di
     return stats
 
 
-def import_file(filename: str, data: bytes) -> dict:
+FILE_QUEUE_KEY = "crm_file_queue"
+BIG_FILE = 400_000  # بايت — الأكبر يُستورد في الخلفية عبر العامل حتى لا تنتظر الصفحة
+
+
+def queue_file(filename: str, data: bytes) -> None:
+    """يحفظ الملف الكبير ليستورده العامل خلال دقيقة، مع تقدّم يظهر في الصفحة."""
+    import base64
+    from .prospects import _sheets
+    _sheets(filename, data)  # يتحقق أن الملف مقروء قبل قبوله
+    with session_scope() as s:
+        row = s.get(Setting, FILE_QUEUE_KEY)
+        v = {"name": filename[:200], "b64": base64.b64encode(data).decode(), "at": now_utc().isoformat()}
+        if row is None:
+            s.add(Setting(key=FILE_QUEUE_KEY, value=v))
+        else:
+            row.value = v
+        set_state(s, file_queued=filename[:200], error=None)
+
+
+def run_file_queue() -> bool:
+    import base64
+    with session_scope() as s:
+        row = s.get(Setting, FILE_QUEUE_KEY)
+        v = dict((row.value if row else None) or {})
+        if not v.get("b64"):
+            return False
+        row.value = {}  # يُسحب من الطابور قبل البدء (لا تكرار إن تعطل العامل)
+        set_state(s, running=True, started_at=now_utc().isoformat(), progress={"done": 0, "total": 0}, file_queued=None)
+
+    def prog(done, total):
+        with session_scope() as s2:
+            set_state(s2, progress={"done": done, "total": total}, started_at=now_utc().isoformat())
+    try:
+        import_file(v["name"], base64.b64decode(v["b64"]), progress=prog)
+    except Exception as e:  # noqa: BLE001
+        log.exception("crm file import failed")
+        with session_scope() as s:
+            set_state(s, error=f"تعذّر استيراد الملف ({type(e).__name__}: {str(e)[:120]})")
+    finally:
+        with session_scope() as s:
+            set_state(s, running=False, progress=None)
+    return True
+
+
+def import_file(filename: str, data: bytes, progress=None) -> dict:
     """استيراد ملف مصدَّر من الـCRM (Excel أو CSV) بالقواعد نفسها."""
     from .prospects import UploadError, _sheets
     sheets = _sheets(filename, data)
@@ -373,7 +438,7 @@ def import_file(filename: str, data: bytes) -> dict:
         raise UploadError("لم نجد صف عناوين يعرّف العملاء — يلزم عمود «رقم العميل» مع اسم الشركة أو الجوال")
     stats = _empty_stats()
     with session_scope() as s:
-        _apply(s, items, "file", stats, _users(s))
+        _apply(s, items, "file", stats, _users(s), progress)
     with session_scope() as s:
         crm_total = s.scalar(select(__import__("sqlalchemy").func.count(Company.id)).where(Company.crm_id.isnot(None)))
         set_state(s, last_at=now_utc().isoformat(), source="file", file_name=filename[:200], sample=False,
@@ -397,6 +462,12 @@ def test_connection(client: httpx.Client | None = None) -> dict:
 def tick() -> bool:
     """العامل: سحب طلبته الإدارة، أو تحديث يومي تلقائي."""
     from .jobs import job_lock
+    with session_scope() as s:
+        queued = bool(((s.get(Setting, FILE_QUEUE_KEY) or Setting(value={})).value or {}).get("b64"))
+    if queued:
+        with job_lock("crm_file", minutes=60) as ok:
+            if ok:
+                return run_file_queue()
     with session_scope() as s:
         conn, st = get_conn(s), get_state(s)
         if not has_credentials(conn):

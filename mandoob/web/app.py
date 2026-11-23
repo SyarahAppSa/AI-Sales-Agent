@@ -3985,6 +3985,15 @@ async def crm_import(request: Request, file: UploadFile = File(...), user: User 
     from .. import crm
     from ..prospects import UploadError
     data = await file.read()
+    if len(data) > crm.BIG_FILE:
+        try:
+            crm.queue_file(file.filename or "crm.xlsx", data)
+        except UploadError as e:
+            flash(request, f"تعذّر قراءة الملف: {e}", "err")
+            return back("/crm")
+        flash(request, "استُلم الملف وسيبدأ استيراده في الخلفية خلال دقيقة — يظهر التقدّم في هذه الصفحة، "
+                       "ويمكنك متابعة عملك.")
+        return back("/crm")
     try:
         st = crm.import_file(file.filename or "crm.xlsx", data)
     except UploadError as e:

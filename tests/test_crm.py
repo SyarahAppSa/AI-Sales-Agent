@@ -182,3 +182,50 @@ def test_crm_file_import_dedupes_by_crm_number():
         assert s.query(Company).filter_by(crm_id="F-1").count() == 1
         assert c.crm_notes == "اتصل الأحد" and c.crm_owner_name == "موظف الملف" and c.crm_source == "file"
         assert s.query(Activity).filter(Activity.company_id == c.id, Activity.title == "نُسخ من الـCRM").count() == 1
+
+
+def test_crm_export_v2_english_headers_and_background_queue(monkeypatch):
+    """ملف تصدير الـCRM الجديد (Customer ID / Customer Phone / Contact Person… / Assigned To Email، و«NULL» للفارغ)،
+    والملف الكبير يُستورد في الخلفية عبر العامل مع التقدّم."""
+    import io
+    import openpyxl
+    from mandoob import crm
+    from mandoob.db import session_scope
+    from mandoob.models import Company, Contact
+    hdr = ["Customer ID", "Customer Name", "Customer Email", "Customer Phone", "Customer Address", "Number Of Cars",
+           "Customer Description", "Contact Person Name", "Contact Person Email", "Contact Person Phone", "City",
+           "City (Arabic)", "Region", "Assigned To", "Assigned To Username", "Assigned To Email"]
+    rows = [["V2-15546", None, "BAAWAAZIIR@GMAIL.COM", "562780620", None, "29", "NULL", "حسن", "BAAWAAZIIR@GMAIL.COM",
+             "NULL", "مكة المكرمة", "NULL", "Western region", "Dheya ", "Dheya", "nobody@x.test"],
+            ["V2-15950", "شركة التوصيل السريع للفحص", "finance@expressdelivery-v2.test", "557472556", None, "100", "NULL",
+             "احمد", "NULL", "0557472557", "NULL", "الرياض", "NULL", "Dheya", "Dheya", "nobody@x.test"],
+            ["V2-16483", None, None, None, None, "0", None, None, None, None, "NULL", "NULL", "NULL", "Dheya", "Dheya", ""]]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(hdr)
+    for r in rows:
+        ws.append(r)
+    buf = io.BytesIO()
+    wb.save(buf)
+    st = crm.import_file("crm-customers_2.xlsx", buf.getvalue())
+    assert st["added"] == 2 and st["failed"] == 1  # الصف الفارغ تمامًا فقط
+    with session_scope() as s:
+        a = s.query(Company).filter_by(crm_id="V2-15546").one()
+        assert a.name == "حسن" and "عدد السيارات: 29" in (a.crm_notes or "") and a.city == "مكة المكرمة"
+        assert {c.value for c in s.query(Contact).filter_by(company_id=a.id)} == {"+966562780620", "baawaaziir@gmail.com"}
+        b = s.query(Company).filter_by(crm_id="V2-15950").one()
+        assert b.name == "شركة التوصيل السريع للفحص" and b.city == "الرياض"
+        assert {"+966557472556", "+966557472557"} <= {c.value for c in s.query(Contact).filter_by(company_id=b.id)}
+    # الملف الكبير: طابور ← العامل
+    monkeypatch.setattr(crm, "BIG_FILE", 10)
+    ws.append(["V2-17000", "منشأة الخلفية للفحص", "NULL", "0551112233"] + [None] * 12)
+    buf2 = io.BytesIO()
+    wb.save(buf2)
+    crm.queue_file("big.xlsx", buf2.getvalue())
+    with session_scope() as s:
+        assert crm.get_state(s)["file_queued"] == "big.xlsx"
+    assert crm.tick() is True
+    with session_scope() as s:
+        assert s.query(Company).filter_by(crm_id="V2-17000").count() == 1
+        st2 = crm.get_state(s)
+        assert not st2.get("running") and not st2.get("file_queued") and st2["file_name"] == "big.xlsx"

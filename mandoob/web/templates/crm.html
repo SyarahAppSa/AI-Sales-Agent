@@ -16,6 +16,8 @@
 
 {% if manage %}
 <div class="card">
+  {% if st.file_queued %}<p><span class="pill info">ملف بانتظار الاستيراد</span> «{{ st.file_queued }}» — يبدأ خلال دقيقة</p><span data-autorefresh="20" hidden></span>{% endif %}
+  {% if st.running %}<span data-autorefresh="20" hidden></span>{% endif %}
   {% if st.running %}<p><span class="pill info">جارٍ السحب</span> {% if st.progress %}{{ st.progress.done }} من {{ st.progress.total }}{% endif %}</p>{% endif %}
   {% if st.requested %}<p><span class="pill info">طلب تحديث بانتظار البدء (خلال دقيقة)</span></p>{% endif %}
   {% if st.error %}<p class="err" style="color:var(--err)"><b>آخر محاولة تعذّرت:</b> {{ st.error }}</p>{% endif %}
