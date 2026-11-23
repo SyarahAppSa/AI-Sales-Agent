@@ -2243,6 +2243,26 @@ def ai_costs_page(request: Request, period: str = "today", d_from: str = "", d_t
     return render(request, "ai_costs.html", user, s, r=A.report(s, k, a, b), PERIODS=A.PERIODS)
 
 
+@app.post("/ai-costs/caps")
+async def ai_costs_caps(request: Request, user: User = Depends(require_admin), s=Depends(get_db, scope="function")):
+    from ..ai import CAPS_KEY, DEFAULT_CAPS
+    from ..models import Setting as _S
+    form = await request.form()
+    v = {}
+    for k in DEFAULT_CAPS:
+        try:
+            v[k] = max(0.0, min(float(re.sub(r"[^\d.]", "", form.get(k) or "") or 0), 1000.0))
+        except ValueError:
+            v[k] = DEFAULT_CAPS[k]
+    row = s.get(_S, CAPS_KEY)
+    if row is None:
+        s.add(_S(key=CAPS_KEY, value=v))
+    else:
+        row.value = v
+    flash(request, "حُفظت سقوف العمليات المكلفة")
+    return back("/ai-costs")
+
+
 @app.get("/ai-costs.xlsx")
 def ai_costs_xlsx(request: Request, period: str = "today", d_from: str = "", d_to: str = "",
                   user: User = Depends(require_manager), s=Depends(get_db, scope="function")):

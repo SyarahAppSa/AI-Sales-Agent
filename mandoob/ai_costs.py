@@ -119,7 +119,16 @@ def report(s, key: str = "today", d_from: date | None = None, d_to: date | None 
     by_purpose = sorted(({"label": k, "cost": v[0], "calls": v[1], "share": (v[0] / cost * 100) if cost else 0}
                          for k, v in purposes.items()), key=lambda x: -x["cost"])
 
-    return {"key": key if not (d_from or d_to) else "custom", "from": a, "to": b, "days": days,
+    from .ai import CAP_LABELS, cap_category, get_caps
+    caps = get_caps(s)
+    used = {k: 0.0 for k in caps}
+    for nt, c in s.execute(select(CostEntry.note, CostEntry.cost_usd).where(CostEntry.day == t, CostEntry.service == "claude")):
+        k = cap_category(nt or "")
+        if k in used:
+            used[k] += float(c or 0)
+    cap_rows = [{"key": k, "label": CAP_LABELS.get(k, k), "cap": float(v or 0), "used": round(used.get(k, 0.0), 2)}
+                for k, v in caps.items()]
+    return {"cap_rows": cap_rows, "key": key if not (d_from or d_to) else "custom", "from": a, "to": b, "days": days,
             "cost": cost, "calls": calls, "avg": cost / calls if calls else 0.0, "searches": None,
             "cost_pct": _pct(cost, pcost), "calls_pct": _pct(calls, pcalls), "prev_cost": pcost,
             "complete": complete, "per_complete": cost / complete if complete else None, "all_cost": all_cost,

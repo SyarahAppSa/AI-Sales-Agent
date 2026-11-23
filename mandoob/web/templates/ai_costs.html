@@ -10,6 +10,13 @@
 <div class="aic-bar" role="progressbar" aria-valuenow="{{ r.cap_pct|round|int }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ [r.cap_pct, 1.5]|max }}%" class="{{ 'warn' if r.cap_pct >= 80 }}"></i></div>
 <p class="small muted" style="margin:8px 0 0">السقف اليومي يشمل كل تكاليف المنصة، وإذا وصلته تتوقف دفعات البحث لباقي اليوم. المتوقع لهذا الشهر: <b dir="ltr">{{ money(r.forecast) }}</b> ({{ '%.2f'|format(r.forecast * r.SAR) }} ر.س). تغيّر السقف من «اكتشاف عملاء جدد».</p></div>
 
+<div class="card"><div class="aic-cap-top"><b>سقوف العمليات المكلفة اليوم</b><span class="small muted">المصادر المجانية (Overture وزاحف المواقع) بلا سقف وتعمل أولًا</span></div>
+<form method="post" action="/ai-costs/caps"><div class="aic-kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:0">
+{% for c in r.cap_rows %}<div class="aic-k"><div class="mt">{{ c.label }}</div><div class="mv" dir="ltr" style="font-size:22px">${{ '%.2f'|format(c.used) }} <span class="small muted">/ ${{ '%.0f'|format(c.cap) }}</span></div>
+<div class="aic-bar" style="margin:6px 0"><i style="width:{{ [((c.used / c.cap * 100) if c.cap else 0), 1]|max|round }}%" class="{{ 'warn' if c.cap and c.used >= c.cap * 0.8 }}"></i></div>
+{% if user.role == 'admin' %}<label class="small muted">السقف اليومي ($) <input name="{{ c.key }}" value="{{ '%.0f'|format(c.cap) }}" dir="ltr" style="width:80px;background:var(--soft);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 6px"></label>{% endif %}</div>{% endfor %}
+</div>{% if user.role == 'admin' %}<button class="btn" style="margin-top:10px;background:var(--panel);color:var(--ink);border:1px solid var(--line)">حفظ السقوف</button>{% endif %}</form></div>
+
 <nav class="aic-tabs" aria-label="الفترة">{% for k, lab in PERIODS %}<a href="/ai-costs?period={{ k }}" class="{{ 'on' if r.key == k }}">{{ lab }}</a>{% endfor %}</nav>
 
 <form method="get" class="aic-range"><input type="hidden" name="period" value="custom">

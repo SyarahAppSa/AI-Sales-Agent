@@ -236,3 +236,43 @@ def test_signals_google_by_activity(monkeypatch):
         assert "ضيّق الأنشطة أو المدن" in grp and len(seen) == 1
     with session_scope() as s:
         assert s.query(Company).count() == n0  # لا يُحفظ شيء من Google
+
+
+def test_free_overture_runs_past_cost_cap_and_paid_caps(monkeypatch):
+    """سقف التكلفة اليومي يوقف الخطوات المدفوعة فقط: Overture وزاحف المواقع (مجانيان) يكملان حتى الهدف،
+    وكل عملية مكلفة لها سقفها اليومي."""
+    from mandoob import ai, directory as D, goal, overture as OV
+    from mandoob.costs import record_cost
+    rows = [_row(100 + i, f"شركة نقل مجانية للفحص {i}", "freight_and_cargo_service", f"https://ovt-free-{i}.example")
+            for i in range(3)]
+    for i in range(3):
+        add_site(f"ovt-free-{i}.example", f"شركة نقل مجانية للفحص {i}", "نقل بضائع", phone=f"01177300{10 + i}",
+                 email=f"sales@ovt-free-{i}.example")
+    monkeypatch.setattr(OV, "city_rows", lambda pid: rows if pid == "SA-01/riyadh" else [])
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    with session_scope() as s:
+        g0 = goal.get(s)
+        goal.set_goal(s, 5000, cost_cap_usd=goal.cost_today(s) + 0.01)
+    record_cost("claude", 1, 0.5, note="agent")  # تجاوزنا سقف اليوم
+    try:
+        with session_scope() as s:
+            r = D.request(s, sources=["overture"], params={"activities": ["transport.freight"],
+                                                           "scope": {"places": ["SA-01/riyadh"]}, "auto": True},
+                          budget=5, user_id=None)
+            rid = r.id
+        D.run(rid, crawler=FakeCrawler())
+        with session_scope() as s:
+            st = s.get(DirectoryRun, rid).stats["overture"]
+            assert st["discovered"] == 3 and st["complete"] == 3  # أكمل رغم بلوغ سقف التكلفة
+    finally:
+        with session_scope() as s:
+            goal.set_goal(s, g0["target"], cost_cap_usd=g0["cost_cap_usd"])
+    # سقف كل عملية مكلفة
+    assert ai.cap_category("dir:bluepages:retry") == "retry" and ai.cap_category("agent:searches") == "discovery_agent"
+    assert ai.cap_category("officials") == "officials" and ai.cap_category("dir:overture:complete") is None
+    with session_scope() as s:
+        cap = ai.get_caps(s)["officials"]
+    record_cost("claude", 1, cap + 0.1, note="officials")
+    with pytest.raises(ai.AIUnavailable, match="البحث عن أصحاب القرار"):
+        ai._category_guard("officials")
+    ai._category_guard("dir:sig_direct:harvest")  # عملية بلا سقف خاص لا تتأثر

@@ -817,7 +817,15 @@ def run(run_id: int, crawler=None) -> None:
 
     halted = None
     # ٠) العودة للناقص أولًا (لا يبدأ البحث عنه من جديد)
-    if (r_auto := p.get("auto")) or p.get("retry_first"):
+    def free_halt() -> str | None:
+        """للخطوات المجانية (Overture + زاحف المواقع): لا يوقفها سقف التكلفة — فقط الهدف أو الإيقاف اليدوي."""
+        why = over_budget()
+        if why and ("التكلفة" in why or "ميزانيتها" in why):
+            return None
+        return why
+
+    r_auto = p.get("auto")
+    if p.get("retry_first") and not r_auto:
         n = retry_incomplete(stats, over_budget)
         beat(f"أُعيد البحث عن الناقص: اكتمل {n}")
     # ملفات مرفوعة (مرحلة ١ جاهزة مسبقًا)
@@ -832,7 +840,7 @@ def run(run_id: int, crawler=None) -> None:
             _enrich_stub(sid, stats, crawler, drun_id, camp_id, over_budget)
             beat()
     # Overture: مرحلة الأسماء من البيانات المفتوحة بالنشاط والمدينة، ثم الموقع الرسمي لكل جديد
-    if "overture" in sources and not halted:
+    if "overture" in sources and not (halted and free_halt()):
         from . import overture as OV
         from .activities import ACTIVITIES
         from . import geo as _geo
@@ -856,7 +864,7 @@ def run(run_id: int, crawler=None) -> None:
                 continue
             if completes() >= target or stats["overture"]["discovered"] >= ov_cap:
                 break
-            halted = over_budget()
+            halted = free_halt()
             if halted:
                 break
             try:
@@ -896,6 +904,10 @@ def run(run_id: int, crawler=None) -> None:
                 beat()
         if completes() >= target:
             beat(f"بلغت الدفعة هدفها: {completes()} منشأة جديدة مكتملة")
+    # الخطوة المدفوعة بعد المجانية: العودة للناقص في الدفعة اليومية بما تبقى من الميزانية
+    if r_auto and completes() < target and not over_budget():
+        n = retry_incomplete(stats, over_budget)
+        beat(f"أُعيد البحث عن الناقص (بعد المصادر المجانية): اكتمل {n}")
     # البحث المباشر حسب النشاط: Overture (مجاني) ثم بحث الويب للمرادفات وتحديد المشغّل الفعلي
     if "sig_direct" in sources and not halted:
         from . import geo as _geo, overture as _OV

@@ -40,6 +40,53 @@ def _api_err(msg: str) -> AIUnavailable:
 _client = None
 
 
+CAPS_KEY = "ai_daily_caps"
+# سقف يومي لكل عملية مكلفة (دولار) — حتى لا تستهلك عملية واحدة ميزانية اليوم كلها؛ المصادر المجانية بلا سقف
+DEFAULT_CAPS = {"discovery_agent": 15.0, "retry": 10.0, "officials": 5.0}
+CAP_LABELS = {"discovery_agent": "وكيل «البحث عن العملاء»", "retry": "إعادة محاولة الناقص", "officials": "البحث عن أصحاب القرار"}
+
+
+def cap_category(note: str) -> str | None:
+    n = (note or "").split(":")
+    if n[0] in ("agent", "complete"):
+        return "discovery_agent"
+    if n[0] == "officials":
+        return "officials"
+    if n[0] == "dir" and len(n) >= 3 and n[2] == "retry":
+        return "retry"
+    return None
+
+
+def get_caps(s) -> dict:
+    from .models import Setting
+    row = s.get(Setting, CAPS_KEY)
+    return {**DEFAULT_CAPS, **(dict(row.value) if row and row.value else {})}
+
+
+def _category_guard(note: str) -> None:
+    cat = cap_category(note)
+    if not cat:
+        return
+    try:
+        from sqlalchemy import func, select
+        from .db import session_scope
+        from .models import CostEntry
+        from .timeutil import riyadh_today
+        with session_scope() as s:
+            cap = float(get_caps(s).get(cat) or 0)
+            if not cap:
+                return
+            spent = 0.0
+            for nt, c in s.execute(select(CostEntry.note, CostEntry.cost_usd).where(CostEntry.day == riyadh_today(),
+                                                                                    CostEntry.service == "claude")):
+                if cap_category(nt or "") == cat:
+                    spent += float(c or 0)
+    except Exception:  # noqa: BLE001
+        return
+    if spent >= cap:
+        raise AIUnavailable(f"بلغت «{CAP_LABELS[cat]}» سقفها اليومي (${spent:.2f} من ${cap:.2f})")
+
+
 def _daily_cap_guard() -> None:
     """يُفحص قبل كل نداء لـClaude: إذا بلغ صرف اليوم (كل الخدمات) الحد اليومي يتوقف النداء فورًا،
     فلا تتجاوز العمليات المتوازية الحد كما كان يحدث حين يُفحص بين الخطوات فقط."""
@@ -90,6 +137,7 @@ def ai_json(system: str, prompt: str, schema: dict, *, web_search: bool = False,
     import anthropic
 
     c = client()
+    _category_guard(note)
     tools = []
     if web_search:
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": max_searches,
@@ -148,6 +196,7 @@ def ai_agent(system: str, prompt: str, schema: dict, *, max_searches: int = 8, m
     import anthropic
 
     c = client()
+    _category_guard(note)
     model = settings.ai_agent_model or settings.ai_model
     tools = [
         {"type": settings.ai_search_tool, "name": "web_search", "max_uses": max_searches,
