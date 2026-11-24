@@ -1159,6 +1159,8 @@ def schedule_daily(s) -> DirectoryRun | None:
             return None
     params = {"auto": True, "day_index": today.toordinal(), "activities": cfg["activities"], "scope": cfg["scope"],
               "target_complete": int(cfg["target_complete"]), "stage1_limit": int(cfg["target_complete"]) * 4}
+    if cfg.get("overture_limit"):  # سقف أسماء Overture اليومي (مجاني) — يحدده المالك
+        params["overture_limit"] = int(cfg["overture_limit"])
     return request(s, sources=list(cfg["sources"]), params=params, budget=float(cfg["budget_usd"]), user_id=None)
 
 

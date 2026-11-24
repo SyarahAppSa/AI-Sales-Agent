@@ -277,3 +277,22 @@ def test_free_overture_runs_past_cost_cap_and_paid_caps(monkeypatch):
     with pytest.raises(ai.AIUnavailable, match="البحث عن أصحاب القرار"):
         ai._category_guard("officials")
     ai._category_guard("dir:sig_direct:harvest")  # عملية بلا سقف خاص لا تتأثر
+
+
+def test_daily_overture_limit_from_settings():
+    from mandoob import directory as D
+    from mandoob.models import DirectoryRun as DR, Setting as St
+    from datetime import timedelta as _td
+    with session_scope() as s:
+        row = s.get(St, D.AUTO_KEY)
+        saved = dict(row.value) if row else None
+        D.set_auto(s, enabled=True, time="00:00", start_date=None, overture_limit=2200)
+        for r in s.query(DR).all():
+            if (r.params or {}).get("auto"):
+                r.created_at = r.created_at - _td(days=3)
+        s.flush()
+        r = D.schedule_daily(s)
+        assert r is not None and r.params["overture_limit"] == 2200
+        s.delete(r)
+        if saved is not None:
+            s.get(St, D.AUTO_KEY).value = saved
