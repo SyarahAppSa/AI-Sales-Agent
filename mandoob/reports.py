@@ -643,7 +643,7 @@ def team_activity(s: Session, user: User, d_from: date, d_to: date) -> dict:
 
     def row(uid, name=None):
         if uid not in reps:
-            reps[uid] = {"name": name or (users[uid].name if uid in users else "—"), "companies": set(), "next": 0,
+            reps[uid] = {"uid": uid, "name": name or (users[uid].name if uid in users else "—"), "companies": set(), "next": 0,
                          **{k: 0 for k, _ in TEAM_COLS}}
         return reps[uid]
     q = (select(ContactLog, Company).join(Company, Company.id == ContactLog.company_id)

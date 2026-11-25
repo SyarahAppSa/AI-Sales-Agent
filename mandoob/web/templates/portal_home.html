@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% block content %}
+{% extends "base.html" %}{% from "_phones.html" import phone_lines, phone_pairs %}{% from "_contact.html" import inline %}{% from "_leaderboard.html" import my_card with context %}{% block content %}
 <div class="top"><div><h1>عملائي ومتابعاتي</h1><p class="sub" style="margin:0">مرحبًا {{ user.name }} — نطاقك: {{ d.scope }} — صلاحياتك: {{ d.actions|join('، ') }}</p></div>
 <div class="row">{% if can('see_phone') %}<a class="btn" href="/portal/export/phones.csv">نسخ كل الأرقام</a>{% endif %}{% if can('see_email') %}<a class="btn" href="/portal/export/emails.csv">نسخ كل الإيميلات</a>{% endif %}{% if can('export') %}<a class="btn p" href="/portal/export.xlsx?q={{ q }}">تنزيل Excel</a>{% endif %}</div></div>
 <p class="small muted" style="margin:-4px 0 12px">تواصل مع العميل بنفسك، ثم افتح سجله وحدّث حالته إلى «تم التواصل» أو «أُرسل عرض» أو «تحتاج متابعة» حتى يظهر في تقرير العروض باسمك وتاريخ الإرسال.</p>
+{% if me %}{{ my_card(me) }}{% endif %}
 <form class="card row" method="get"><div><label>بحث</label><input name="q" value="{{ q }}" placeholder="اسم العميل أو نشاطه أو مدينته"></div><div style="flex:0 0 auto"><button class="btn">بحث</button></div></form>
 <div class="card tablewrap"><table>
 <tr><th>العميل</th>{% if can('see_phone') or can('see_email') %}<th>التواصل</th>{% endif %}{% if can('see_offers') %}<th>آخر عرض</th>{% endif %}{% if can('see_replies') %}<th>رده</th>{% endif %}<th>المتابعة القادمة</th></tr>

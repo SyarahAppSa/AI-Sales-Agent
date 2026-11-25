@@ -510,7 +510,7 @@ def healthz():
 # ---------------------------------------------------------------- الرئيسية
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, period: str = "7d", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
+def home(request: Request, period: str = "7d", lb: str = "day", user: User = Depends(current_user), s=Depends(get_db, scope="function")):
     from urllib.parse import parse_qsl
     from ..health import search_status
     from ..reports import (PERIODS, card_links, daily_target, period_bounds, recent_customers,
@@ -544,7 +544,14 @@ def home(request: Request, period: str = "7d", user: User = Depends(current_user
     return render(request, "dashboard.html", user, s, adm=adm, cards=cards, links=links, target=daily_target(s),
                   goal_n=goal_n, goal_why=_why(s) if goal_n < daily_target(s) else "",
                   today=riyadh_today(), recent=recent_customers(s, user), follow=needs_followup_today(s, user)[:8],
-                  health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS)
+                  health=search_status(s), perf=perf, perf_today=perf_today, period=period, PERIODS=PERIODS,
+                  lb=_lb_board(s, user, lb))
+
+
+def _lb_board(s, user, key):
+    from ..leaderboard import board
+    from ..team_report import can_view
+    return board(s, user, key) if can_view(s, user) else None
 
 
 # ---------------------------------------------------------------- العملاء المحتملون
@@ -3416,7 +3423,19 @@ def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depen
     total = len(all_rows)
     rows = all_rows[(page - 1) * 50: page * 50]  # يُرسل للجهاز ما تعرضه الصفحة فقط
     return render(request, "portal_home.html", user, s, rows=rows, q=q, can=lambda p: can(user, p), page=page, total=total,
-                  d=describe(user), mask=lambda t: mask_text(user, t), csum=_csum(s, [r["c"] for r in rows]))
+                  d=describe(user), mask=lambda t: mask_text(user, t), csum=_csum(s, [r["c"] for r in rows]),
+                  me=_my_card(s, user), now_hour=to_riyadh(now_utc()).hour)
+
+
+def _my_card(s, user):
+    from ..leaderboard import personal
+    try:
+        me = personal(s, user)
+        me["due"] = len(needs_followup_today(s, user))
+        return me
+    except Exception:  # البطاقة تحفيزية؛ لا تمنع فتح صفحة العملاء
+        logging.getLogger(__name__).exception("my_card")
+        return None
 
 
 @app.get("/portal/export.xlsx")

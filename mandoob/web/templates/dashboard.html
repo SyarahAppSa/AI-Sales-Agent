@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_icons.html" import icon %}{% from "_health.html" import health_bar %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% from "_health.html" import health_bar %}{% from "_leaderboard.html" import leaderboard %}
 {% block title %}لوحة التحكم — المندوب الذكي لسيارة اب{% endblock %}{% block content %}
 <div class="dash-head">
   <div><h1>لوحة التحكم</h1><div class="date">{{ fmt_date(today) }}</div></div>
@@ -6,6 +6,7 @@
 </div>
 
 {{ health_bar(health, user) }}
+{% if lb %}{{ leaderboard(lb) }}{% endif %}
 
 <div class="kpis">
   <a class="kpi" href="{{ links.new }}" data-card="new">
