@@ -1,6 +1,7 @@
-{% extends "base.html" %}{% block title %}نشاط الفريق والتواصل{% endblock %}{% block content %}
-<div class="top"><div><h1>نشاط الفريق والتواصل</h1>
-<p class="sub" style="margin:0">من تواصل مع من، ومتى، وما النتيجة، ومتى المتابعة القادمة — بتوقيت الرياض. يظهر فريقك حسب صلاحياتك.</p></div></div>
+{% extends "base.html" %}{% block title %}تقرير الفريق وجودة البيانات{% endblock %}{% block content %}
+<div class="top"><div><h1>تقرير الفريق وجودة البيانات</h1>
+<p class="sub" style="margin:0">كل التقارير في مكان واحد: نتائج تواصل كل موظف، وجودة بيانات العملاء المسندين — بتوقيت الرياض، حسب صلاحياتك، بلا البيانات التجريبية.</p></div>
+<div class="row" style="flex:0 0 auto;gap:6px"><a class="btn" href="/daily-report">التقرير اليومي</a><a class="btn" href="/weekly-report">التقرير الأسبوعي</a><a class="btn" href="/followups">متابعات اليوم</a>{% if user.role in ('admin','manager') %}<a class="btn" href="/ai-costs">تكلفة الذكاء الاصطناعي</a>{% endif %}</div></div>
 
 <form class="card row" method="get" style="align-items:end;gap:10px">
   <div style="flex:0 1 180px"><label class="small">من</label><input type="date" name="d_from" value="{{ d_from }}"></div>
@@ -12,18 +13,39 @@
 
 <div class="card"><h2>حسب الموظف ({{ r.total }} محاولة تواصل)</h2>
 <div class="tablewrap"><table>
-<tr><th>الموظف</th><th>المحاولات</th><th>العملاء</th>{% for k in r.cols %}<th>{{ r.STATUSES[k] }}</th>{% endfor %}<th>بموعد متابعة</th></tr>
-{% for x in r.reps %}<tr><td><b translate="no">{{ x.name }}</b></td><td><b>{{ x.total }}</b></td><td>{{ x.companies }}</td>
-{% for k in r.cols %}<td>{{ x[k] or '' }}</td>{% endfor %}<td>{{ x.next }}</td></tr>
-{% else %}<tr><td colspan="{{ 4 + r.cols|length }}" class="muted">لا توجد محاولات تواصل في هذه الفترة.</td></tr>{% endfor %}
-</table></div></div>
+<tr><th>الموظف</th>{% for k, lab in r.COLS %}<th>{{ lab }}</th>{% endfor %}<th>بموعد متابعة</th></tr>
+{% for x in r.reps %}<tr><td><b translate="no">{{ x.name }}</b></td>
+{% for k, lab in r.COLS %}<td{% if k == 'total' %} style="font-weight:800"{% endif %}>{{ x[k] or '' }}</td>{% endfor %}<td>{{ x.next or '' }}</td></tr>
+{% else %}<tr><td colspan="{{ 2 + r.COLS|length }}" class="muted">لا يوجد نشاط في هذه الفترة.</td></tr>{% endfor %}
+{% if r.reps %}<tr style="background:var(--soft)"><td><b>الإجمالي</b></td>{% for k, lab in r.COLS %}<td><b>{{ r.totals[k] }}</b></td>{% endfor %}<td></td></tr>{% endif %}
+</table></div>
+<p class="small muted">«عدد الإسناد» في الفترة المختارة، و«لم يتم التواصل» = عملاء الموظف الحاليون الذين لم تُسجَّل لهم أي محاولة حتى الآن.</p></div>
+
+<div class="card"><h2>جودة بيانات العملاء المسندين</h2>
+<div class="aic-kpis" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">
+{% for lab, v, sub in [('عملاء مسندون', '{:,}'.format(q.total), 'من عملاء CRM: ' ~ '{:,}'.format(q.crm)),
+  ('لديهم جوال سعودي', q.phone_pct ~ '%', '{:,}'.format(q.phone) ~ ' عميل'), ('لديهم بريد', q.email_pct ~ '%', '{:,}'.format(q.email) ~ ' عميل'),
+  ('بيانات مكتملة', q.complete_pct ~ '%', '{:,}'.format(q.complete) ~ ' عميل'), ('لم يُتواصل معهم بعد', '{:,}'.format(q.no_contact), q.no_contact_pct ~ '% من المسندين'),
+  ('«لم يرد» 3 مرات+', '{:,}'.format(q.many_no_answer), 'راجع الرقم أو جرّب البريد')] %}
+<div class="mon-tile"><div class="mt">{{ lab }}</div><div class="mv" style="color:var(--ink)">{{ v }}</div><div class="mh">{{ sub }}</div></div>{% endfor %}
+</div>
+{% if q.by_source %}<div class="tablewrap" style="margin-top:10px"><table><tr><th>مصدر العميل</th><th>العدد</th><th>نسبة المكتمل</th></tr>
+{% for x in q.by_source %}<tr><td class="small" translate="no">{{ x.source }}</td><td>{{ '{:,}'.format(x.n) }}</td><td>{{ x.complete_pct }}%</td></tr>{% endfor %}</table></div>{% endif %}</div>
+
+<div class="card"><h2>الإرسال اليومي على البريد</h2>
+<p class="small">يصل التقرير (جدول الفريق + جودة البيانات) يوميًا {% if tr.enabled %}الساعة <b>{{ tr.time }}</b>{% else %}<b>— متوقف</b>{% endif %} إلى: <span dir="ltr">{{ tr_to|join(', ') or '—' }}</span>{% if tr.last_result %} — آخر إرسال: {{ tr.last_result.day }} ({{ tr.last_result.sent }} مستلم){% endif %}</p>
+<form method="post" action="/team-activity/email" class="row" style="gap:8px;align-items:end">
+{% if user.role == 'admin' %}<label class="small"><input type="checkbox" name="enabled" {{ 'checked' if tr.enabled }}> إرسال يومي</label>
+<div style="flex:0 1 120px"><label class="small">الوقت (الرياض)</label><input name="time" value="{{ tr.time }}" dir="ltr"></div>
+<button class="btn" name="save" value="1" style="flex:0 0 auto">حفظ</button>{% endif %}
+<button class="btn p" style="flex:0 0 auto">أرسل تقرير اليوم الآن</button></form></div>
 
 <div class="card"><h2>سجل المحاولات</h2>
 <div class="tablewrap"><table>
 <tr><th>الوقت</th><th>الموظف</th><th>العميل</th><th>النتيجة</th><th>الملاحظة</th><th>المتابعة القادمة</th></tr>
 {% for lg, co in r.logs %}<tr><td class="small" style="white-space:nowrap">{{ fmt(lg.at) }}</td><td translate="no">{{ lg.user_name }}</td>
 <td><a href="/companies/{{ co.id }}" translate="no">{{ co.name }}</a></td>
-<td><span class="pill {{ 'ok' if lg.status in ('contacted','offer_sent') else ('warn' if lg.status in ('no_answer','call_later') else '') }}">{{ r.STATUSES.get(lg.status, lg.status) }}</span></td>
+<td><span class="pill {{ 'ok' if lg.status in ('contacted','offer_sent','subscribed','new_request') else ('warn' if lg.status in ('no_answer','call_later') else '') }}">{{ r.STATUSES.get(lg.status, lg.status) }}</span></td>
 <td class="small">{{ lg.note or '' }}</td>
 <td class="small" style="white-space:nowrap">{% if lg.next_at %}{{ fmt(lg.next_at) }}{% if lg.next_owner_name %} — {{ lg.next_owner_name }}{% endif %}{% else %}—{% endif %}</td></tr>
 {% else %}<tr><td colspan="6" class="muted">لا يوجد.</td></tr>{% endfor %}

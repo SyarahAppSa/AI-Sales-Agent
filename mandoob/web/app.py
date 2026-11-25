@@ -2559,8 +2559,30 @@ def team_activity_page(request: Request, d_from: str = "", d_to: str = "", user:
     t = riyadh_today()
     a, b = _d(d_from, t), _d(d_to, t)
     a, b = min(a, b), max(a, b)
+    from .. import team_report as TR
+    from ..reports import data_quality
     return render(request, "team_activity.html", user, s, r=team_activity(s, user, a, b), d_from=a, d_to=b, today=t,
-                  timedelta=timedelta)
+                  timedelta=timedelta, q=data_quality(s, user), tr=TR.get_cfg(s),
+                  tr_to=[u.email for u in TR.recipients(s)])
+
+
+@app.post("/team-activity/email")
+async def team_activity_email(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
+    """إرسال تقرير اليوم الآن لبريد المدراء، أو حفظ وقت الإرسال اليومي (المالك)."""
+    from .. import team_report as TR
+    form = await request.form()
+    if form.get("save") and user.role == "admin":
+        tm = (form.get("time") or "18:00").strip()
+        if not re.fullmatch(r"\d{2}:\d{2}", tm):
+            tm = "18:00"
+        TR.put_cfg(s, enabled=bool(form.get("enabled")), time=tm)
+        flash(request, f"حُفظ: يُرسل تقرير الفريق يوميًا الساعة {tm}" if form.get("enabled") else "أُوقف الإرسال اليومي")
+        return back("/team-activity")
+    s.commit()
+    out = TR.send()
+    flash(request, (f"أُرسل التقرير إلى: {', '.join(out['sent'])}" if out["sent"] else "لم يُرسل التقرير")
+          + (f" — تعذّر: {', '.join(out['failed'])}" if out["failed"] else ""), "ok" if out["sent"] else "err")
+    return back("/team-activity")
 
 
 @app.get("/followups", response_class=HTMLResponse)

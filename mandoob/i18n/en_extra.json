@@ -791,5 +791,20 @@
  "لا توجد محاولات تواصل في هذه الفترة.": "No contact attempts in this period.",
  "الإبلاغ عن مشكلة": "Report a problem",
  "إرسال للإدارة": "Send to admin",
- "صف المشكلة باختصار: ماذا كنت تفعل وماذا ظهر لك": "Briefly describe the problem: what you were doing and what you saw"
+ "صف المشكلة باختصار: ماذا كنت تفعل وماذا ظهر لك": "Briefly describe the problem: what you were doing and what you saw",
+ "طلب جديد": "New request",
+ "مشترك لدى سيارة اب": "Syarah App subscriber",
+ "عدد الإسناد": "Assigned",
+ "لم يتم التواصل": "Not contacted",
+ "طلب تواصل لاحقًا": "Call back later",
+ "أرسل عرض": "Offer sent",
+ "إجمالي التواصل": "Total contacts",
+ "تقرير الفريق وجودة البيانات": "Team & data quality report",
+ "جودة بيانات العملاء المسندين": "Assigned customers' data quality",
+ "الإرسال اليومي على البريد": "Daily email",
+ "أرسل تقرير اليوم الآن": "Send today's report now",
+ "لديهم جوال سعودي": "With a Saudi mobile",
+ "لديهم بريد": "With email",
+ "بيانات مكتملة": "Complete data",
+ "عملاء مسندون": "Assigned customers"
 }

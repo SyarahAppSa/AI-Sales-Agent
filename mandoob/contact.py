@@ -17,13 +17,16 @@ from .timeutil import now_utc, riyadh_day_bounds_utc, riyadh_today
 
 STATUSES = {"new": "جديد", "in_progress": "جارٍ التواصل", "contacted": "تم التواصل", "no_answer": "لم يرد",
             "call_later": "طلب التواصل لاحقًا", "offer_sent": "أُرسل عرض", "not_interested": "غير مهتم",
-            "do_not_contact": "طلب عدم التواصل"}
-UPDATE_CHOICES = ["contacted", "no_answer", "call_later", "offer_sent", "not_interested", "do_not_contact", "new"]
-ATTEMPT_STATUSES = {"contacted", "no_answer", "call_later", "offer_sent", "not_interested", "do_not_contact"}
+            "do_not_contact": "طلب عدم التواصل", "new_request": "طلب جديد", "subscribed": "مشترك لدى سيارة اب"}
+UPDATE_CHOICES = ["contacted", "no_answer", "call_later", "offer_sent", "new_request", "subscribed", "not_interested",
+                  "do_not_contact", "new"]
+ATTEMPT_STATUSES = {"contacted", "no_answer", "call_later", "offer_sent", "not_interested", "do_not_contact",
+                    "new_request", "subscribed"}
 LOCK_MINUTES = 120  # حجز «جارٍ التواصل» ينتهي تلقائيًا إن لم يُحدَّث خلال ساعتين
 # مزامنة مرحلة المنشأة في التقارير الحالية
 STAGE_OF = {"contacted": "contacted", "no_answer": "needs_followup", "call_later": "needs_followup",
-            "offer_sent": "offer_sent", "not_interested": "lost", "do_not_contact": "do_not_contact"}
+            "offer_sent": "offer_sent", "not_interested": "lost", "do_not_contact": "do_not_contact",
+            "new_request": "interested", "subscribed": "won"}
 
 
 class ContactBlocked(Exception):
@@ -101,6 +104,8 @@ def update_followup(s: Session, c: Company, user: User, status: str, note: str =
         c.attempts_count = (c.attempts_count or 0) + 1
         if not c.contacted_at:
             c.contacted_at, c.contacted_by_id = now, user.id
+    if status == "subscribed" and not c.won_at:  # اشترك لدى سيارة اب = صفقة رابحة في التقارير
+        c.won_at = now
     if status == "offer_sent":
         c.offer_sent_at, c.offer_sent_by_id = c.offer_sent_at or now, c.offer_sent_by_id or user.id
     c.contact_lock_by_id = c.contact_lock_at = None  # التحديث يحرر الحجز

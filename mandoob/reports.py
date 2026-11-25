@@ -5,7 +5,7 @@ import io
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, func, literal, or_, select, true
+from sqlalchemy import and_, case, func, literal, or_, select, true
 from sqlalchemy.orm import Session
 
 from .models import (Activity, Call, Campaign, Category, Company, CostEntry, DiscoveryRun, InboundMessage,
@@ -622,30 +622,90 @@ def weekly_by_source(s: Session, day: date | None = None) -> list[dict]:
     return out
 
 
+TEAM_COLS = [("assigned", "عدد الإسناد"), ("no_answer", "لم يرد"), ("call_later", "طلب تواصل لاحقًا"),
+             ("offer_sent", "أرسل عرض"), ("not_interested", "غير مهتم"), ("new_request", "طلب جديد"),
+             ("not_contacted", "لم يتم التواصل"), ("subscribed", "مشترك لدى سيارة اب"), ("contacted", "تم التواصل"),
+             ("total", "إجمالي التواصل")]
+
+
 def team_activity(s: Session, user: User, d_from: date, d_to: date) -> dict:
-    """نشاط الفريق: محاولات التواصل ونتائجها لكل موظف بين تاريخين (بتوقيت الرياض)، ثم سجل كل محاولة.
-    المدير يرى فريقه حسب نطاق صلاحياته، والمالك يرى الكل. البيانات التجريبية مستبعدة."""
+    """تقرير الفريق التفصيلي: لكل موظف عدد الإسناد في الفترة، ونتائج محاولات التواصل، ومن لم يُتواصل معهم بعد من
+    عملائه، وإجمالي التواصل — ثم سجل كل محاولة. المدير يرى فريقه حسب صلاحياته؛ البيانات التجريبية مستبعدة."""
     from .contact import ATTEMPT_STATUSES, STATUSES
     from .models import ContactLog
     from .permissions import visible_owner_ids
     from .timeutil import riyadh_day_bounds_utc
     t0, _ = riyadh_day_bounds_utc(d_from)
     _, t1 = riyadh_day_bounds_utc(d_to)
+    ids = visible_owner_ids(s, user)
+    users = {u.id: u for u in s.scalars(select(User).where(User.role.in_(("rep", "manager"))))}
+    reps: dict = {}
+
+    def row(uid, name=None):
+        if uid not in reps:
+            reps[uid] = {"name": name or (users[uid].name if uid in users else "—"), "companies": set(), "next": 0,
+                         **{k: 0 for k, _ in TEAM_COLS}}
+        return reps[uid]
     q = (select(ContactLog, Company).join(Company, Company.id == ContactLog.company_id)
          .where(ContactLog.at >= t0, ContactLog.at < t1, ContactLog.status.in_(ATTEMPT_STATUSES),
                 Company.is_test.is_(False)))
-    ids = visible_owner_ids(s, user)
     if ids is not None:
         q = q.where(ContactLog.user_id.in_(ids))
     rows = list(s.execute(q.order_by(ContactLog.at.desc())))
-    reps: dict = {}
     for lg, co in rows:
-        r = reps.setdefault(lg.user_id, {"name": lg.user_name or "—", "total": 0, "companies": set(), "next": 0,
-                                         **{k: 0 for k in ATTEMPT_STATUSES}})
+        r = row(lg.user_id, lg.user_name)
         r["total"] += 1
-        r[lg.status] += 1
+        if lg.status in r:
+            r[lg.status] += 1
         r["companies"].add(co.id)
         r["next"] += 1 if lg.next_at else 0
-    out = sorted(({**v, "companies": len(v["companies"])} for v in reps.values()), key=lambda x: -x["total"])
-    return {"reps": out, "logs": rows[:400], "total": len(rows), "STATUSES": STATUSES,
-            "cols": [k for k in ("contacted", "no_answer", "call_later", "offer_sent", "not_interested", "do_not_contact")]}
+    # الإسناد في الفترة (للمالك الحالي) ومن لم يُتواصل معهم بعد من عملاء كل موظف
+    aq = select(Company.owner_id, func.count(Company.id)).where(
+        Company.assigned_at >= t0, Company.assigned_at < t1, Company.owner_id.isnot(None), Company.is_test.is_(False))
+    nq = select(Company.owner_id, func.count(Company.id)).where(
+        Company.owner_id.isnot(None), Company.is_test.is_(False), Company.last_attempt_at.is_(None),
+        Company.do_not_contact.is_(False))
+    if ids is not None:
+        aq, nq = aq.where(Company.owner_id.in_(ids)), nq.where(Company.owner_id.in_(ids))
+    for uid, n in s.execute(aq.group_by(Company.owner_id)):
+        row(uid)["assigned"] = n
+    for uid, n in s.execute(nq.group_by(Company.owner_id)):
+        row(uid)["not_contacted"] = n
+    out = sorted(({**v, "companies": len(v["companies"])} for v in reps.values()),
+                 key=lambda x: (-x["total"], -x["assigned"]))
+    totals = {k: sum(r[k] for r in out) for k, _ in TEAM_COLS}
+    return {"reps": out, "logs": rows[:400], "total": len(rows), "STATUSES": STATUSES, "COLS": TEAM_COLS,
+            "totals": totals, "cols": [k for k, _ in TEAM_COLS if k not in ("assigned", "not_contacted", "total")]}
+
+
+def data_quality(s: Session, user: User) -> dict:
+    """جودة بيانات العملاء المسندين (حسب صلاحيات المستخدم): نسبة الجوال السعودي والبريد والاكتمال، والمكالمات
+    التي لم يرد عليها مرارًا، وعملاء بلا تواصل منذ الإسناد — بلا البيانات التجريبية."""
+    from .models import Contact
+    from .permissions import visible_owner_ids
+    ids = visible_owner_ids(s, user)
+    base = [Company.owner_id.isnot(None), Company.is_test.is_(False)]
+    if ids is not None:
+        base.append(Company.owner_id.in_(ids))
+    total = s.scalar(select(func.count(Company.id)).where(*base)) or 0
+
+    def has(kind, saudi=False):
+        q = select(Contact.id).where(Contact.company_id == Company.id, Contact.kind == kind)
+        if saudi:
+            q = q.where(Contact.value.like("+966%"))
+        return s.scalar(select(func.count(Company.id)).where(*base, q.exists())) or 0
+    phone, email = has("phone", True), has("email")
+    complete = s.scalar(select(func.count(Company.id)).where(*base, Company.data_status == "complete")) or 0
+    no_contact = s.scalar(select(func.count(Company.id)).where(*base, Company.last_attempt_at.is_(None))) or 0
+    many_na = s.scalar(select(func.count(Company.id)).where(*base, Company.contact_status == "no_answer",
+                                                            Company.attempts_count >= 3)) or 0
+    crm = s.scalar(select(func.count(Company.id)).where(*base, Company.crm_id.isnot(None))) or 0
+    pct = (lambda n: round(n / total * 100) if total else 0)
+    by_src = []
+    for src, n, comp in s.execute(select(Company.lead_source, func.count(Company.id),
+                                         func.sum(case((Company.data_status == "complete", 1), else_=0)))
+                                  .where(*base).group_by(Company.lead_source).order_by(func.count(Company.id).desc()).limit(8)):
+        by_src.append({"source": src or "—", "n": n, "complete_pct": round((comp or 0) / n * 100) if n else 0})
+    return {"total": total, "phone": phone, "phone_pct": pct(phone), "email": email, "email_pct": pct(email),
+            "complete": complete, "complete_pct": pct(complete), "no_contact": no_contact,
+            "no_contact_pct": pct(no_contact), "many_no_answer": many_na, "crm": crm, "by_source": by_src}

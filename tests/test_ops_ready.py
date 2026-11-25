@@ -94,7 +94,7 @@ def test_team_activity_report():
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
         html = cl.get("/team-activity").text
-        assert "نشاط الفريق والتواصل" in html and "مندوب تقرير الفريق" in html and "عميل تقرير الفريق للفحص" in html
+        assert "تقرير الفريق وجودة البيانات" in html and "مندوب تقرير الفريق" in html and "عميل تقرير الفريق للفحص" in html
         assert "لم يرد — للفحص" in html and "عميل تجريبي مستبعد للفحص" not in html
         assert 'href="/team-activity"' in html
     with session_scope() as s:
@@ -118,3 +118,64 @@ def test_ops_report_and_logout_audit():
     for x in ("[الدخول والخروج]", "دخل:", "خرج:", "[التواصل مع العملاء]", "[العملاء]", "[التكلفة اليوم]", "[الأعطال]",
               "[بلاغات الموظفين]", "[العامل]"):
         assert x in out, x
+
+
+def test_team_report_new_statuses_columns_quality_and_email(monkeypatch):
+    from mandoob import team_report as TR
+    from mandoob.contact import update_followup
+    from mandoob.models import Contact
+    from mandoob.reports import data_quality, team_activity
+    from mandoob.timeutil import riyadh_today
+    init_db()
+    with session_scope() as s:
+        rid = _rep(s, "ops.rep5@x.test", "مندوب التقرير اليومي")
+        rep = s.get(User, rid)
+        cs = []
+        for i in range(4):
+            c = Company(name=f"عميل تقرير يومي {i}", name_norm=f"عميل تقرير يومي {i}", owner_id=rid, assigned_at=now_utc(),
+                        data_status="complete")
+            s.add(c)
+            cs.append(c)
+        s.flush()
+        s.add(Contact(company_id=cs[0].id, kind="phone", value="+966551230001", source_url="https://x.example"))
+        update_followup(s, cs[0], rep, "subscribed", "اشترك")
+        update_followup(s, cs[1], rep, "new_request", "طلب خدمة جديدة")
+        update_followup(s, cs[2], rep, "call_later", "", now_utc() + timedelta(days=1), None, False)
+        assert cs[0].stage == "won" and cs[0].won_at is not None
+        admin = s.query(User).filter_by(role="admin").first() or User(name="x", role="admin", scope="all")
+        r = team_activity(s, admin, riyadh_today(), riyadh_today())
+        x = next(v for v in r["reps"] if v["name"] == "مندوب التقرير اليومي")
+        assert x["assigned"] == 4 and x["subscribed"] == 1 and x["new_request"] == 1 and x["call_later"] == 1
+        assert x["not_contacted"] == 1 and x["total"] == 3
+        assert [k for k, _ in r["COLS"]][:8] == ["assigned", "no_answer", "call_later", "offer_sent", "not_interested",
+                                                 "new_request", "not_contacted", "subscribed"]
+        q = data_quality(s, admin)
+        assert q["total"] >= 4 and 0 <= q["phone_pct"] <= 100
+        subject, text, html = TR.build_html(s, riyadh_today(), "https://mandoob.live")
+        assert "مندوب التقرير اليومي" in html and "مشترك لدى سيارة اب" in html and "جودة بيانات" in html
+    sent = []
+    from mandoob.mail import sandbox
+    orig_send = sandbox.SandboxProvider.send
+
+    def fake_send(self, m):
+        if m.to.startswith("mgr"):
+            sent.append(m.to)
+            return type("R", (), {"accepted": True})()
+        return orig_send(self, m)
+    monkeypatch.setattr(sandbox.SandboxProvider, "send", fake_send)
+    monkeypatch.setattr(TR, "recipients", lambda s: [type("U", (), {"email": "mgr1@co.example"})(), type("U", (), {"email": "mgr2@co.example"})()])
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/team-activity").text
+        for t in ("تقرير الفريق وجودة البيانات", "عدد الإسناد", "لم يتم التواصل", "مشترك لدى سيارة اب", "طلب جديد",
+                  "إجمالي التواصل", "جودة بيانات العملاء المسندين", "أرسل تقرير اليوم الآن"):
+            assert t in html, t
+        sent.clear()
+        r = cl.post("/team-activity/email", data={}, follow_redirects=True)
+        assert sent == ["mgr1@co.example", "mgr2@co.example"] and "أُرسل التقرير" in r.text
+    # الإرسال اليومي مرة واحدة
+    with session_scope() as s:
+        TR.put_cfg(s, enabled=True, time="00:00", last_sent=None)
+    sent.clear()
+    assert TR.tick() is True and len(sent) == 2
+    assert TR.tick() is False and len(sent) == 2
