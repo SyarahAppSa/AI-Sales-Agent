@@ -463,3 +463,22 @@ background:linear-gradient(90deg,#efe8ff,#fdf4ff);border:1px solid #e4d8ff;anima
 .me-level .lv-face{font-size:26px}.me-level .lv-k{font-size:12px;opacity:.8}.me-level b{font-size:16px}.me-level .stars{color:#f2b01e;letter-spacing:1px}
 .me-level .lv-next{font-size:12.5px;margin-inline-start:auto;opacity:.9}
 @media (max-width:640px){.me-level .lv-next{margin-inline-start:0;flex-basis:100%}}
+/* لوحة الصدارة المختصرة في لوحة التحكم */
+.lbc{padding-bottom:12px}.lbc .lb-head h2{font-size:18px}.lbc .lb-tabs a{padding:4px 10px;font-size:12.5px}
+.lbc-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0 4px;font-size:13.5px}
+.lbc-quote{flex:1 1 320px;padding:7px 12px;border-radius:12px;background:linear-gradient(90deg,#efe8ff,#fdf4ff);color:#4c2d86;font-weight:700}
+.lbc-team{flex:0 1 300px;display:flex;align-items:center;gap:8px;white-space:nowrap}.lbc-team .lb-bar{flex:1;height:8px;margin:0;min-width:80px}
+.lbc-flag{font-size:12.5px;color:var(--warn);margin:6px 0}
+.lbc-list{list-style:none;margin:0;padding:0}
+.lbc-row{display:grid;grid-template-columns:28px 30px minmax(0,1.3fr) minmax(0,1fr) 52px 44px;gap:10px;align-items:center;padding:6px 4px;border-top:1px solid var(--line)}
+.lbc-rank{text-align:center;font-weight:800;color:var(--muted)}.lbc-emoji{font-size:22px;text-align:center}
+.lbc-name{min-width:0;line-height:1.35}.lbc-name b{font-size:14px}.lbc-sub{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lbc-bar .lb-bar{margin:0;height:14px}.lbc-bar .lb-bar .goal{line-height:14px;font-size:10.5px}
+.lbc-pts{text-align:center}.lbc-pts b{font-size:17px}.lbc-pts small{color:var(--muted);font-size:11px}
+.lbc .brv{padding:4px 8px;font-size:13px}.lbc .lb-tag{font-size:11px;padding:1px 6px}
+.lbc-more summary{cursor:pointer;font-size:13px;color:#6941A5;font-weight:700;padding:8px 4px;border-top:1px solid var(--line);list-style:none}
+.lbc-more summary::-webkit-details-marker{display:none}.lbc-more summary::before{content:"▾ "}.lbc-more[open] summary::before{content:"▴ "}
+.lbc .lb-note{margin-top:6px;font-size:11.5px}
+@media (max-width:640px){.lbc-row{grid-template-columns:24px 26px minmax(0,1fr) 46px 40px}.lbc-bar{grid-column:3/4;grid-row:2}}
+.lbc-bar,.lbc-bar .lb-bar,.lbc-team .lb-bar{display:block}.lbc-bar .lb-bar i{height:100%}.lbc-team .lb-bar i{height:100%}
+@media (max-width:640px){.lbc-row{grid-template-columns:24px 26px minmax(0,1fr) 46px 40px;row-gap:4px}.lbc-bar{grid-column:3/6;grid-row:2}}

@@ -32,7 +32,7 @@ def test_leaderboard_on_dashboard_and_my_card():
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
         html = cl.get("/").text
-        assert "لوحة صدارة الفريق" in html and "مندوب لوحة الصدارة" in html and "عبارة اليوم" in html
+        assert "لوحة صدارة الفريق" in html and "مندوب لوحة الصدارة" in html and LB.today_phrase(__import__("mandoob.timeutil", fromlist=["x"]).riyadh_today()) in html
         assert cl.get("/?lb=week").status_code == 200 and cl.get("/?lb=month").status_code == 200
     with TestClient(app) as cl:
         otp_login(cl, "lb.rep1@x.test", "staff")
@@ -70,9 +70,9 @@ def test_bonus_streak_best_badges_bravo_and_celebration():
     with TestClient(app) as cl:
         otp_login(cl, ADMIN, "admin")
         html = cl.get("/").text
-        assert "👏 برافو" in html and "هدف الفريق اليوم" in html and "(+2 بونص)" in html
+        assert "/leaderboard/bravo" in html and "الفريق اليوم" in html and "+2 بونص" in html
         assert cl.post("/leaderboard/bravo", data={"uid": rid, "lb": "day"}).status_code in (200, 303)
-        assert "👏 أُرسلت" in cl.get("/").text
+        assert "👏 ✓" in cl.get("/").text
     with session_scope() as s:
         assert s.query(Notification).filter_by(user_id=rid).filter(Notification.title.like("%برافو%")).count() == 1
     with TestClient(app) as cl:

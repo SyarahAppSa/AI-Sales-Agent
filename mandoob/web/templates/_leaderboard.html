@@ -1,26 +1,23 @@
+{% macro lb_row(x, i, lb) %}<li class="lbc-row {{ x.cls }}">
+  <span class="lbc-rank">{{ ['🥇','🥈','🥉'][i] if i < 3 and x.points else i + 1 }}</span>
+  <span class="lbc-emoji lb-emoji {{ x.cls }}">{{ x.face }}</span>
+  <span class="lbc-name"><b>{{ x.name }}</b>{% if x.streak %} <span class="lb-tag fire">🔥 <span dir="ltr">{{ x.streak }}</span></span>{% endif %}{% for bd in x.badges %} <span class="lb-tag" title="{{ bd }}">{{ bd.split(' ')[0] }}</span>{% endfor %}
+    <span class="lbc-sub">{{ x.label }} · {{ x.contacted }} تواصل · {{ x.no_answer }} لم يرد{% if x.offer_sent %} · {{ x.offer_sent }} عرض{% endif %}{% if x.subscribed %} · {{ x.subscribed }} مشترك{% endif %}{% if x.bonus %} · +{{ x.bonus }} بونص{% endif %}</span></span>
+  <span class="lbc-bar"><span class="lb-bar"><i style="width:{{ [x.pct, 2]|max }}%"></i><span class="goal" dir="ltr">{{ x.total }} / {{ lb.goal }}</span></span></span>
+  <span class="lbc-pts"><b>{{ x.points }}</b><small>/10</small></span>
+  <span class="lbc-act">{% if x.bravo %}<span class="brv done" title="أُرسلت">👏 ✓</span>{% else %}<form method="post" action="/leaderboard/bravo" style="margin:0"><input type="hidden" name="uid" value="{{ x.uid }}"><input type="hidden" name="lb" value="{{ lb.key }}"><button class="brv" title="برافو — يوصل للموظف إشعار ورسالة في بطاقته">👏</button></form>{% endif %}</span>
+</li>{% endmacro %}
+
 {% macro leaderboard(lb) %}
-<div class="card lb" id="lb"><div class="lb-head"><h2>🏆 لوحة صدارة الفريق</h2>
+<div class="card lb lbc" id="lb"><div class="lb-head"><h2>🏆 لوحة صدارة الفريق</h2>
 <nav class="lb-tabs" aria-label="فترة لوحة الصدارة">{% for k, lab in lb.PERIODS %}<a href="/?lb={{ k }}#lb" class="{{ 'on' if lb.key == k }}">{{ lab }}</a>{% endfor %}</nav></div>
-<div class="small muted" style="margin-top:4px">تظهر لك ولمن خوّلته بتقرير الفريق فقط · هدف الموظف اليومي <b>60 تواصل = 10 نقاط</b> (كل 6 تواصلات = نقطة) · بونص: عرض +2 · طلب جديد +3 · مشترك +5{% if lb.key != 'day' %} · هدف الفترة <b>{{ lb.goal }}</b> تواصل{% endif %}</div>
-<div class="lb-quote"><span class="q-ic">💬</span><div><div class="q-t">عبارة اليوم</div><div class="q-b">{{ lb.phrase }}</div></div></div>
-{% if lb.team.goal %}<div class="lb-team"><div class="lb-top"><b>👥 هدف الفريق اليوم</b><span class="small muted">كلنا مع بعض</span></div>
-<div class="lb-bar team"><i style="width:{{ [lb.team.pct, 2]|max }}%"></i><span class="goal" dir="ltr">{{ lb.team.done }} / {{ lb.team.goal }}</span></div></div>{% endif %}
+<div class="lbc-top"><span class="lbc-quote">💬 {{ lb.phrase }}</span>{% if lb.team.goal %}<span class="lbc-team"><span>👥 الفريق اليوم</span><span class="lb-bar team"><i style="width:{{ [lb.team.pct, 2]|max }}%"></i></span><b dir="ltr">{{ lb.team.done }} / {{ lb.team.goal }}</b></span>{% endif %}</div>
+{% if lb.flags %}<div class="lbc-flag">⚠️ تحديثات كثيرة في وقت قصير اليوم: {{ lb.flags|join('، ') }} — <a href="/team-activity">راجع سجلهم</a></div>{% endif %}
 {% set rows = lb.rows %}
-{% if rows %}
-{% if rows|length >= 3 %}<div class="lb-podium">
-{% for i, md in [(1, '🥈'), (0, '🥇'), (2, '🥉')] %}{% set x = rows[i] %}<div class="pod {{ 'first' if i == 0 }}"><span class="md">{{ md }}</span><div class="face {{ x.cls }}">{{ x.face }}</div><div class="nm">{{ x.name }}</div><div class="pt">{{ x.points }}<small>/10</small></div><div class="small muted">{{ x.total }} من {{ lb.goal }} تواصل</div></div>{% endfor %}
-</div>{% endif %}
-<ul class="lb-list">{% for x in rows %}<li class="lb-row {{ x.cls }}">
-  <div class="lb-rank">{{ ['🥇','🥈','🥉'][loop.index0] if loop.index0 < 3 and x.points else loop.index }}</div>
-  <div class="lb-emoji {{ x.cls }}">{{ x.face }}</div>
-  <div class="lb-main"><div class="lb-top"><span><b>{{ x.name }}</b>{% if x.streak %} <span class="lb-tag fire">🔥 <span dir="ltr">{{ x.streak }}</span> {{ 'يوم' if x.streak == 1 else 'أيام' }} متتالية</span>{% endif %}{% for bd in x.badges %} <span class="lb-tag">{{ bd }}</span>{% endfor %}</span><span class="lb-lvl {{ x.cls }}">{{ x.label }} <span class="stars" dir="ltr">{{ x.stars }}</span></span></div>
-    <div class="lb-bar"><i style="width:{{ [x.pct, 2]|max }}%"></i><span class="goal" dir="ltr">{{ x.total }} / {{ lb.goal }}</span></div>
-    <div class="lb-sub">{{ x.contacted }} تم التواصل · {{ x.no_answer }} لم يرد{% if x.call_later %} · {{ x.call_later }} تواصل لاحقًا{% endif %}{% if x.offer_sent %} · {{ x.offer_sent }} عرض{% endif %}{% if x.not_interested %} · {{ x.not_interested }} غير مهتم{% endif %}{% if x.new_request %} · {{ x.new_request }} طلب جديد{% endif %}{% if x.subscribed %} · {{ x.subscribed }} مشترك{% endif %}{% if x.bonus %} · <b class="lb-bonus">(+{{ x.bonus }} بونص)</b>{% endif %} · <span class="muted">{{ x.not_contacted }} لم يُتواصل معهم</span></div></div>
-  <div class="lb-act">{% if x.bravo %}<span class="brv done">👏 أُرسلت</span>{% else %}<form method="post" action="/leaderboard/bravo" style="margin:0"><input type="hidden" name="uid" value="{{ x.uid }}"><input type="hidden" name="lb" value="{{ lb.key }}"><button class="brv" title="يوصل للموظف إشعار ورسالة في بطاقته">👏 برافو</button></form>{% endif %}</div>
-  <div class="lb-pts"><b>{{ x.points }}</b><span>من 10</span></div></li>{% endfor %}</ul>
+{% if rows %}<ul class="lbc-list">{% for x in rows[:3] %}{{ lb_row(x, loop.index0, lb) }}{% endfor %}</ul>
+{% if rows|length > 3 %}<details class="lbc-more"><summary>عرض باقي الفريق ({{ rows|length - 3 }})</summary><ul class="lbc-list">{% for x in rows[3:] %}{{ lb_row(x, loop.index0 + 3, lb) }}{% endfor %}</ul></details>{% endif %}
 {% else %}<p class="muted small">لا يوجد موظفون نشطون بعملاء مسندين بعد.</p>{% endif %}
-<div class="lb-note">{% if lb.flags %}<b style="color:var(--warn)">⚠️ تنبيه للإدارة: تحديثات كثيرة في وقت قصير اليوم ({{ lb.flags|join('، ') }}) — راجع سجلهم في تقرير الفريق.</b><br>{% else %}✅ لا يوجد نشاط مريب اليوم (تحديثات كثيرة في وقت قصير).<br>{% endif %}
-المستوى حسب نسبة الهدف: 😍 100% (60+ يوميًا) · 🔥 75% (45+) · 😎 50% (30+) · 🙂 25% (15+) · 😐 أقل · 😢 صفر — الأوسمة يومية: ⚡ أول تواصل قبل 9 ص · 📋 بلا متابعات متأخرة · 🎯 أكثر عروض · 🏆 اشتراك · <a href="/team-activity">تقرير الفريق التفصيلي</a></div></div>
+<div class="lb-note">هدف الموظف {{ lb.goal }} تواصل = 10 نقاط · بونص: عرض +2 · طلب جديد +3 · مشترك +5 · الأوسمة: ⚡ قبل 9 ص · 📋 بلا متأخرات · 🎯 أكثر عروض · 🏆 اشتراك · <a href="/team-activity">تقرير الفريق التفصيلي</a></div></div>
 {% endmacro %}
 
 {% macro my_card(me) %}
