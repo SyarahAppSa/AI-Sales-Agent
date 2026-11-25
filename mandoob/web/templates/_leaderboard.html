@@ -1,28 +1,49 @@
 {% macro leaderboard(lb) %}
 <div class="card lb" id="lb"><div class="lb-head"><h2>🏆 لوحة صدارة الفريق</h2>
 <nav class="lb-tabs" aria-label="فترة لوحة الصدارة">{% for k, lab in lb.PERIODS %}<a href="/?lb={{ k }}#lb" class="{{ 'on' if lb.key == k }}">{{ lab }}</a>{% endfor %}</nav></div>
-<div class="small muted" style="margin-top:4px">تظهر لك ولمن خوّلته بتقرير الفريق فقط · هدف الموظف اليومي <b>60 تواصل = 10 نقاط</b> (كل 6 تواصلات = نقطة){% if lb.key != 'day' %} · هدف الفترة <b>{{ lb.goal }}</b> تواصل{% endif %}</div>
+<div class="small muted" style="margin-top:4px">تظهر لك ولمن خوّلته بتقرير الفريق فقط · هدف الموظف اليومي <b>60 تواصل = 10 نقاط</b> (كل 6 تواصلات = نقطة) · بونص: عرض +2 · طلب جديد +3 · مشترك +5{% if lb.key != 'day' %} · هدف الفترة <b>{{ lb.goal }}</b> تواصل{% endif %}</div>
 <div class="lb-quote"><span class="q-ic">💬</span><div><div class="q-t">عبارة اليوم</div><div class="q-b">{{ lb.phrase }}</div></div></div>
+{% if lb.team.goal %}<div class="lb-team"><div class="lb-top"><b>👥 هدف الفريق اليوم</b><span class="small muted">كلنا مع بعض</span></div>
+<div class="lb-bar team"><i style="width:{{ [lb.team.pct, 2]|max }}%"></i><span class="goal" dir="ltr">{{ lb.team.done }} / {{ lb.team.goal }}</span></div></div>{% endif %}
 {% set rows = lb.rows %}
 {% if rows %}
 {% if rows|length >= 3 %}<div class="lb-podium">
 {% for i, md in [(1, '🥈'), (0, '🥇'), (2, '🥉')] %}{% set x = rows[i] %}<div class="pod {{ 'first' if i == 0 }}"><span class="md">{{ md }}</span><div class="face {{ x.cls }}">{{ x.face }}</div><div class="nm">{{ x.name }}</div><div class="pt">{{ x.points }}<small>/10</small></div><div class="small muted">{{ x.total }} من {{ lb.goal }} تواصل</div></div>{% endfor %}
 </div>{% endif %}
 <ul class="lb-list">{% for x in rows %}<li class="lb-row {{ x.cls }}">
-  <div class="lb-rank">{{ ['🥇','🥈','🥉'][loop.index0] if loop.index0 < 3 and x.total else loop.index }}</div>
+  <div class="lb-rank">{{ ['🥇','🥈','🥉'][loop.index0] if loop.index0 < 3 and x.points else loop.index }}</div>
   <div class="lb-emoji {{ x.cls }}">{{ x.face }}</div>
-  <div class="lb-main"><div class="lb-top"><b>{{ x.name }}</b><span class="lb-lvl {{ x.cls }}">{{ x.label }} <span class="stars" dir="ltr">{{ x.stars }}</span></span></div>
+  <div class="lb-main"><div class="lb-top"><span><b>{{ x.name }}</b>{% if x.streak %} <span class="lb-tag fire">🔥 <span dir="ltr">{{ x.streak }}</span> {{ 'يوم' if x.streak == 1 else 'أيام' }} متتالية</span>{% endif %}{% for bd in x.badges %} <span class="lb-tag">{{ bd }}</span>{% endfor %}</span><span class="lb-lvl {{ x.cls }}">{{ x.label }} <span class="stars" dir="ltr">{{ x.stars }}</span></span></div>
     <div class="lb-bar"><i style="width:{{ [x.pct, 2]|max }}%"></i><span class="goal" dir="ltr">{{ x.total }} / {{ lb.goal }}</span></div>
-    <div class="lb-sub">{{ x.contacted }} تم التواصل · {{ x.no_answer }} لم يرد{% if x.call_later %} · {{ x.call_later }} تواصل لاحقًا{% endif %}{% if x.offer_sent %} · {{ x.offer_sent }} عرض{% endif %}{% if x.not_interested %} · {{ x.not_interested }} غير مهتم{% endif %}{% if x.new_request %} · {{ x.new_request }} طلب جديد{% endif %}{% if x.subscribed %} · {{ x.subscribed }} مشترك{% endif %} · <span class="muted">{{ x.not_contacted }} لم يُتواصل معهم</span></div></div>
+    <div class="lb-sub">{{ x.contacted }} تم التواصل · {{ x.no_answer }} لم يرد{% if x.call_later %} · {{ x.call_later }} تواصل لاحقًا{% endif %}{% if x.offer_sent %} · {{ x.offer_sent }} عرض{% endif %}{% if x.not_interested %} · {{ x.not_interested }} غير مهتم{% endif %}{% if x.new_request %} · {{ x.new_request }} طلب جديد{% endif %}{% if x.subscribed %} · {{ x.subscribed }} مشترك{% endif %}{% if x.bonus %} · <b class="lb-bonus">(+{{ x.bonus }} بونص)</b>{% endif %} · <span class="muted">{{ x.not_contacted }} لم يُتواصل معهم</span></div></div>
+  <div class="lb-act">{% if x.bravo %}<span class="brv done">👏 أُرسلت</span>{% else %}<form method="post" action="/leaderboard/bravo" style="margin:0"><input type="hidden" name="uid" value="{{ x.uid }}"><input type="hidden" name="lb" value="{{ lb.key }}"><button class="brv" title="يوصل للموظف إشعار ورسالة في بطاقته">👏 برافو</button></form>{% endif %}</div>
   <div class="lb-pts"><b>{{ x.points }}</b><span>من 10</span></div></li>{% endfor %}</ul>
 {% else %}<p class="muted small">لا يوجد موظفون نشطون بعملاء مسندين بعد.</p>{% endif %}
-<div class="lb-note">المستوى حسب نسبة الهدف: 😍 100% (60+ يوميًا) · 🔥 75% (45+) · 😎 50% (30+) · 🙂 25% (15+) · 😐 أقل · 😢 صفر — في الأسبوع والشهر يُضرب الهدف في أيام العمل (الأحد–الخميس) · <a href="/team-activity">تقرير الفريق التفصيلي</a></div></div>
+<div class="lb-note">{% if lb.flags %}<b style="color:var(--warn)">⚠️ تنبيه للإدارة: تحديثات كثيرة في وقت قصير اليوم ({{ lb.flags|join('، ') }}) — راجع سجلهم في تقرير الفريق.</b><br>{% else %}✅ لا يوجد نشاط مريب اليوم (تحديثات كثيرة في وقت قصير).<br>{% endif %}
+المستوى حسب نسبة الهدف: 😍 100% (60+ يوميًا) · 🔥 75% (45+) · 😎 50% (30+) · 🙂 25% (15+) · 😐 أقل · 😢 صفر — الأوسمة يومية: ⚡ أول تواصل قبل 9 ص · 📋 بلا متابعات متأخرة · 🎯 أكثر عروض · 🏆 اشتراك · <a href="/team-activity">تقرير الفريق التفصيلي</a></div></div>
 {% endmacro %}
 
 {% macro my_card(me) %}
 <div class="card me-card {{ me.cls }}"><h2 style="margin:0 0 6px">{{ 'صباح الخير' if now_hour < 12 else 'مساء الخير' }} يا {{ me.first }} 👋</h2>
 <div class="lb-quote"><span class="q-ic">💬</span><div><div class="q-t">عبارة اليوم</div><div class="q-b">{{ me.phrase }}</div></div></div>
+{% if me.bravo %}<div class="bravo"><span class="h">👏</span><div><b>برافو من {{ me.bravo.by }}:</b> على شغلك اليوم — كمّل كذا!</div></div>{% endif %}
 <div class="row2"><div><h3>تقدّمك اليوم</h3><div class="small muted">{{ me.total }} تواصل من هدف {{ me.goal }} · {% if me.left %}باقي لك {{ me.left }} وتحقق الهدف 💪{% else %}حققت الهدف — بطل 🏆{% endif %}</div></div><div class="face {{ me.cls }}" title="{{ me.label }}">{{ me.face }}</div></div>
 <div class="mbar" role="progressbar" aria-valuenow="{{ me.total }}" aria-valuemin="0" aria-valuemax="{{ me.goal }}"><i style="width:{{ [me.pct, 2]|max }}%"></i><span dir="ltr">{{ me.total }} / {{ me.goal }}</span></div>
-<div class="small muted" style="margin-top:8px">{{ me.by.get('contacted', 0) }} تم التواصل · {{ me.by.get('no_answer', 0) }} لم يرد{% if me.by.get('offer_sent') %} · {{ me.by.offer_sent }} عرض{% endif %}{% if me.by.get('subscribed') %} · {{ me.by.subscribed }} مشترك{% endif %} · لديك {{ me.due }} متابعات مستحقة اليوم</div></div>
+<div class="small muted" style="margin-top:8px">{{ me.by.get('contacted', 0) }} تم التواصل · {{ me.by.get('no_answer', 0) }} لم يرد{% if me.by.get('offer_sent') %} · {{ me.by.offer_sent }} عرض{% endif %}{% if me.by.get('new_request') %} · {{ me.by.new_request }} طلب جديد{% endif %}{% if me.by.get('subscribed') %} · {{ me.by.subscribed }} مشترك{% endif %} · لديك {{ me.due }} متابعات مستحقة اليوم</div>
+<div class="me-stats">
+ <div class="st streak">🔥 {% if me.streak %}<span>سلسلة</span> <b>{{ me.streak }}</b> <span>{{ 'يوم' if me.streak == 1 else 'أيام' }} حققت الهدف</span>{% else %}<span>حقق 60 اليوم وابدأ سلسلتك</span>{% endif %}</div>
+ <div class="st best">🏅 {% if me.best %}<span>رقمك القياسي</span> <b>{{ me.best }}</b> <span>{% if me.to_best %}— باقي {{ me.to_best }} وتكسره!{% else %}— كسرته اليوم! 🎉{% endif %}</span>{% else %}<span>اليوم يصير رقمك القياسي الأول</span>{% endif %}</div>
+ <div class="st pts">⭐ <span>نقاطك اليوم</span> <b>{{ me.points }}</b> <span>/ 10</span></div></div>
+<div class="pts-note">النقاط: كل 6 تواصلات = نقطة، والنتائج تُحسب كتواصلات إضافية: عرض +2 · طلب جديد +3 · مشترك +5{% if me.bonus %} (اليوم: {{ me.total }} تواصل + {{ me.bonus }} بونص){% endif %}</div>
+<div class="badges">{% for lab, on, why in me.badges %}<span class="bdg {{ '' if on else 'off' }}" title="{{ why }}">{{ lab }}</span>{% endfor %}</div>
+{% if me.team.goal %}<div class="team"><div class="lb-top"><b>👥 هدف الفريق اليوم</b><span class="small muted">كلنا مع بعض</span></div>
+<div class="mbar"><i style="width:{{ [me.team.pct, 2]|max }}%"></i><span dir="ltr">{{ me.team.done }} / {{ me.team.goal }}</span></div></div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro celebrate(m) %}
+<div class="cele" id="cele" role="dialog" aria-modal="true" aria-labelledby="cele-t"><div class="pop"><div class="big">{{ m[1] }}</div><h2 id="cele-t">{{ m[2] }}</h2><p>{{ m[3] }}</p><button class="btn p" type="button" onclick="document.getElementById('cele').remove()">يلا نكمّل</button></div></div>
+<script>(function(){var b=document.getElementById('cele');if(!b)return;var c=['#7c5cf0','#f2c94c','#f59e0b','#34d399','#f472b6','#60a5fa'];
+if(!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)){for(var i=0;i<80;i++){var d=document.createElement('i');d.className='cf';d.style.left=Math.random()*100+'vw';d.style.background=c[i%6];d.style.animationDelay=(Math.random()*1.2)+'s';d.style.animationDuration=(2.2+Math.random()*1.8)+'s';b.appendChild(d)}}
+b.addEventListener('click',function(e){if(e.target===b)b.remove()});setTimeout(function(){if(b.parentNode)b.remove()},9000)})();</script>
 {% endmacro %}

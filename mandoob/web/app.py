@@ -548,6 +548,18 @@ def home(request: Request, period: str = "7d", lb: str = "day", user: User = Dep
                   lb=_lb_board(s, user, lb))
 
 
+@app.post("/leaderboard/bravo")
+def leaderboard_bravo(request: Request, uid: int = Form(...), lb: str = Form("day"), user: User = Depends(current_user),
+                      s=Depends(get_db, scope="function")):
+    from ..leaderboard import send_bravo
+    from ..team_report import can_view
+    if not can_view(s, user):
+        raise HTTPException(403)
+    if send_bravo(s, user, uid):
+        flash(request, "👏 وصلت «برافو» للموظف — تظهر له في بطاقته وإشعاراته")
+    return back(f"/?lb={lb if lb in ('day', 'week', 'month') else 'day'}#lb")
+
+
 def _lb_board(s, user, key):
     from ..leaderboard import board
     from ..team_report import can_view
@@ -3424,7 +3436,20 @@ def portal_home(request: Request, q: str = "", page: int = 1, user: User = Depen
     rows = all_rows[(page - 1) * 50: page * 50]  # يُرسل للجهاز ما تعرضه الصفحة فقط
     return render(request, "portal_home.html", user, s, rows=rows, q=q, can=lambda p: can(user, p), page=page, total=total,
                   d=describe(user), mask=lambda t: mask_text(user, t), csum=_csum(s, [r["c"] for r in rows]),
-                  me=_my_card(s, user), now_hour=to_riyadh(now_utc()).hour)
+                  me=(me := _my_card(s, user)), now_hour=to_riyadh(now_utc()).hour, cele=_celebration(request, me))
+
+
+def _celebration(request, me):
+    """احتفال مرة واحدة لكل مرحلة (15/30/45/60) في اليوم، يُحفظ آخر ما احتُفل به في الجلسة."""
+    m = (me or {}).get("milestone")
+    if not m:
+        return None
+    key = f"{riyadh_today().isoformat()}:{m[0]}"
+    done = request.session.get("cele_done") or ""
+    if done.startswith(riyadh_today().isoformat() + ":") and int(done.split(":")[1]) >= m[0]:
+        return None
+    request.session["cele_done"] = key
+    return m
 
 
 def _my_card(s, user):
