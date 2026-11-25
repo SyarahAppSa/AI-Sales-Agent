@@ -37,6 +37,7 @@
 <form method="post" action="/team-activity/email" class="row" style="gap:8px;align-items:end">
 {% if user.role == 'admin' %}<label class="small"><input type="checkbox" name="enabled" {{ 'checked' if tr.enabled }}> إرسال يومي</label>
 <div style="flex:0 1 120px"><label class="small">الوقت (الرياض)</label><input name="time" value="{{ tr.time }}" dir="ltr"></div>
+<div style="flex:1 1 280px"><label class="small">من يرى التقرير ويستلمه غيرك (بريد، افصل بفاصلة)</label><input name="viewers" value="{{ (tr.viewers or [])|join(', ') }}" dir="ltr"></div>
 <button class="btn" name="save" value="1" style="flex:0 0 auto">حفظ</button>{% endif %}
 <button class="btn p" style="flex:0 0 auto">أرسل تقرير اليوم الآن</button></form></div>
 

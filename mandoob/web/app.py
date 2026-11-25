@@ -234,12 +234,20 @@ def render(request: Request, name: str, user: User | None, s=None, **ctx):
         from ..customer_mail import unread_count
         cm_unread = unread_count(s)
     return templates.TemplateResponse(request, name, {"user": user, "unread": unread, "flash": flash, "demo_on": demo,
-                                                      "emerg_unread": emerg, "cm_unread": cm_unread, "can_emergency": _can_emerg(user),
+                                                      "emerg_unread": emerg, "cm_unread": cm_unread,
+                                                      "can_team_report": _can_team_report(s, user), "can_emergency": _can_emerg(user),
                                                       # العلامة المائية لكل الحسابات عدا مدير المنصة (المالك)
                                                       "wm": _watermark(user) if user is not None and user.role != "admin" else "",
                                                       "voice_on": settings.voice_calls_enabled,
                                                       "outreach_on": settings.auto_outreach_enabled,
                                                       "path": request.url.path, **ctx})
+
+
+def _can_team_report(s, user) -> bool:
+    if user is None or s is None:
+        return False
+    from ..team_report import can_view
+    return can_view(s, user)
 
 
 def _can_emerg(user) -> bool:
@@ -2551,6 +2559,9 @@ def offers_report_xlsx(request: Request, user: User = Depends(current_user), s=D
 def team_activity_page(request: Request, d_from: str = "", d_to: str = "", user: User = Depends(require_manager),
                        s=Depends(get_db, scope="function")):
     from ..reports import team_activity
+    from .. import team_report as _TR
+    if not _TR.can_view(s, user):
+        raise HTTPException(403, "هذا التقرير للمالك ومن يحدده فقط")
     def _d(v, dflt):
         try:
             return date.fromisoformat(v) if v else dflt
@@ -2570,12 +2581,15 @@ def team_activity_page(request: Request, d_from: str = "", d_to: str = "", user:
 async def team_activity_email(request: Request, user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     """إرسال تقرير اليوم الآن لبريد المدراء، أو حفظ وقت الإرسال اليومي (المالك)."""
     from .. import team_report as TR
+    if not TR.can_view(s, user):
+        raise HTTPException(403, "هذا التقرير للمالك ومن يحدده فقط")
     form = await request.form()
     if form.get("save") and user.role == "admin":
         tm = (form.get("time") or "18:00").strip()
         if not re.fullmatch(r"\d{2}:\d{2}", tm):
             tm = "18:00"
-        TR.put_cfg(s, enabled=bool(form.get("enabled")), time=tm)
+        viewers = [e.strip().lower() for e in re.split(r"[,\s،]+", form.get("viewers") or "") if "@" in e]
+        TR.put_cfg(s, enabled=bool(form.get("enabled")), time=tm, viewers=viewers)
         flash(request, f"حُفظ: يُرسل تقرير الفريق يوميًا الساعة {tm}" if form.get("enabled") else "أُوقف الإرسال اليومي")
         return back("/team-activity")
     s.commit()

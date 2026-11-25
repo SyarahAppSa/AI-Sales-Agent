@@ -12,7 +12,7 @@ from .models import Setting, User
 from .timeutil import now_riyadh, riyadh_today
 
 KEY = "team_report_email"
-DEFAULT = {"enabled": True, "time": "18:00"}
+DEFAULT = {"enabled": True, "time": "18:00", "viewers": []}  # viewers: بريد من يرى التقرير ويستلمه غير المالك
 
 
 def get_cfg(s) -> dict:
@@ -30,9 +30,18 @@ def put_cfg(s, **kw) -> dict:
     return v
 
 
+def can_view(s, user) -> bool:
+    """التقرير للمالك (admin) ومن يحددهم المالك بالاسم فقط."""
+    if user is None:
+        return False
+    if user.role == "admin":
+        return True
+    return (user.email or "").lower() in {e.lower() for e in get_cfg(s).get("viewers") or []}
+
+
 def recipients(s) -> list[User]:
     return [u for u in s.scalars(select(User).where(User.active.is_(True), User.role.in_(("admin", "manager"))))
-            if u.email and not u.email.endswith((".invalid", ".local", ".test"))]
+            if u.email and not u.email.endswith((".invalid", ".local", ".test")) and can_view(s, u)]
 
 
 def build_html(s, day: date, base_url: str = "") -> tuple[str, str, str]:

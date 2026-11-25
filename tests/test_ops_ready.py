@@ -179,3 +179,28 @@ def test_team_report_new_statuses_columns_quality_and_email(monkeypatch):
     sent.clear()
     assert TR.tick() is True and len(sent) == 2
     assert TR.tick() is False and len(sent) == 2
+
+
+def test_team_report_visible_only_to_owner_and_named_viewers():
+    from mandoob import team_report as TR
+    init_db()
+    with session_scope() as s:
+        m = s.query(User).filter_by(email="ops.mgr@x.example").first()
+        if m is None:
+            m = User(name="مدير غير مخوّل للفحص", email="ops.mgr@x.example", role="manager", password_hash="x",
+                     profile="team_lead", scope="team")
+            s.add(m)
+        TR.put_cfg(s, viewers=[])
+    with TestClient(app) as cl:
+        otp_login(cl, "ops.mgr@x.example", "admin")
+        assert cl.get("/team-activity").status_code == 403
+        assert 'href="/team-activity"' not in cl.get("/").text
+    with session_scope() as s:
+        TR.put_cfg(s, viewers=["ops.mgr@x.example"])
+        assert "ops.mgr@x.example" in [u.email for u in TR.recipients(s)]
+    with TestClient(app) as cl:
+        otp_login(cl, "ops.mgr@x.example", "admin")
+        assert cl.get("/team-activity").status_code == 200
+    with session_scope() as s:
+        TR.put_cfg(s, viewers=[])
+        assert "ops.mgr@x.example" not in [u.email for u in TR.recipients(s)]
