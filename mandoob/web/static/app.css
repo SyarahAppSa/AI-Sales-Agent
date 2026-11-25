@@ -458,3 +458,8 @@ background:linear-gradient(90deg,#efe8ff,#fdf4ff);border:1px solid #e4d8ff;anima
 @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}@keyframes popin{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
 @media (max-width:640px){.lb-row{grid-template-columns:30px 36px 1fr 52px}.lb-act{grid-column:3/5;grid-row:2}}
 @media (prefers-reduced-motion:reduce){.cele .pop,.me-card .bravo .h{animation:none!important}}
+.me-level{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 14px;border-radius:14px;background:#ece6fb;color:#4c2d86}
+.me-level.star{background:#fff1c9;color:#854d0e}.me-level.fire{background:#ffe4e1;color:#9a3412}.me-level.low{background:#f6efe2;color:#78350f}.me-level.sad{background:#f1f1f4;color:#4b4655}
+.me-level .lv-face{font-size:26px}.me-level .lv-k{font-size:12px;opacity:.8}.me-level b{font-size:16px}.me-level .stars{color:#f2b01e;letter-spacing:1px}
+.me-level .lv-next{font-size:12.5px;margin-inline-start:auto;opacity:.9}
+@media (max-width:640px){.me-level .lv-next{margin-inline-start:0;flex-basis:100%}}

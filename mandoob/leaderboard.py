@@ -222,6 +222,16 @@ def send_bravo(s, by, uid: int) -> bool:
     return True
 
 
+NEXT = [(15, "🙂", "بداية جيدة"), (30, "😎", "أداء قوي"), (45, "🔥", "قريب من الهدف"), (60, "😍", "متصدر — حقق الهدف")]
+
+
+def next_level(total: int):
+    for n, face, label in NEXT:
+        if total < n:
+            return {"at": n, "face": face, "label": label, "left": n - total}
+    return None
+
+
 def milestone(total: int):
     for m in MILESTONES:
         if total >= m[0]:
@@ -281,4 +291,5 @@ def personal(s, user) -> dict:
             "pct": min(100, round(total / DAILY_GOAL * 100)), "phrase": today_phrase(t), "first": first,
             "streak": streak(days, t), "best": pb, "to_best": (pb + 1 - total) if pb and total <= pb else 0,
             "bonus": ex, "points": score(total, DAILY_GOAL, ex), "badges": [(lab, k in got, why) for k, lab, why in BADGES],
-            "team": team_today(s), "bravo": bv, "milestone": milestone(total), **level(total, DAILY_GOAL)}
+            "team": team_today(s), "bravo": bv, "milestone": milestone(total), "next": next_level(total),
+            **level(total, DAILY_GOAL)}

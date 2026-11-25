@@ -28,6 +28,8 @@
 <div class="lb-quote"><span class="q-ic">💬</span><div><div class="q-t">عبارة اليوم</div><div class="q-b">{{ me.phrase }}</div></div></div>
 {% if me.bravo %}<div class="bravo"><span class="h">👏</span><div><b>برافو من {{ me.bravo.by }}:</b> على شغلك اليوم — كمّل كذا!</div></div>{% endif %}
 <div class="row2"><div><h3>تقدّمك اليوم</h3><div class="small muted">{{ me.total }} تواصل من هدف {{ me.goal }} · {% if me.left %}باقي لك {{ me.left }} وتحقق الهدف 💪{% else %}حققت الهدف — بطل 🏆{% endif %}</div></div><div class="face {{ me.cls }}" title="{{ me.label }}">{{ me.face }}</div></div>
+<div class="me-level {{ me.cls }}"><span class="lv-face">{{ me.face }}</span><span class="lv-txt"><span class="lv-k">مستواك اليوم</span> <b>{{ me.label }}</b> <span class="stars" dir="ltr">{{ me.stars }}</span></span>
+{% if me.next %}<span class="lv-next">المستوى الجاي {{ me.next.face }} «{{ me.next.label }}» عند {{ me.next.at }} تواصل — باقي لك {{ me.next.left }}</span>{% else %}<span class="lv-next">وصلت أعلى مستوى اليوم 👑</span>{% endif %}</div>
 <div class="mbar" role="progressbar" aria-valuenow="{{ me.total }}" aria-valuemin="0" aria-valuemax="{{ me.goal }}"><i style="width:{{ [me.pct, 2]|max }}%"></i><span dir="ltr">{{ me.total }} / {{ me.goal }}</span></div>
 <div class="small muted" style="margin-top:8px">{{ me.by.get('contacted', 0) }} تم التواصل · {{ me.by.get('no_answer', 0) }} لم يرد{% if me.by.get('offer_sent') %} · {{ me.by.offer_sent }} عرض{% endif %}{% if me.by.get('new_request') %} · {{ me.by.new_request }} طلب جديد{% endif %}{% if me.by.get('subscribed') %} · {{ me.by.subscribed }} مشترك{% endif %} · لديك {{ me.due }} متابعات مستحقة اليوم</div>
 <div class="me-stats">
