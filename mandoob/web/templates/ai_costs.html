@@ -10,6 +10,10 @@
 <div class="aic-bar" role="progressbar" aria-valuenow="{{ r.cap_pct|round|int }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ [r.cap_pct, 1.5]|max }}%" class="{{ 'warn' if r.cap_pct >= 80 }}"></i></div>
 <p class="small muted" style="margin:8px 0 0">السقف اليومي يشمل كل تكاليف المنصة، وإذا وصلته تتوقف دفعات البحث لباقي اليوم. المتوقع لهذا الشهر: <b dir="ltr">{{ money(r.forecast) }}</b> ({{ '%.2f'|format(r.forecast * r.SAR) }} ر.س). تغيّر السقف من «اكتشاف عملاء جدد».</p></div>
 
+<div class="card" style="border:1.5px solid {{ 'var(--ok)' if not paid_on else 'var(--line)' }}"><div class="aic-cap-top"><b>البحث المدفوع: {% if paid_on %}<span style="color:var(--warn)">مفعّل</span>{% else %}<span style="color:var(--ok)">موقوف — البحث المجاني فقط</span>{% endif %}</b>
+{% if user.role == 'admin' %}<form method="post" action="/ai-costs/paid" style="margin:0">{% if paid_on %}<button class="btn" style="background:var(--panel);color:var(--ink);border:1px solid var(--line)">إيقاف المدفوع (المجاني فقط)</button>{% else %}<input type="hidden" name="enabled" value="1"><button class="btn" style="background:#7c5cf0;color:#fff">تفعيل البحث المدفوع</button>{% endif %}</form>{% endif %}</div>
+<p class="small muted" style="margin:0">المجاني: خرائط Overture وزاحف المواقع الرسمية والدليل العام — بلا تكلفة. المدفوع: Claude (وكيل البحث، إعادة محاولة الناقص، أصحاب القرار، الإشارات) وبحث خرائط Google.</p></div>
+
 <div class="card"><div class="aic-cap-top"><b>سقوف العمليات المكلفة اليوم</b><span class="small muted">المصادر المجانية (Overture وزاحف المواقع) بلا سقف وتعمل أولًا</span></div>
 <form method="post" action="/ai-costs/caps"><div class="aic-kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:0">
 {% for c in r.cap_rows %}<div class="aic-k"><div class="mt">{{ c.label }}</div><div class="mv" dir="ltr" style="font-size:22px">${{ '%.2f'|format(c.used) }} <span class="small muted">/ ${{ '%.0f'|format(c.cap) }}</span></div>

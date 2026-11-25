@@ -277,6 +277,9 @@ def run_cycle(force: bool = False) -> int:
 
 
 def tick() -> int:
+    from .ai import paid_enabled
+    if not paid_enabled():  # البحث عن أصحاب القرار مدفوع
+        return 0
     try:
         return run_cycle()
     except Exception:  # noqa: BLE001

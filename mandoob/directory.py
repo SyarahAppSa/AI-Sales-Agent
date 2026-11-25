@@ -682,7 +682,8 @@ def _enrich_stub(sid: int, stats: dict, crawler, drun_id: int, camp_id: int, ove
         cid = co.id
     if need and src in ("overture", "sig_direct"):  # الهاتف والبريد من الموقع الرسمي فقط (بلا وكيل بحث ولا تكلفة)
         need = []
-    if need and not over_budget():
+    from .ai import paid_enabled as _paid
+    if need and not over_budget() and _paid():
         kinds = [m for m in ("هاتف", "بريد") if any(m in x for x in need)] or ["هاتف", "بريد"]
         try:
             found = agent_complete(name, city, website, [("الهاتف" if k == "هاتف" else "البريد الإلكتروني")
@@ -917,7 +918,8 @@ def run(run_id: int, crawler=None) -> None:
         if completes() >= target:
             beat(f"بلغت الدفعة هدفها: {completes()} منشأة جديدة مكتملة")
     # الخطوة المدفوعة بعد المجانية: العودة للناقص في الدفعة اليومية بما تبقى من الميزانية
-    if r_auto and completes() < target and not over_budget():
+    from .ai import paid_enabled as _paid
+    if r_auto and completes() < target and not over_budget() and _paid():
         n = retry_incomplete(stats, over_budget)
         beat(f"أُعيد البحث عن الناقص (بعد المصادر المجانية): اكتمل {n}")
     # البحث المباشر حسب النشاط: Overture (مجاني) ثم بحث الويب للمرادفات وتحديد المشغّل الفعلي

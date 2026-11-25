@@ -102,10 +102,41 @@ def _daily_cap_guard() -> None:
         raise AIUnavailable(f"بلغ حد التكلفة اليومي (${spent:.2f} من ${cap:.2f}) — يُستأنف غدًا أو برفع الحد")
 
 
+PAID_KEY = "paid_search"
+
+
+def paid_enabled(s=None) -> bool:
+    """المفتاح الرئيسي للبحث المدفوع (Claude وخرائط Google). عند إيقافه يعمل المجاني فقط (Overture والزاحف والدليل)."""
+    try:
+        from .db import session_scope
+        from .models import Setting
+        if s is not None:
+            row = s.get(Setting, PAID_KEY)
+            return bool(((row.value if row else None) or {}).get("enabled", True))
+        with session_scope() as s2:
+            row = s2.get(Setting, PAID_KEY)
+            return bool(((row.value if row else None) or {}).get("enabled", True))
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def set_paid(s, enabled: bool, by: str = "") -> None:
+    from .models import Setting
+    from .timeutil import now_utc
+    row = s.get(Setting, PAID_KEY)
+    v = {"enabled": bool(enabled), "at": now_utc().isoformat(), "by": by}
+    if row is None:
+        s.add(Setting(key=PAID_KEY, value=v))
+    else:
+        row.value = v
+
+
 def client():
     global _client
     if not settings.ai_enabled:
         raise AIUnavailable("ANTHROPIC_API_KEY غير مضبوط")
+    if not paid_enabled():
+        raise AIUnavailable("البحث المدفوع موقوف — يعمل البحث المجاني فقط (يفعّله المالك من «تكلفة الذكاء الاصطناعي»)")
     _daily_cap_guard()
     if _client is None:
         import anthropic

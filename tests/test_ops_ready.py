@@ -204,3 +204,25 @@ def test_team_report_visible_only_to_owner_and_named_viewers():
     with session_scope() as s:
         TR.put_cfg(s, viewers=[])
         assert "ops.mgr@x.example" not in [u.email for u in TR.recipients(s)]
+
+
+def test_paid_search_master_switch(monkeypatch):
+    import pytest
+    from mandoob import ai, google_live as G
+    from mandoob.config import settings
+    init_db()
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-test")
+    monkeypatch.setattr(ai, "_client", object())
+    with session_scope() as s:
+        ai.set_paid(s, False, "test")
+    with pytest.raises(ai.AIUnavailable, match="البحث المدفوع موقوف"):
+        ai.client()
+    with pytest.raises(G.LiveError, match="البحث المدفوع موقوف"):
+        G._guard()
+    with TestClient(app) as cl:
+        otp_login(cl, ADMIN, "admin")
+        html = cl.get("/ai-costs").text
+        assert "موقوف — البحث المجاني فقط" in html and "تفعيل البحث المدفوع" in html
+        cl.post("/ai-costs/paid", data={"enabled": "1"})
+    assert ai.paid_enabled() is True
+    assert ai.client() is not None

@@ -2253,7 +2253,18 @@ def ai_costs_page(request: Request, period: str = "today", d_from: str = "", d_t
                   user: User = Depends(require_manager), s=Depends(get_db, scope="function")):
     from .. import ai_costs as A
     k, a, b = _aic_args(period, d_from, d_to)
-    return render(request, "ai_costs.html", user, s, r=A.report(s, k, a, b), PERIODS=A.PERIODS)
+    from ..ai import paid_enabled
+    return render(request, "ai_costs.html", user, s, r=A.report(s, k, a, b), PERIODS=A.PERIODS, paid_on=paid_enabled(s))
+
+
+@app.post("/ai-costs/paid")
+def ai_costs_paid(request: Request, enabled: str = Form(""), user: User = Depends(require_admin), s=Depends(get_db, scope="function")):
+    from ..ai import set_paid
+    from ..auth import audit
+    set_paid(s, bool(enabled), user.name)
+    audit(s, user, "paid_search", None, enabled=bool(enabled))
+    flash(request, "فُعّل البحث المدفوع" if enabled else "أُوقف البحث المدفوع — يعمل البحث المجاني فقط")
+    return back("/ai-costs")
 
 
 @app.post("/ai-costs/caps")

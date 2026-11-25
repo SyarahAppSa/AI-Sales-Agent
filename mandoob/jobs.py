@@ -77,6 +77,9 @@ def _mark(last_key: str) -> None:
 
 
 def discovery_tick(force: bool = False) -> list[int]:
+    from .ai import paid_enabled
+    if not paid_enabled():  # وكيل «البحث عن العملاء» مدفوع: لا يبدأ والبحث المدفوع موقوف
+        return []
     sched = get_setting("schedule", DEFAULT_SCHEDULE)
     if not force and not _due(sched.get("discovery_time", "06:00"), "discovery_done"):
         return []
@@ -270,8 +273,9 @@ def enrich_spent_today(s) -> float:
 def enrich_tick(limit: int = 5) -> int:
     """كل ١٠ دقائق: يعيد البحث عن الهاتف والبريد للعملاء «قيد الاستكمال» الذين حان موعدهم (أيًّا كان مصدرهم:
     دفعات «البحث عن عملاء» اليدوية أو الاكتشاف أو التشغيل اليومي) — الموقع أولًا ثم وكيل البحث، ضمن سقف يومي."""
+    from .ai import paid_enabled
     from .config import settings
-    if not settings.ai_enabled:
+    if not settings.ai_enabled or not paid_enabled():  # لا تُستهلك محاولات الاستكمال والبحث المدفوع موقوف
         return 0
     budget = float((get_setting(ENRICH_KEY) or {}).get("budget_usd", 3))
     with session_scope() as s:

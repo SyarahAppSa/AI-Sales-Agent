@@ -81,7 +81,8 @@ def build(hours: float = 5.0) -> list[str]:
         for nt, c in s.execute(select(CostEntry.note, CostEntry.cost_usd).where(CostEntry.day == today)):
             by[cap_category(nt or "") or "أخرى"] += float(c or 0)
         caps = get_caps(s)
-        L.append(f"\n[التكلفة اليوم] ${spent:.2f} من حد ${cap:.0f}"
+        from .ai import paid_enabled
+        L.append(f"\n[التكلفة اليوم] ${spent:.2f} من حد ${cap:.0f} — البحث المدفوع: {'مفعّل' if paid_enabled(s) else 'موقوف (المجاني فقط)'}"
                  + (f" — تكلفة المنشأة المكتملة ≈ ${spent / goal.achieved(s):.2f}" if goal.achieved(s) else ""))
         for k, v in sorted(by.items(), key=lambda x: -x[1]):
             L.append(f"  {CAP_LABELS.get(k, k)}: ${v:.2f}" + (f" (سقف ${caps[k]:.0f})" if k in caps else ""))

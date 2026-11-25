@@ -85,6 +85,13 @@ def set_budget(s, monthly_usd: float) -> None:
 
 
 def _guard() -> None:
+    from .ai import paid_enabled
+    if not paid_enabled():
+        raise LiveError("البحث المدفوع موقوف حاليًا (البحث المجاني فقط) — بحث خرائط Google يُفعَّل مع تفعيل البحث المدفوع")
+    _guard_budget()
+
+
+def _guard_budget() -> None:
     """يمنع أي طلب جديد لـGoogle إذا بلغ صرف الشهر السقف، وينبّه المدير مرة عند 80٪ ومرة عند البلوغ."""
     from sqlalchemy import select
 
